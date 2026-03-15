@@ -2771,7 +2771,7 @@
             <div style="font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#aaa;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #f0ede8;">Ответственность и сроки</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
               <div class="form-group">
-                <div class="form-lbl">Ответственный за сбор данных <span class="form-lbl-req">*</span></div>
+                <div class="form-lbl">Ответственный за сбор данных</div>
                 <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid #2d8a56;border-radius:8px;background:white;cursor:pointer;">
                   <div style="width:24px;height:24px;border-radius:6px;background:#2d8a56;display:flex;align-items:center;justify-content:center;color:white;font-size:9px;font-weight:800;flex-shrink:0;">ИИ</div>
                   <div>
@@ -2780,9 +2780,13 @@
                   </div>
                   <span style="margin-left:auto;font-size:11px;color:#2d8a56;font-weight:600;">Изменить</span>
                 </div>
+                <div style="margin-top:6px;display:flex;align-items:center;gap:6px;">
+                  <input type="checkbox" style="accent-color:#d97706;width:13px;height:13px;">
+                  <span style="font-size:11px;color:#888;">Назначить позже — метрика будет создана без ответственного</span>
+                </div>
               </div>
               <div class="form-group">
-                <div class="form-lbl">Утверждающий (ревьюер) <span class="form-lbl-req">*</span></div>
+                <div class="form-lbl">Утверждающий (ревьюер)</div>
                 <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid #e0ddd8;border-radius:8px;background:white;cursor:pointer;">
                   <div style="width:24px;height:24px;border-radius:6px;background:#3b82f6;display:flex;align-items:center;justify-content:center;color:white;font-size:9px;font-weight:800;flex-shrink:0;">СК</div>
                   <div>
@@ -2790,6 +2794,10 @@
                     <div style="font-size:10px;color:#888;">Рук. ESG-команды</div>
                   </div>
                   <span style="margin-left:auto;font-size:11px;color:#2d8a56;font-weight:600;">Изменить</span>
+                </div>
+                <div style="margin-top:6px;display:flex;align-items:center;gap:6px;">
+                  <input type="checkbox" style="accent-color:#d97706;width:13px;height:13px;">
+                  <span style="font-size:11px;color:#888;">Назначить позже</span>
                 </div>
               </div>
               <div class="form-group">
@@ -3276,7 +3284,7 @@
 
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
             <div class="form-group" style="margin:0;">
-              <div class="form-lbl">Владелец данных (сборщик) <span class="form-lbl-req">*</span></div>
+              <div class="form-lbl">Владелец данных (сборщик)</div>
               <div class="reviewer-row">
                 <div class="reviewer-avatar">ИИ</div>
                 <div>
@@ -3285,9 +3293,13 @@
                 </div>
                 <span style="margin-left:auto;font-size:11px;color:#2d8a56;font-weight:700;">Изменить</span>
               </div>
+              <div style="margin-top:6px;display:flex;align-items:center;gap:6px;">
+                <input type="checkbox" style="accent-color:#d97706;width:13px;height:13px;">
+                <span style="font-size:11px;color:#888;">Назначить позже — метрика будет создана без ответственного</span>
+              </div>
             </div>
             <div class="form-group" style="margin:0;">
-              <div class="form-lbl">Ревьюер <span class="form-lbl-req">*</span></div>
+              <div class="form-lbl">Ревьюер</div>
               <div class="reviewer-row">
                 <div class="reviewer-avatar">СК</div>
                 <div>
@@ -3295,6 +3307,10 @@
                   <div class="reviewer-role">Руководитель ESG-команды</div>
                 </div>
                 <span style="margin-left:auto;font-size:11px;color:#2d8a56;font-weight:700;">Изменить</span>
+              </div>
+              <div style="margin-top:6px;display:flex;align-items:center;gap:6px;">
+                <input type="checkbox" style="accent-color:#d97706;width:13px;height:13px;">
+                <span style="font-size:11px;color:#888;">Назначить позже</span>
               </div>
             </div>
           </div>
@@ -4211,6 +4227,350 @@
         <span class="entry-step-info">Шаг 3 из 3</span>
         <span class="entry-save-hint"><span class="entry-save-dot"></span>Черновик сохранён</span>
         <button class="btn2 btn2-outline" style="margin-left:auto;">← Назад</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+  <!-- ASSIGN-1: Матрица назначений — Метрики × Ответственные -->
+  <div id="s-assign1">
+    <div class="screen-label">Администрирование · <span>Матрица назначений — Метрики × Ответственные</span></div>
+    <div class="screen">
+      <div class="topbar2">
+        <div class="t2-logo"><em>ESG</em>vist</div>
+        <div class="t2-nav">
+          <div class="t2-nav-item">Обзор</div><div class="t2-nav-item">Данные</div>
+          <div class="t2-nav-item">Ревью<span class="t2-nav-badge">3</span></div>
+          <div class="t2-nav-item">Доказательства</div><div class="t2-nav-item">Отчёт</div>
+          <div class="t2-nav-item active">Настройка</div>
+        </div>
+        <div class="t2-right">
+          <div class="t2-ctx">📅 <b>2025</b> · <b>GRI</b></div>
+          <div class="t2-company"><div class="t2-company-avatar">KE</div><div><div class="t2-company-name">KazEnergo JSC</div></div></div>
+        </div>
+      </div>
+      <div class="entry-crumb">
+        <a>Настройка</a><span class="entry-crumb-sep">/</span>
+        <span style="color:#1a1a1a;font-weight:600;">Матрица назначений</span>
+      </div>
+
+      <div style="padding:20px 24px;">
+        <!-- Header row -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+          <div>
+            <div style="font-size:16px;font-weight:900;color:#1a1a1a;">Метрики × Ответственные</div>
+            <div style="font-size:11px;color:#888;margin-top:2px;">Все показатели и их назначения в одной таблице. Кликните на ячейку для переназначения.</div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <div style="display:flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid #e8e5e0;border-radius:8px;background:white;font-size:11px;color:#555;cursor:pointer;">
+              🔍 <input style="border:none;outline:none;font-size:11px;width:140px;background:transparent;" placeholder="Поиск по метрике...">
+            </div>
+            <select style="padding:6px 12px;border:1px solid #e8e5e0;border-radius:8px;font-size:11px;color:#555;background:white;cursor:pointer;">
+              <option>Все категории</option>
+              <option>Environmental</option>
+              <option>Social</option>
+              <option>Governance</option>
+            </select>
+            <select style="padding:6px 12px;border:1px solid #e8e5e0;border-radius:8px;font-size:11px;color:#555;background:white;cursor:pointer;">
+              <option>Все статусы</option>
+              <option>Назначено</option>
+              <option>Без ответственного</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Summary strip -->
+        <div style="display:flex;gap:12px;margin-bottom:16px;">
+          <div style="flex:1;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px 16px;text-align:center;">
+            <div style="font-size:20px;font-weight:900;color:#2d8a56;">42</div>
+            <div style="font-size:10px;color:#888;font-weight:600;">Всего метрик</div>
+          </div>
+          <div style="flex:1;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 16px;text-align:center;">
+            <div style="font-size:20px;font-weight:900;color:#3b82f6;">36</div>
+            <div style="font-size:10px;color:#888;font-weight:600;">Назначен сборщик</div>
+          </div>
+          <div style="flex:1;background:#fef3c7;border:1px solid #fde68a;border-radius:10px;padding:12px 16px;text-align:center;">
+            <div style="font-size:20px;font-weight:900;color:#d97706;">6</div>
+            <div style="font-size:10px;color:#888;font-weight:600;">Без ответственного</div>
+          </div>
+          <div style="flex:1;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 16px;text-align:center;">
+            <div style="font-size:20px;font-weight:900;color:#dc2626;">3</div>
+            <div style="font-size:10px;color:#888;font-weight:600;">Просрочен дедлайн</div>
+          </div>
+        </div>
+
+        <!-- Assignment matrix table -->
+        <div style="border:1px solid #e8e5e0;border-radius:12px;overflow:hidden;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+              <tr style="background:#f7f6f3;">
+                <th style="text-align:left;padding:10px 14px;font-size:10px;font-weight:800;color:#888;text-transform:uppercase;letter-spacing:.5px;width:26%;">Показатель</th>
+                <th style="text-align:left;padding:10px 14px;font-size:10px;font-weight:800;color:#888;text-transform:uppercase;letter-spacing:.5px;width:8%;">Стандарт</th>
+                <th style="text-align:left;padding:10px 14px;font-size:10px;font-weight:800;color:#888;text-transform:uppercase;letter-spacing:.5px;width:9%;">Категория</th>
+                <th style="text-align:left;padding:10px 14px;font-size:10px;font-weight:800;color:#888;text-transform:uppercase;letter-spacing:.5px;width:18%;">Сборщик данных</th>
+                <th style="text-align:left;padding:10px 14px;font-size:10px;font-weight:800;color:#888;text-transform:uppercase;letter-spacing:.5px;width:18%;">Ревьюер</th>
+                <th style="text-align:left;padding:10px 14px;font-size:10px;font-weight:800;color:#888;text-transform:uppercase;letter-spacing:.5px;width:10%;">Дедлайн</th>
+                <th style="text-align:center;padding:10px 14px;font-size:10px;font-weight:800;color:#888;text-transform:uppercase;letter-spacing:.5px;width:11%;">Статус</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Row 1 -->
+              <tr style="border-top:1px solid #f0ede8;">
+                <td style="padding:10px 14px;">
+                  <div style="font-weight:700;color:#1a1a1a;">Прямые выбросы CO₂</div>
+                  <div style="font-size:10px;color:#aaa;">GRI 305-1</div>
+                </td>
+                <td style="padding:10px 14px;"><span style="font-size:10px;font-weight:700;color:#3b82f6;background:#eff6ff;padding:2px 6px;border-radius:4px;">GRI</span></td>
+                <td style="padding:10px 14px;"><span style="font-size:10px;font-weight:600;color:#2d8a56;background:#f0fdf4;padding:2px 6px;border-radius:4px;">E</span></td>
+                <td style="padding:10px 14px;">
+                  <div style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                    <div style="width:22px;height:22px;border-radius:6px;background:#2d8a56;display:flex;align-items:center;justify-content:center;color:white;font-size:8px;font-weight:800;">ИИ</div>
+                    <div>
+                      <div style="font-size:11px;font-weight:600;color:#1a1a1a;">Иванов И. А.</div>
+                      <div style="font-size:9px;color:#aaa;">Эколог</div>
+                    </div>
+                    <span style="margin-left:auto;font-size:9px;color:#2d8a56;font-weight:700;">✎</span>
+                  </div>
+                </td>
+                <td style="padding:10px 14px;">
+                  <div style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                    <div style="width:22px;height:22px;border-radius:6px;background:#3b82f6;display:flex;align-items:center;justify-content:center;color:white;font-size:8px;font-weight:800;">СК</div>
+                    <div>
+                      <div style="font-size:11px;font-weight:600;color:#1a1a1a;">Сидоров К. А.</div>
+                      <div style="font-size:9px;color:#aaa;">Рук. ESG</div>
+                    </div>
+                    <span style="margin-left:auto;font-size:9px;color:#2d8a56;font-weight:700;">✎</span>
+                  </div>
+                </td>
+                <td style="padding:10px 14px;font-size:11px;color:#555;">15.03.2026</td>
+                <td style="padding:10px 14px;text-align:center;"><span style="font-size:10px;font-weight:700;color:#2d8a56;background:#f0fdf4;padding:3px 8px;border-radius:5px;">Ввод данных</span></td>
+              </tr>
+              <!-- Row 2 -->
+              <tr style="border-top:1px solid #f0ede8;">
+                <td style="padding:10px 14px;">
+                  <div style="font-weight:700;color:#1a1a1a;">Потребление энергии внутри</div>
+                  <div style="font-size:10px;color:#aaa;">GRI 302-1</div>
+                </td>
+                <td style="padding:10px 14px;"><span style="font-size:10px;font-weight:700;color:#3b82f6;background:#eff6ff;padding:2px 6px;border-radius:4px;">GRI</span></td>
+                <td style="padding:10px 14px;"><span style="font-size:10px;font-weight:600;color:#2d8a56;background:#f0fdf4;padding:2px 6px;border-radius:4px;">E</span></td>
+                <td style="padding:10px 14px;">
+                  <div style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                    <div style="width:22px;height:22px;border-radius:6px;background:#2d8a56;display:flex;align-items:center;justify-content:center;color:white;font-size:8px;font-weight:800;">ИИ</div>
+                    <div>
+                      <div style="font-size:11px;font-weight:600;color:#1a1a1a;">Иванов И. А.</div>
+                      <div style="font-size:9px;color:#aaa;">Эколог</div>
+                    </div>
+                    <span style="margin-left:auto;font-size:9px;color:#2d8a56;font-weight:700;">✎</span>
+                  </div>
+                </td>
+                <td style="padding:10px 14px;">
+                  <div style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                    <div style="width:22px;height:22px;border-radius:6px;background:#3b82f6;display:flex;align-items:center;justify-content:center;color:white;font-size:8px;font-weight:800;">СК</div>
+                    <div>
+                      <div style="font-size:11px;font-weight:600;color:#1a1a1a;">Сидоров К. А.</div>
+                      <div style="font-size:9px;color:#aaa;">Рук. ESG</div>
+                    </div>
+                    <span style="margin-left:auto;font-size:9px;color:#2d8a56;font-weight:700;">✎</span>
+                  </div>
+                </td>
+                <td style="padding:10px 14px;font-size:11px;color:#555;">15.03.2026</td>
+                <td style="padding:10px 14px;text-align:center;"><span style="font-size:10px;font-weight:700;color:#3b82f6;background:#eff6ff;padding:3px 8px;border-radius:5px;">На ревью</span></td>
+              </tr>
+              <!-- Row 3 -->
+              <tr style="border-top:1px solid #f0ede8;">
+                <td style="padding:10px 14px;">
+                  <div style="font-weight:700;color:#1a1a1a;">Потребление энергии за пределами</div>
+                  <div style="font-size:10px;color:#aaa;">GRI 302-2</div>
+                </td>
+                <td style="padding:10px 14px;"><span style="font-size:10px;font-weight:700;color:#3b82f6;background:#eff6ff;padding:2px 6px;border-radius:4px;">GRI</span></td>
+                <td style="padding:10px 14px;"><span style="font-size:10px;font-weight:600;color:#2d8a56;background:#f0fdf4;padding:2px 6px;border-radius:4px;">E</span></td>
+                <td style="padding:10px 14px;">
+                  <div style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                    <div style="width:22px;height:22px;border-radius:6px;background:#2d8a56;display:flex;align-items:center;justify-content:center;color:white;font-size:8px;font-weight:800;">ИИ</div>
+                    <div>
+                      <div style="font-size:11px;font-weight:600;color:#1a1a1a;">Иванов И. А.</div>
+                      <div style="font-size:9px;color:#aaa;">Эколог</div>
+                    </div>
+                    <span style="margin-left:auto;font-size:9px;color:#2d8a56;font-weight:700;">✎</span>
+                  </div>
+                </td>
+                <td style="padding:10px 14px;">
+                  <div style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                    <div style="width:22px;height:22px;border-radius:6px;background:#3b82f6;display:flex;align-items:center;justify-content:center;color:white;font-size:8px;font-weight:800;">МП</div>
+                    <div>
+                      <div style="font-size:11px;font-weight:600;color:#1a1a1a;">Петрова М. В.</div>
+                      <div style="font-size:9px;color:#aaa;">Комплаенс</div>
+                    </div>
+                    <span style="margin-left:auto;font-size:9px;color:#2d8a56;font-weight:700;">✎</span>
+                  </div>
+                </td>
+                <td style="padding:10px 14px;font-size:11px;color:#555;">15.03.2026</td>
+                <td style="padding:10px 14px;text-align:center;"><span style="font-size:10px;font-weight:700;color:#2d8a56;background:#f0fdf4;padding:3px 8px;border-radius:5px;">Ввод данных</span></td>
+              </tr>
+              <!-- Row 4: Текучесть кадров -->
+              <tr style="border-top:1px solid #f0ede8;">
+                <td style="padding:10px 14px;">
+                  <div style="font-weight:700;color:#1a1a1a;">Текучесть кадров</div>
+                  <div style="font-size:10px;color:#aaa;">GRI 401-1</div>
+                </td>
+                <td style="padding:10px 14px;"><span style="font-size:10px;font-weight:700;color:#3b82f6;background:#eff6ff;padding:2px 6px;border-radius:4px;">GRI</span></td>
+                <td style="padding:10px 14px;"><span style="font-size:10px;font-weight:600;color:#f59e0b;background:#fffbeb;padding:2px 6px;border-radius:4px;">S</span></td>
+                <td style="padding:10px 14px;">
+                  <div style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                    <div style="width:22px;height:22px;border-radius:6px;background:#8b5cf6;display:flex;align-items:center;justify-content:center;color:white;font-size:8px;font-weight:800;">АН</div>
+                    <div>
+                      <div style="font-size:11px;font-weight:600;color:#1a1a1a;">Назарова А. К.</div>
+                      <div style="font-size:9px;color:#aaa;">HR</div>
+                    </div>
+                    <span style="margin-left:auto;font-size:9px;color:#2d8a56;font-weight:700;">✎</span>
+                  </div>
+                </td>
+                <td style="padding:10px 14px;">
+                  <div style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                    <div style="width:22px;height:22px;border-radius:6px;background:#3b82f6;display:flex;align-items:center;justify-content:center;color:white;font-size:8px;font-weight:800;">СК</div>
+                    <div>
+                      <div style="font-size:11px;font-weight:600;color:#1a1a1a;">Сидоров К. А.</div>
+                      <div style="font-size:9px;color:#aaa;">Рук. ESG</div>
+                    </div>
+                    <span style="margin-left:auto;font-size:9px;color:#2d8a56;font-weight:700;">✎</span>
+                  </div>
+                </td>
+                <td style="padding:10px 14px;font-size:11px;color:#555;">01.03.2026</td>
+                <td style="padding:10px 14px;text-align:center;"><span style="font-size:10px;font-weight:700;color:#2d8a56;background:#dcfce7;padding:3px 8px;border-radius:5px;">Утверждено</span></td>
+              </tr>
+              <!-- Row 5: Обучение сотрудников -->
+              <tr style="border-top:1px solid #f0ede8;">
+                <td style="padding:10px 14px;">
+                  <div style="font-weight:700;color:#1a1a1a;">Часы обучения сотрудников</div>
+                  <div style="font-size:10px;color:#aaa;">GRI 404-1</div>
+                </td>
+                <td style="padding:10px 14px;"><span style="font-size:10px;font-weight:700;color:#3b82f6;background:#eff6ff;padding:2px 6px;border-radius:4px;">GRI</span></td>
+                <td style="padding:10px 14px;"><span style="font-size:10px;font-weight:600;color:#f59e0b;background:#fffbeb;padding:2px 6px;border-radius:4px;">S</span></td>
+                <td style="padding:10px 14px;">
+                  <div style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                    <div style="width:22px;height:22px;border-radius:6px;background:#8b5cf6;display:flex;align-items:center;justify-content:center;color:white;font-size:8px;font-weight:800;">АН</div>
+                    <div>
+                      <div style="font-size:11px;font-weight:600;color:#1a1a1a;">Назарова А. К.</div>
+                      <div style="font-size:9px;color:#aaa;">HR</div>
+                    </div>
+                    <span style="margin-left:auto;font-size:9px;color:#2d8a56;font-weight:700;">✎</span>
+                  </div>
+                </td>
+                <td style="padding:10px 14px;">
+                  <div style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                    <div style="width:22px;height:22px;border-radius:6px;background:#3b82f6;display:flex;align-items:center;justify-content:center;color:white;font-size:8px;font-weight:800;">МП</div>
+                    <div>
+                      <div style="font-size:11px;font-weight:600;color:#1a1a1a;">Петрова М. В.</div>
+                      <div style="font-size:9px;color:#aaa;">Комплаенс</div>
+                    </div>
+                    <span style="margin-left:auto;font-size:9px;color:#2d8a56;font-weight:700;">✎</span>
+                  </div>
+                </td>
+                <td style="padding:10px 14px;font-size:11px;color:#dc2626;font-weight:700;">01.02.2026 ⚠</td>
+                <td style="padding:10px 14px;text-align:center;"><span style="font-size:10px;font-weight:700;color:#dc2626;background:#fef2f2;padding:3px 8px;border-radius:5px;">Просрочено</span></td>
+              </tr>
+              <!-- Row 6: Антикоррупция -->
+              <tr style="border-top:1px solid #f0ede8;">
+                <td style="padding:10px 14px;">
+                  <div style="font-weight:700;color:#1a1a1a;">Антикоррупционная политика</div>
+                  <div style="font-size:10px;color:#aaa;">GRI 205-1</div>
+                </td>
+                <td style="padding:10px 14px;"><span style="font-size:10px;font-weight:700;color:#3b82f6;background:#eff6ff;padding:2px 6px;border-radius:4px;">GRI</span></td>
+                <td style="padding:10px 14px;"><span style="font-size:10px;font-weight:600;color:#6366f1;background:#eef2ff;padding:2px 6px;border-radius:4px;">G</span></td>
+                <td style="padding:10px 14px;">
+                  <div style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                    <div style="width:22px;height:22px;border-radius:6px;background:#3b82f6;display:flex;align-items:center;justify-content:center;color:white;font-size:8px;font-weight:800;">МП</div>
+                    <div>
+                      <div style="font-size:11px;font-weight:600;color:#1a1a1a;">Петрова М. В.</div>
+                      <div style="font-size:9px;color:#aaa;">Комплаенс</div>
+                    </div>
+                    <span style="margin-left:auto;font-size:9px;color:#2d8a56;font-weight:700;">✎</span>
+                  </div>
+                </td>
+                <td style="padding:10px 14px;">
+                  <div style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                    <div style="width:22px;height:22px;border-radius:6px;background:#3b82f6;display:flex;align-items:center;justify-content:center;color:white;font-size:8px;font-weight:800;">СК</div>
+                    <div>
+                      <div style="font-size:11px;font-weight:600;color:#1a1a1a;">Сидоров К. А.</div>
+                      <div style="font-size:9px;color:#aaa;">Рук. ESG</div>
+                    </div>
+                    <span style="margin-left:auto;font-size:9px;color:#2d8a56;font-weight:700;">✎</span>
+                  </div>
+                </td>
+                <td style="padding:10px 14px;font-size:11px;color:#555;">15.04.2026</td>
+                <td style="padding:10px 14px;text-align:center;"><span style="font-size:10px;font-weight:700;color:#888;background:#f7f6f3;padding:3px 8px;border-radius:5px;">Ожидает</span></td>
+              </tr>
+              <!-- Row 7: Без ответственного -->
+              <tr style="border-top:1px solid #f0ede8;background:#fffbeb;">
+                <td style="padding:10px 14px;">
+                  <div style="font-weight:700;color:#1a1a1a;">Отходы по типам и методам</div>
+                  <div style="font-size:10px;color:#aaa;">GRI 306-3</div>
+                </td>
+                <td style="padding:10px 14px;"><span style="font-size:10px;font-weight:700;color:#3b82f6;background:#eff6ff;padding:2px 6px;border-radius:4px;">GRI</span></td>
+                <td style="padding:10px 14px;"><span style="font-size:10px;font-weight:600;color:#2d8a56;background:#f0fdf4;padding:2px 6px;border-radius:4px;">E</span></td>
+                <td style="padding:10px 14px;">
+                  <div style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 10px;border:1px dashed #fbbf24;border-radius:8px;background:#fffef5;">
+                    <span style="font-size:16px;">👤</span>
+                    <div style="font-size:11px;color:#d97706;font-weight:600;">Не назначен</div>
+                    <span style="margin-left:auto;font-size:10px;color:#2d8a56;font-weight:700;">+ Назначить</span>
+                  </div>
+                </td>
+                <td style="padding:10px 14px;">
+                  <div style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 10px;border:1px dashed #fbbf24;border-radius:8px;background:#fffef5;">
+                    <span style="font-size:16px;">👤</span>
+                    <div style="font-size:11px;color:#d97706;font-weight:600;">Не назначен</div>
+                    <span style="margin-left:auto;font-size:10px;color:#2d8a56;font-weight:700;">+ Назначить</span>
+                  </div>
+                </td>
+                <td style="padding:10px 14px;font-size:11px;color:#aaa;">—</td>
+                <td style="padding:10px 14px;text-align:center;"><span style="font-size:10px;font-weight:700;color:#d97706;background:#fef3c7;padding:3px 8px;border-radius:5px;">Без ответств.</span></td>
+              </tr>
+              <!-- Row 8: Custom без ответственного -->
+              <tr style="border-top:1px solid #f0ede8;background:#fffbeb;">
+                <td style="padding:10px 14px;">
+                  <div style="font-weight:700;color:#1a1a1a;">Доля закупок у местных поставщиков</div>
+                  <div style="font-size:10px;color:#aaa;">Custom</div>
+                </td>
+                <td style="padding:10px 14px;"><span style="font-size:10px;font-weight:700;color:#888;background:#f0ede8;padding:2px 6px;border-radius:4px;">Custom</span></td>
+                <td style="padding:10px 14px;"><span style="font-size:10px;font-weight:600;color:#f59e0b;background:#fffbeb;padding:2px 6px;border-radius:4px;">S</span></td>
+                <td style="padding:10px 14px;">
+                  <div style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 10px;border:1px dashed #fbbf24;border-radius:8px;background:#fffef5;">
+                    <span style="font-size:16px;">👤</span>
+                    <div style="font-size:11px;color:#d97706;font-weight:600;">Не назначен</div>
+                    <span style="margin-left:auto;font-size:10px;color:#2d8a56;font-weight:700;">+ Назначить</span>
+                  </div>
+                </td>
+                <td style="padding:10px 14px;">
+                  <div style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 10px;border:1px dashed #fbbf24;border-radius:8px;background:#fffef5;">
+                    <span style="font-size:16px;">👤</span>
+                    <div style="font-size:11px;color:#d97706;font-weight:600;">Не назначен</div>
+                    <span style="margin-left:auto;font-size:10px;color:#2d8a56;font-weight:700;">+ Назначить</span>
+                  </div>
+                </td>
+                <td style="padding:10px 14px;font-size:11px;color:#aaa;">—</td>
+                <td style="padding:10px 14px;text-align:center;"><span style="font-size:10px;font-weight:700;color:#d97706;background:#fef3c7;padding:3px 8px;border-radius:5px;">Без ответств.</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;">
+          <div style="font-size:11px;color:#888;">Показано 8 из 42 метрик</div>
+          <div style="display:flex;gap:4px;">
+            <span style="padding:4px 10px;border:1px solid #2d8a56;border-radius:6px;font-size:11px;font-weight:700;color:#2d8a56;background:#f0fdf4;">1</span>
+            <span style="padding:4px 10px;border:1px solid #e8e5e0;border-radius:6px;font-size:11px;color:#888;cursor:pointer;">2</span>
+            <span style="padding:4px 10px;border:1px solid #e8e5e0;border-radius:6px;font-size:11px;color:#888;cursor:pointer;">3</span>
+            <span style="padding:4px 10px;border:1px solid #e8e5e0;border-radius:6px;font-size:11px;color:#888;cursor:pointer;">…</span>
+            <span style="padding:4px 10px;border:1px solid #e8e5e0;border-radius:6px;font-size:11px;color:#888;cursor:pointer;">6</span>
+          </div>
+        </div>
+
+        <!-- Hint -->
+        <div style="margin-top:14px;padding:12px 16px;background:#f7f6f3;border:1px solid #e8e5e0;border-radius:10px;font-size:11px;color:#888;line-height:1.6;">
+          💡 <b style="color:#555;">Подсказка:</b> Кликните на иконку ✎ рядом с именем, чтобы переназначить ответственного. Строки с жёлтым фоном — показатели без назначенного сборщика или ревьюера.
+        </div>
       </div>
     </div>
   </div>
