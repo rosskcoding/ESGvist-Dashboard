@@ -1,0 +1,261 @@
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.75rem 1.5rem 0.55rem;
+  background: var(--app-header-bg, #ffffff);
+  border-bottom: 1px solid var(--app-header-border, rgba(8, 145, 178, 0.1));
+  box-shadow: 0 1px 3px var(--app-header-shadow, rgba(8, 145, 178, 0.05));
+  min-width: 0;
+}
+
+.topRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.bottomRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-width: 0;
+  border-top: 1px solid rgba(8, 145, 178, 0.08);
+  padding-top: 0.35rem;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 1.1rem;
+  min-width: 0;
+}
+
+.logoIcon {
+  width: 10.5rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  overflow: hidden;
+}
+
+.logoImage {
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+  object-position: left center;
+}
+
+.logoBadge {
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(15, 23, 42, 0.03);
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.navPrimary,
+.navSecondary {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.navSecondary {
+  justify-content: flex-end;
+}
+
+.navLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.75rem 0.65rem;
+  border-radius: 8px 8px 0 0;
+  border-bottom: 2px solid transparent;
+  color: #64748b;
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 700;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
+}
+
+.navLink:hover {
+  background: rgba(8, 145, 178, 0.08);
+  color: #0f172a;
+}
+
+.navLink[aria-current='page'] {
+  color: #0891b2;
+  border-bottom-color: rgba(8, 145, 178, 0.7);
+  background: rgba(8, 145, 178, 0.08);
+}
+
+.navDisabled {
+  opacity: 0.75;
+  cursor: not-allowed;
+  user-select: none;
+}
+
+.comingSoonBadge {
+  margin-left: 0.35rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(15, 23, 42, 0.03);
+  color: #475569;
+  font-size: 0.67rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.navIconLink {
+  width: 2.25rem;
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.bottomRight {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  flex: none;
+}
+
+.navMore {
+  display: none;
+  align-items: center;
+}
+
+.mobileNav {
+  display: none;
+  align-items: center;
+}
+
+.user {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+  justify-content: flex-end;
+}
+
+.userName {
+  font-weight: 500;
+  color: #0f172a;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.userBadges {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.userRole {
+  padding: 0.25rem 0.75rem;
+  background: linear-gradient(135deg, rgba(8, 145, 178, 0.15) 0%, rgba(14, 165, 233, 0.15) 100%);
+  color: #0891b2;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.userCompany {
+  padding: 0.25rem 0.75rem;
+  background: rgba(15, 23, 42, 0.04);
+  color: #0f172a;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 999px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.userMenuTrigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (max-width: 1180px) {
+  .navSecondary {
+    display: none;
+  }
+
+  .navMore {
+    display: flex;
+  }
+}
+
+@media (max-width: 980px) {
+  .header {
+    padding: 0.65rem 1rem 0.45rem;
+  }
+
+  .topRow {
+    align-items: flex-start;
+  }
+
+  .bottomRow {
+    justify-content: flex-end;
+  }
+
+  .nav {
+    display: none;
+  }
+
+  .mobileNav {
+    display: flex;
+  }
+
+  .userRole {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .userBadges {
+    display: none;
+  }
+
+  .userCompany {
+    display: none;
+  }
+
+  .userName {
+    max-width: 150px;
+  }
+}

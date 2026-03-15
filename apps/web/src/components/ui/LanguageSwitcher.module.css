@@ -1,0 +1,35 @@
+.container {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(100, 116, 139, 0.35);
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(6px);
+}
+
+.label {
+  font-size: 12px;
+  color: #cbd5e1;
+  white-space: nowrap;
+}
+
+.select {
+  min-width: 110px;
+  border-radius: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: #0f172a;
+  color: #f8fafc;
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.select:focus {
+  outline: 1px solid #60a5fa;
+  outline-offset: 1px;
+}

@@ -1,0 +1,53 @@
+{# Timeline block template (v2) #}
+{# Schema: data.items[] + fields.items[] (paired by index or by event_id key) #}
+{# Backward-compat: accept legacy keys events/events_i18n if present #}
+{# Supports fields.events as either list (by index) or dict (by event_id key) #}
+{% set items = data.get('items', data.get('events', [])) %}
+{% set items_i18n_raw = fields.get('items', fields.get('events', [])) %}
+{% set items_i18n_is_dict = items_i18n_raw is mapping %}
+{% set layout = data.get('layout', data.get('orientation', 'vertical')) %}
+{% set title = fields.get('title', '') %}
+
+<div 
+  class="rpt-block rpt-block--timeline rpt-timeline--{{ layout }} rpt-variant--{{ variant }} rpt-preset--{{ preset | css_class }}"
+  id="block-{{ block.block_id }}"
+  data-block-id="{{ block.block_id }}"
+  data-block-type="timeline"
+>
+  {% if title %}
+  <h3 class="rpt-timeline__title">{{ title }}</h3>
+  {% endif %}
+
+  <div class="rpt-timeline__line"></div>
+  <div class="rpt-timeline__events">
+    {% for item in items %}
+    {# Support both dict (keyed by event_id) and list (by index) formats #}
+    {% if items_i18n_is_dict %}
+      {% set _event_id = item.event_id if item is mapping and item.get('event_id') else '' %}
+      {% set item_i18n = items_i18n_raw.get(_event_id, {}) if _event_id else {} %}
+    {% else %}
+      {% set item_i18n = items_i18n_raw[loop.index0] if items_i18n_raw and (items_i18n_raw|length > loop.index0) else {} %}
+    {% endif %}
+    <div class="rpt-timeline__event">
+      <div class="rpt-timeline__marker"></div>
+      <div class="rpt-timeline__content">
+        {% set _date = item.date if item is mapping and item.get('date') else (item.date_start if item is mapping and item.get('date_start') else '') %}
+        <time class="rpt-timeline__date" datetime="{{ _date }}">
+          {{ item_i18n.get('date_label', _date) }}
+        </time>
+        <h4 class="rpt-timeline__event-title">{{ item_i18n.get('title', '') }}</h4>
+        {% if item_i18n.get('description') %}
+        <p class="rpt-timeline__desc">{{ item_i18n.description }}</p>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if not items or (items|length == 0) %}
+  <div class="rpt-timeline__placeholder">No events to display</div>
+  {% endif %}
+</div>
+
+
+

@@ -1,0 +1,12 @@
+# Font files are downloaded at build time
+# Keep README and download script
+*.woff
+*.woff2
+*.ttf
+*.otf
+!.gitignore
+!.gitkeep
+!README.md
+!download_fonts.sh
+
+

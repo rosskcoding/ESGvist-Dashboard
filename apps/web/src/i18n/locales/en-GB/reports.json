@@ -1,0 +1,37 @@
+{
+  "createModal": {
+    "errors": {
+      "createFailed": "Failed to create report",
+      "titleRequired": "Please enter report title"
+    },
+    "fields": {
+      "enabledLocales": "Report languages",
+      "sourceLocale": "Source language",
+      "title": "Report title",
+      "year": "Year"
+    },
+    "hint": "Source language cannot be disabled. Other languages will be translated from source.",
+    "locales": {
+      "ar": "Arabic (AR)",
+      "de": "German (DE)",
+      "en": "English (EN)",
+      "es": "Spanish (ES)",
+      "fr": "French (FR)",
+      "it": "Italian (IT)",
+      "kk": "Kazakh (KK)",
+      "nl": "Dutch (NL)",
+      "ru": "Russian (RU)"
+    },
+    "placeholder": {
+      "title": "Company ESG Report"
+    },
+    "sourceTag": "source",
+    "title": "Create report"
+  },
+  "reportCard": {
+    "blocks": "blocks",
+    "deleteTitle": "Delete report",
+    "sections": "sections",
+    "updated": "Updated {{date}}"
+  }
+}

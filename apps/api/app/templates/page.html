@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block title %}{{ section_i18n.title if section_i18n else 'Section' }} — {{ report.title }}{% endblock %}
+
+{% block body %}
+<div
+  class="rpt-layout rpt-layout--{{ layout_preset | default('sidebar') }}"
+  {% if design_css_vars %}
+  style="{% for css_var, css_value in design_css_vars.items() %}{{ css_var }}: {{ css_value }};{% endfor %}"
+  {% endif %}
+>
+  <!-- Header -->
+  <header class="rpt-header">
+    <div class="rpt-header__inner">
+      {% if layout_preset != 'minimal' %}
+      <button
+        id="nav-toggle"
+        class="rpt-nav-toggle"
+        type="button"
+        aria-controls="toc"
+        aria-expanded="false"
+        aria-label="Toggle navigation"
+      >
+        ☰
+      </button>
+      {% endif %}
+
+      <a href="{{ home_url }}" class="rpt-header__logo">
+        <span class="rpt-header__title">{{ report.title }}</span>
+        <span class="rpt-header__year">{{ report.year }}</span>
+      </a>
+      
+      {# Top navigation for topnav layout #}
+      {% if layout_preset == 'topnav' and show_toc %}
+      <nav class="rpt-topnav" aria-label="Sections">
+        <ul class="rpt-topnav__list">
+          {% for item in nav_items %}
+          <li class="rpt-topnav__item">
+            <a 
+              href="{{ item.url }}"
+              class="rpt-topnav__link {% if item.is_current %}rpt-topnav__link--active{% endif %}"
+              {% if item.is_current %}aria-current="page"{% endif %}
+            >
+              {{ item.title }}
+            </a>
+          </li>
+          {% endfor %}
+        </ul>
+      </nav>
+      {% endif %}
+      
+      <div class="rpt-header__tools">
+        <!-- Search -->
+        {% if include_search %}
+        <div class="rpt-search">
+          <input
+            id="search-input"
+            class="rpt-search__input"
+            type="search"
+            placeholder="Search this report..."
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <div id="search-results" class="rpt-search__results"></div>
+        </div>
+        {% endif %}
+
+        <!-- Language switcher -->
+        <nav class="rpt-lang-switcher" aria-label="Language">
+          {% for item in locale_switcher %}
+            {% if item.is_available %}
+              <a
+                href="{{ item.url }}"
+                class="rpt-lang-switcher__item {% if item.is_current %}rpt-lang-switcher__item--active{% endif %}"
+                {% if item.is_current %}aria-current="page"{% endif %}
+              >
+                {{ item.locale | upper }}
+              </a>
+            {% else %}
+              <span
+                class="rpt-lang-switcher__item rpt-lang-switcher__item--disabled"
+                aria-disabled="true"
+                title="Translation unavailable"
+              >
+                {{ item.locale | upper }}
+              </span>
+            {% endif %}
+          {% endfor %}
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <div class="rpt-main">
+    {# Sidebar navigation (for sidebar and topnav-mobile layouts) #}
+    {% if (layout_preset == 'sidebar' or layout_preset == 'topnav') and show_toc %}
+    <aside class="rpt-nav" id="toc">
+      <nav class="rpt-nav__inner" aria-label="Table of contents">
+        <h2 class="rpt-nav__title">Contents</h2>
+        <ul class="rpt-nav__list">
+          {% for item in nav_items %}
+          <li class="rpt-nav__item rpt-nav__item--depth-{{ item.depth | default(0) }}">
+            <a 
+              href="{{ item.url }}"
+              class="rpt-nav__link {% if item.is_current %}rpt-nav__link--active{% endif %}"
+              {% if item.is_current %}aria-current="page"{% endif %}
+              style="padding-left: {{ 0.75 + (item.depth | default(0)) * 1 }}rem;"
+            >
+              {% if item.label_prefix %}
+              <span class="rpt-nav__prefix">{{ item.label_prefix }}</span>
+              {% endif %}
+              {{ item.title }}
+            </a>
+          </li>
+          {% endfor %}
+        </ul>
+      </nav>
+    </aside>
+    {% endif %}
+
+    <!-- Main content -->
+    <main class="rpt-content" id="main-content">
+      <article class="rpt-article">
+        {% if section_i18n %}
+        <header class="rpt-article__header">
+          <h1 class="rpt-article__title">{{ section_i18n.title }}</h1>
+          {% if section_i18n.summary %}
+          <p class="rpt-article__summary">{{ section_i18n.summary }}</p>
+          {% endif %}
+        </header>
+        {% endif %}
+        
+        <div class="rpt-article__body">
+          {{ content | safe }}
+        </div>
+      </article>
+    </main>
+  </div>
+
+  <!-- Footer -->
+  <footer class="rpt-footer">
+    <div class="rpt-footer__inner">
+      <p class="rpt-footer__copyright">© {{ report.year }} ESG Report</p>
+    </div>
+  </footer>
+</div>
+{% endblock %}

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="2000" height="800" viewBox="0 0 2000 800" xmlns="http://www.w3.org/2000/svg">
+  <rect width="2000" height="800" fill="#e5e7eb"/>
+  <text x="1000" y="400" text-anchor="middle" font-size="48" fill="#111827">
+    Placeholder Wide SVG (2000x800)
+  </text>
+</svg>
+
+
+

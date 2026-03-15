@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+{% set _assets_base = assets_base_url or "/assets" %}
+<html
+  lang="{{ locale }}"
+  data-current-locale="{{ locale }}"
+  data-base-path="{{ base_path or '/' }}"
+  data-assets-base="{{ _assets_base }}"
+  {% if theme %}data-theme="{{ theme.slug }}"{% endif %}
+  {% if section_id %}data-section-id="{{ section_id }}"{% endif %}
+  {% if locale_urls %}data-locales='{{ locale_urls | tojson }}'{% endif %}
+>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}ESG Report{% endblock %}</title>
+  
+  <!-- Fonts -->
+  {% if google_fonts_url %}
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="{{ google_fonts_url }}" rel="stylesheet">
+  {% endif %}
+  
+  <!-- Theme CSS (external; no inline <style> for export CSP) -->
+  <!-- Base styles -->
+  <link rel="stylesheet" href="{{ _assets_base }}/css/app.css">
+
+  {% if theme %}
+    {% if theme_css_url %}
+      <link rel="stylesheet" href="{{ theme_css_url }}">
+    {% else %}
+      <link rel="stylesheet" href="{{ _assets_base }}/css/theme-{{ theme.slug }}.css">
+    {% endif %}
+  {% endif %}
+
+  <!-- Static JS (search + navigation) -->
+  {% if include_js|default(true) %}
+  <script src="{{ _assets_base }}/js/app.js" defer></script>
+  {% endif %}
+  {% if include_search|default(true) %}
+  <script src="{{ _assets_base }}/js/search.js" defer></script>
+  {% endif %}
+  
+  {% block head %}{% endblock %}
+</head>
+<body class="rpt-body{% if mode %} rpt-mode--{{ mode }}{% endif %}"{% if mode %} data-render-mode="{{ mode }}"{% endif %}>
+  {% block body %}{% endblock %}
+</body>
+</html>

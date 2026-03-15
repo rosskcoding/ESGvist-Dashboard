@@ -1,0 +1,60 @@
+{
+  "badge": "Development mode",
+  "categories": {
+    "admin": "Admin pages (superuser)",
+    "company": "Company management (corporate lead)",
+    "core": "Core pages",
+    "login": "Login pages"
+  },
+  "credentials": {
+    "copyHint": "Click to copy",
+    "email": "Email:",
+    "password": "Password:",
+    "title": "Demo account"
+  },
+  "pages": {
+    "companies": {
+      "description": "Company management",
+      "name": "Companies",
+      "path": "/admin/companies"
+    },
+    "companyMembers": {
+      "description": "Company members",
+      "name": "Company Members",
+      "path": "/company/members"
+    },
+    "companyRoles": {
+      "description": "Company roles",
+      "name": "Company Roles",
+      "path": "/company/roles"
+    },
+    "corporateLeadLogin": {
+      "description": "Corporate Lead sign-in",
+      "name": "Corporate Lead Login",
+      "path": "/login/corporate-lead"
+    },
+    "dashboard": {
+      "description": "Reports dashboard",
+      "name": "Reports Dashboard",
+      "path": "/reports"
+    },
+    "login": {
+      "description": "Main login page",
+      "name": "Login",
+      "path": "/login"
+    },
+    "myCompany": {
+      "description": "My company",
+      "name": "My Company",
+      "path": "/company"
+    },
+    "users": {
+      "description": "User management",
+      "name": "Users",
+      "path": "/admin/users"
+    }
+  },
+  "subtitle": "Project navigation for Platform",
+  "title": "Start Page",
+  "warning": "This page is for development only. Remove before production."
+}

@@ -1,0 +1,53 @@
+{
+  "assetPicker": {
+    "actions": {
+      "delete": "Delete",
+      "select": "Select"
+    },
+    "confirm": {
+      "deleteAsset": "Delete file \"{{filename}}\"?",
+      "forceDelete": "{{message}}\n\nForce delete? This will remove links from blocks."
+    },
+    "dropZone": {
+      "attachmentHint": "PDF, Excel, CSV (up to 50 MB)",
+      "imageHint": "JPEG, PNG, GIF, WebP, SVG (up to 10 MB)",
+      "text": "Drag and drop a file here or click to select",
+      "webdriverHint": "In automation mode, the system file dialog may not appear. Use drag and drop."
+    },
+    "errors": {
+      "deleteFailed": "Delete failed",
+      "tooLarge": "File is too large. Maximum: {{maxMb}} MB",
+      "unsupportedType": "Unsupported file type: {{type}}",
+      "uploadFailed": "Upload failed"
+    },
+    "gallery": {
+      "emptyAttachments": "No uploaded files",
+      "emptyImages": "No uploaded images",
+      "loading": "Loading...",
+      "titleAttachments": "Uploaded files",
+      "titleImages": "Uploaded images"
+    },
+    "loading": "Loading...",
+    "removeFile": "Delete file",
+    "titleAttachment": "Select file",
+    "titleImage": "Select image",
+    "uploading": "Uploading..."
+  },
+  "confirmDialog": {
+    "cancel": "Cancel",
+    "title": "Confirmation"
+  },
+  "modal": {
+    "closeAria": "Close"
+  },
+  "languageSwitcher": {
+    "label": "\u042f\u0437\u044b\u043a \u0438\u043d\u0442\u0435\u0440\u0444\u0435\u0439\u0441\u0430",
+    "languages": {
+      "ar": "\u0410\u0440\u0430\u0431\u0441\u043a\u0438\u0439",
+      "de": "\u041d\u0435\u043c\u0435\u0446\u043a\u0438\u0439",
+      "en": "\u0410\u043d\u0433\u043b\u0438\u0439\u0441\u043a\u0438\u0439 (US)",
+      "en-GB": "\u0410\u043d\u0433\u043b\u0438\u0439\u0441\u043a\u0438\u0439 (UK)",
+      "ru": "\u0420\u0443\u0441\u0441\u043a\u0438\u0439"
+    }
+  }
+}

@@ -1,0 +1,167 @@
+.meta {
+  margin: 0 0 0.5rem;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.help {
+  margin: 0 0 0.75rem;
+  color: #64748b;
+  line-height: 1.5;
+  font-size: 0.9rem;
+}
+
+.gridFull {
+  grid-column: 1 / -1;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 110px;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  border: 1px solid rgba(8, 145, 178, 0.2);
+  background: #f8fafc;
+  color: #0f172a;
+  font-size: 0.9375rem;
+  resize: vertical;
+}
+
+.textarea:focus {
+  outline: none;
+  border-color: #0891b2;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(8, 145, 178, 0.12);
+}
+
+.textareaLabel {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #475569;
+  margin-bottom: 0.5rem;
+}
+
+.evidenceComposer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px dashed rgba(15, 23, 42, 0.16);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.02);
+}
+
+.evidenceFile {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.evidenceFileName {
+  font-size: 0.85rem;
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.monoInline {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.evidenceComposerActions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.evidenceList {
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.evidenceItem {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(2, 132, 199, 0.03);
+}
+
+.evidenceMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.evidenceTitle {
+  font-weight: 650;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.evidenceSub {
+  color: #64748b;
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.evidenceAttrs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+.evidenceAttr {
+  white-space: nowrap;
+}
+
+.notePreview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.notePreviewTitle {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.notePreviewMeta {
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.notePreviewBody {
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: #ffffff;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 720px) {
+  .evidenceComposer {
+    grid-template-columns: 1fr;
+  }
+}

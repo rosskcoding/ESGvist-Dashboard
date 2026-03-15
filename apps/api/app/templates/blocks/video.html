@@ -1,0 +1,179 @@
+{# Video block template - web version #}
+{% set source_type = data.get('source_type', 'youtube') %}
+{% set source_url = data.get('source_url', '') %}
+{% set provider_video_id = data.get('provider_video_id', '') %}
+{% set video_asset_id = data.get('video_asset_id') %}
+{% set poster_asset_id = data.get('poster_asset_id') %}
+{% set consent = data.get('consent_required', true) %}
+{% set aspect_ratio = data.get('aspect_ratio', '16:9') | replace(':', '-') %}
+{% set embed_mode = data.get('embed_mode', 'inline') %}
+{% set start_at_sec = data.get('start_at_sec') %}
+{% set end_at_sec = data.get('end_at_sec') %}
+{% set autoplay = data.get('autoplay', false) %}
+{% set muted = data.get('muted', false) %}
+{% set loop_video = data.get('loop', false) %}
+
+{% set title = fields.get('title', '') %}
+{% set description = fields.get('description', '') %}
+{% set alt_text = fields.get('alt_text', title) %}
+
+{# Generate poster URL if available #}
+{% set poster_url = '' %}
+{% if poster_asset_id %}
+  {% set poster_rel = asset_url_map.get(poster_asset_id|string) if asset_url_map else None %}
+  {% if poster_rel %}
+    {% set poster_url = assets_base_url ~ "/" ~ poster_rel %}
+  {% else %}
+    {% set poster_url = poster_asset_id | asset_file_url %}
+  {% endif %}
+{% elif source_type == 'youtube' and provider_video_id %}
+  {# YouTube default thumbnail #}
+  {% set poster_url = "https://img.youtube.com/vi/" ~ provider_video_id ~ "/hqdefault.jpg" %}
+{% endif %}
+
+{# Build embed URL for YouTube/Vimeo #}
+{% set embed_url = '' %}
+{% if source_type == 'youtube' and provider_video_id %}
+  {% set embed_url = "https://www.youtube.com/embed/" ~ provider_video_id %}
+  {% if start_at_sec or end_at_sec or autoplay or muted %}
+    {% set params = [] %}
+    {% if start_at_sec %}{% set _ = params.append("start=" ~ start_at_sec) %}{% endif %}
+    {% if end_at_sec %}{% set _ = params.append("end=" ~ end_at_sec) %}{% endif %}
+    {% if autoplay %}{% set _ = params.append("autoplay=1") %}{% endif %}
+    {% if muted %}{% set _ = params.append("mute=1") %}{% endif %}
+    {% set embed_url = embed_url ~ "?" ~ params|join("&") %}
+  {% endif %}
+{% elif source_type == 'vimeo' and provider_video_id %}
+  {% set embed_url = "https://player.vimeo.com/video/" ~ provider_video_id %}
+{% elif source_type == 'external' %}
+  {% set embed_url = source_url %}
+{% endif %}
+
+{# Self-hosted video URL #}
+{% set video_url = '' %}
+{% if source_type == 'self_hosted' and video_asset_id %}
+  {% set video_rel = asset_url_map.get(video_asset_id|string) if asset_url_map else None %}
+  {% if video_rel %}
+    {% set video_url = assets_base_url ~ "/" ~ video_rel %}
+  {% else %}
+    {% set video_url = video_asset_id | asset_file_url %}
+  {% endif %}
+{% endif %}
+
+<figure 
+  class="rpt-block rpt-block--video rpt-variant--{{ variant }} rpt-preset--{{ preset | css_class }} rpt-video--{{ embed_mode }}"
+  id="block-{{ block.block_id }}"
+  data-block-id="{{ block.block_id }}"
+  data-block-type="video"
+>
+  <div class="rpt-video__container rpt-video__aspect--{{ aspect_ratio }}">
+    
+    {% if consent and source_type in ['youtube', 'vimeo', 'external'] %}
+      {# === CONSENT OVERLAY (GDPR-friendly) === #}
+      <div 
+        class="rpt-video__consent" 
+        data-video-id="{{ provider_video_id or 'external' }}"
+        data-embed-url="{{ embed_url }}"
+      >
+        {% if poster_url %}
+          <img 
+            src="{{ poster_url }}" 
+            alt="{{ alt_text }}" 
+            class="rpt-video__poster"
+            loading="lazy"
+          >
+        {% else %}
+          <div class="rpt-video__placeholder">
+            <svg class="rpt-video__icon" viewBox="0 0 24 24" width="48" height="48">
+              <path fill="currentColor" d="M8 5v14l11-7z"/>
+            </svg>
+          </div>
+        {% endif %}
+        
+        <div class="rpt-video__consent-overlay">
+          <p class="rpt-video__consent-message">
+            External content ({{ source_type }})
+          </p>
+          <button class="rpt-video__consent-btn" onclick="loadVideo(this)">
+            <svg viewBox="0 0 24 24" width="20" height="20">
+              <path fill="currentColor" d="M8 5v14l11-7z"/>
+            </svg>
+            Load video
+          </button>
+        </div>
+      </div>
+      
+    {% elif source_type == 'self_hosted' %}
+      {# === SELF-HOSTED VIDEO PLAYER === #}
+      <video 
+        class="rpt-video__player"
+        {% if poster_url %}poster="{{ poster_url }}"{% endif %}
+        controls
+        {% if autoplay %}autoplay{% endif %}
+        {% if muted %}muted{% endif %}
+        {% if loop_video %}loop{% endif %}
+        preload="metadata"
+      >
+        {% if video_url %}
+          <source src="{{ video_url }}" type="video/mp4">
+        {% endif %}
+        <p>Your browser doesn't support video playback.</p>
+      </video>
+      
+    {% elif embed_url %}
+      {# === DIRECT EMBED (no consent required) === #}
+      <iframe 
+        class="rpt-video__iframe"
+        src="{{ embed_url }}"
+        title="{{ title or 'Video player' }}"
+        frameborder="0"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowfullscreen
+        loading="lazy"
+      ></iframe>
+      
+    {% else %}
+      {# === FALLBACK: No video source available === #}
+      <div class="rpt-video__error">
+        <svg class="rpt-video__icon" viewBox="0 0 24 24" width="48" height="48">
+          <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+        </svg>
+        <p>Video unavailable</p>
+      </div>
+    {% endif %}
+    
+  </div>
+  
+  {% if title or description %}
+  <figcaption class="rpt-video__caption">
+    {% if title %}
+      <strong class="rpt-video__title">{{ title }}</strong>
+    {% endif %}
+    {% if description %}
+      <p class="rpt-video__description">{{ description }}</p>
+    {% endif %}
+  </figcaption>
+  {% endif %}
+</figure>
+
+<script>
+// Consent flow for external embeds
+function loadVideo(button) {
+  const container = button.closest('.rpt-video__consent');
+  const embedUrl = container.dataset.embedUrl;
+  
+  if (!embedUrl) return;
+  
+  // Create iframe
+  const iframe = document.createElement('iframe');
+  iframe.className = 'rpt-video__iframe';
+  iframe.src = embedUrl;
+  iframe.title = 'Video player';
+  iframe.frameBorder = '0';
+  iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
+  iframe.allowFullscreen = true;
+  
+  // Replace consent overlay with iframe
+  container.parentElement.replaceChild(iframe, container);
+}
+</script>

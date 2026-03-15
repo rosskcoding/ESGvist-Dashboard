@@ -1,0 +1,292 @@
+{
+  "localeNames": {
+    "ar": "Arabic",
+    "de": "German",
+    "en": "English",
+    "es": "Spanish",
+    "fr": "French",
+    "it": "Italian",
+    "kk": "Kazakh",
+    "nl": "Dutch",
+    "ru": "Russian"
+  },
+  "hints": {
+    "header": {
+      "backToReports": "Back to the full report list",
+      "localeSwitch": "Switch the content editing locale",
+      "logoutBtn": "Sign out",
+      "previewBtn": "Preview current section (ESC to close)",
+      "releasesBtn": "Create and download builds (ZIP)",
+      "reportTitle": "Report title",
+      "reportYear": "Reporting period year",
+      "sourceLocale": "Source locale",
+      "structureBtn": "Manage report structure",
+      "translationBtn": "Run auto-translation for content"
+    },
+    "properties": {
+      "blocksCount": "Total number of blocks in this section",
+      "sectionSlug": "Section URL identifier",
+      "sectionTitle": "Section title in the selected locale",
+      "theme": "Theme used for export",
+      "title": "Selected item properties"
+    },
+    "releases": {
+      "newRelease": "Create a new build",
+      "title": "Builds panel"
+    },
+    "sections": {
+      "addSection": "Create a new section",
+      "deleteSection": "Delete section and all nested blocks",
+      "editSection": "Edit section metadata",
+      "labelPrefix": "TOC prefix, e.g. 1., 09, A.",
+      "sectionCount": "Number of blocks in section",
+      "sectionFile": "Leaf section",
+      "sectionFolder": "Section with children",
+      "sectionItem": "Open section in editor",
+      "title": "Report sections"
+    },
+    "structure": {
+      "addChildSection": "Add subsection (up to 4 levels)",
+      "addRootSection": "Add top-level section",
+      "depth": "Section nesting level",
+      "dragHandle": "Drag to reorder",
+      "labelPrefix": "TOC prefix",
+      "labelSuffix": "TOC suffix",
+      "title": "Manage report structure",
+      "tocPreview": "TOC preview. Click to open in editor"
+    }
+  },
+  "editorPage": {
+    "checkpointsTitle": "Versions / Checkpoints",
+    "design": "Design",
+    "discussions": "Discussions",
+    "loadingBlocks": "Loading blocks...",
+    "loadingReport": "Loading report...",
+    "myCompany": "My Company",
+    "navReports": "Reports",
+    "navReportsBack": "\u2190 Reports",
+    "notFound": {
+      "back": "\u2190 Back to report list",
+      "title": "Report not found"
+    },
+    "preview": "Preview",
+    "properties": {
+      "blocks": "Blocks",
+      "hint": "Select a section or block to view properties",
+      "title": "Properties",
+      "titleLabel": "Title"
+    },
+    "releases": {
+      "createFirst": "Create first build",
+      "empty": "No builds yet",
+      "new": "+ New build",
+      "title": "Builds"
+    },
+    "selectSection": {
+      "description": "Select a section on the left to edit blocks",
+      "title": "Select a section"
+    },
+    "structure": "Structure",
+    "translation": "Translation"
+  },
+  "structurePage": {
+    "actions": {
+      "addSection": "+ Add section",
+      "createFirstSection": "Create first section"
+    },
+    "confirmDelete": "Delete this section and all nested sections?",
+    "dragHint": "\ud83d\udd00 Drag to reorder",
+    "editor": "Content",
+    "empty": {
+      "description": "Start by creating your first section. You can nest subsections up to 4 levels.",
+      "title": "Structure is empty"
+    },
+    "header": {
+      "backReports": "\u2190 Reports",
+      "logout": "Log out",
+      "structure": "Structure"
+    },
+    "loading": "Loading...",
+    "notFound": {
+      "back": "\u2190 Back to report list",
+      "title": "Report not found"
+    },
+    "sidebar": {
+      "toc": "TOC preview"
+    },
+    "title": "Section structure"
+  },
+  "sectionItem": {
+    "blocks": "{{count}} blocks",
+    "level": "Lvl. {{level}}",
+    "untitled": "Untitled"
+  },
+  "sectionTree": {
+    "confirmDelete": {
+      "cancel": "Cancel",
+      "confirm": "Delete",
+      "message": "Are you sure you want to delete this section and all its blocks? This action cannot be undone.",
+      "title": "Delete section?"
+    }
+  },
+  "createSectionModal": {
+    "errors": {
+      "createFailed": "Failed to create section",
+      "fillOneLocale": "Fill at least one locale",
+      "slugRequired": "Enter slug for {{locale}}",
+      "titleRequired": "Enter title for {{locale}}"
+    },
+    "fields": {
+      "labelPrefix": "Number / Prefix (optional)",
+      "slug": "Slug",
+      "title": "Title"
+    },
+    "hint": {
+      "labelPrefix": "Shown before section title in TOC",
+      "slug": "Used in page URL"
+    },
+    "placeholders": {
+      "labelPrefix": "1., 09, A.",
+      "optional": "Optional",
+      "sourceTitle": "Enter title",
+      "slug": "url-friendly-slug"
+    },
+    "sourceTag": "source",
+    "title": "New section"
+  },
+  "editSectionModal": {
+    "errors": {
+      "saveFailed": "Failed to save section",
+      "titleRequired": "Title is required"
+    },
+    "fields": {
+      "prefix": "Prefix",
+      "suffix": "Suffix (optional)",
+      "summary": "Short description (optional)",
+      "title": "Section title"
+    },
+    "hint": {
+      "prefix": "Chapter number"
+    },
+    "placeholders": {
+      "prefix": "1.",
+      "suffix": "(p. 5)",
+      "summary": "Short section description",
+      "title": "For example: About the company"
+    },
+    "preview": {
+      "label": "Preview:",
+      "titleFallback": "Title"
+    },
+    "title": "Edit section"
+  },
+  "createReleaseModal": {
+    "buildTypes": {
+      "draft": {
+        "desc": "QA build, warnings are allowed",
+        "label": "Draft"
+      },
+      "release": {
+        "desc": "Final build, approved content only",
+        "label": "Release"
+      }
+    },
+    "fields": {
+      "buildType": "Build type",
+      "locales": "Locales for export"
+    },
+    "hints": {
+      "draftNotAllowed": "Not available for your role",
+      "releaseNotAllowed": "Not available for your role"
+    },
+    "errors": {
+      "draftNotAllowed": "You do not have permission to create draft builds",
+      "generic": "Failed to create build",
+      "noPermission": "You do not have permission to create builds",
+      "releaseNotAllowed": "You do not have permission to create release builds"
+    },
+    "pending": "Creating...",
+    "title": "Create build"
+  },
+  "releaseCard": {
+    "artifact": {
+      "create": "Create {{format}}",
+      "download": "Download {{format}}",
+      "retryHint": "Generation failed. Click to retry."
+    },
+    "buildStates": {
+      "failed": "Build failed",
+      "releaseGateDraft": "{{count}} blocks are still in Draft. Release build requires Approved status.",
+      "queued": "Queued",
+      "running": "Build in progress..."
+    },
+    "confirmDelete": {
+      "cancel": "Cancel",
+      "confirm": "Delete",
+      "message": "Are you sure you want to delete this build?",
+      "title": "Delete build"
+    },
+    "deleteBuild": "Delete build",
+    "status": {
+      "failed": "Failed",
+      "queued": "Queued",
+      "running": "Running...",
+      "success": "Ready"
+    },
+    "statusArtifact": {
+      "cancelled": "Cancelled",
+      "done": "Ready",
+      "failed": "Failed",
+      "processing": "Generating...",
+      "queued": "Queued"
+    }
+  },
+  "translationPanel": {
+    "actions": {
+      "start": "Start translation",
+      "starting": "Starting..."
+    },
+    "glossary": {
+      "description": "Terms for consistent translation",
+      "descriptionWithCount": "{{count}} terms for consistent translation",
+      "title": "Glossary"
+    },
+    "hint": {
+      "sourceLocale": "Source locale:"
+    },
+    "mode": {
+      "marketing": {
+        "desc": "More flexible style for communications",
+        "label": "Marketing"
+      },
+      "reporting": {
+        "desc": "Formal style for annual reports",
+        "label": "Reporting"
+      },
+      "title": "Translation mode"
+    },
+    "noPermission": "You do not have permission to trigger auto-translation (requires translation:trigger).",
+    "progress": {
+      "pending": "Pending",
+      "qa": "Needs QA",
+      "title": "Current progress",
+      "total": "Total chunks",
+      "translated": "Translated"
+    },
+    "targetLocales": "Target locales",
+    "title": "Translation"
+  },
+  "previewPanel": {
+    "close": "Close",
+    "errors": {
+      "loadFailed": "Failed to load preview"
+    },
+    "hint": {
+      "esc": "(ESC to close)",
+      "text": "Preview of current section"
+    },
+    "loading": "Loading preview...",
+    "refresh": "Refresh",
+    "title": "Preview"
+  }
+}

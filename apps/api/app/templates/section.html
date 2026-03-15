@@ -1,0 +1,25 @@
+{# Section template - renders section with its blocks #}
+
+<section class="rpt-section" data-section-id="{{ section.section_id }}">
+  {% if section_i18n and include_nav %}
+  <header class="rpt-section__header">
+    <h2 class="rpt-section__title">{{ section_i18n.title }}</h2>
+    {% if section_i18n.summary %}
+    <p class="rpt-section__summary">{{ section_i18n.summary }}</p>
+    {% endif %}
+  </header>
+  {% endif %}
+
+  <div class="rpt-section__blocks">
+    {% for block_html in blocks %}
+    {{ block_html | safe }}
+    {% endfor %}
+  </div>
+</section>
+
+
+
+
+
+
+

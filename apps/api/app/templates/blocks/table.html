@@ -1,0 +1,158 @@
+{# Table block template (v2) - supports all 4 modes #}
+{% set mode = data.get('mode', 'builder') %}
+{% set columns = data.get('columns', []) %}
+{% set caption = fields.get('caption', '') %}
+{% set summary = fields.get('summary', '') %}
+{% set column_labels = fields.get('column_labels', {}) %}
+{% set notes = fields.get('notes', '') %}
+
+<div 
+  class="rpt-block rpt-block--table rpt-variant--{{ variant }} rpt-preset--{{ preset | css_class }}"
+  id="block-{{ block.block_id }}"
+  data-block-id="{{ block.block_id }}"
+  data-block-type="table"
+  data-table-mode="{{ mode }}"
+>
+  {% if caption %}
+  <div class="rpt-table__caption">{{ caption }}</div>
+  {% endif %}
+  
+  {% if mode == 'builder' %}
+  {# Mode A: Builder table #}
+  {# Prefer per-locale translated rows overlay if present #}
+  {% set rows = fields.get('rows_i18n') if fields.get('rows_i18n') else data.get('rows', []) %}
+  {% set striped = data.get('striped', true) %}
+  
+  <div class="rpt-table-wrapper">
+    <table class="rpt-table {% if striped %}rpt-table--striped{% endif %}" aria-label="{{ caption or summary or 'Data table' }}">
+      {% if columns %}
+      <thead class="rpt-table__head">
+        <tr>
+          {% for col in columns %}
+          <th 
+            scope="col"
+            class="rpt-table__th {% if col.align %}rpt-table__th--{{ col.align }}{% endif %}"
+            {% if col.width %}style="width: {{ col.width }}px"{% endif %}
+          >
+            {{ column_labels.get(col.key, col.key) }}
+          </th>
+          {% endfor %}
+        </tr>
+      </thead>
+      {% endif %}
+      
+      <tbody class="rpt-table__body">
+        {% for row in rows %}
+        {% if row is mapping and not row.get('is_header', false) %}
+        <tr class="rpt-table__row {% if row.get('is_footer') %}rpt-table__row--footer{% endif %}">
+          {% for col in columns %}
+          {# Support both shapes: {cells:{...}} (builder) and flat {colKey:value,...} #}
+          {% set row_cells = row.get('cells', row) if row is mapping else {} %}
+          {% set cell = row_cells.get(col.key, '') if row_cells is mapping else '' %}
+          {% set cell_value = cell.value if cell is mapping else cell %}
+          {% set colspan = cell.colspan if cell is mapping else 1 %}
+          {% set rowspan = cell.rowspan if cell is mapping else 1 %}
+          <td 
+            class="rpt-table__td {% if col.align %}rpt-table__td--{{ col.align }}{% endif %} {% if col.type %}rpt-table__td--{{ col.type }}{% endif %}"
+            {% if colspan > 1 %}colspan="{{ colspan }}"{% endif %}
+            {% if rowspan > 1 %}rowspan="{{ rowspan }}"{% endif %}
+          >
+            {{ cell_value }}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  
+  {% elif mode == 'advanced' %}
+  {# Mode B: Advanced Data Table #}
+  {% set data_source = data.get('data_source', {}) %}
+  {% set inline = data_source.get('inline', {}) %}
+  {% set headers = inline.get('headers', []) %}
+  {% set adv_rows = inline.get('rows', []) %}
+  {% set features = data.get('features', {}) %}
+  
+  <div class="rpt-table-wrapper">
+    <table class="rpt-table rpt-table--advanced" aria-label="{{ caption or summary or 'Data table' }}">
+      {% if headers %}
+      <thead class="rpt-table__head {% if features.sticky_header %}rpt-table__head--sticky{% endif %}">
+        <tr>
+          {% for idx in range(columns | length) %}
+          {% set col = columns[idx] %}
+          {% set header = headers[idx] if idx < headers | length else '' %}
+          <th 
+            scope="col"
+            class="rpt-table__th {% if col.align %}rpt-table__th--{{ col.align }}{% endif %}"
+            {% if col.width %}style="width: {{ col.width }}px"{% endif %}
+          >
+            {{ column_labels.get(col.key, header) }}
+          </th>
+          {% endfor %}
+        </tr>
+      </thead>
+      {% endif %}
+      
+      <tbody class="rpt-table__body">
+        {% for row in adv_rows %}
+        <tr class="rpt-table__row">
+          {% for idx in range(columns | length) %}
+          {% set col = columns[idx] %}
+          {% set cell = row[idx] if idx < row | length else '' %}
+          <td 
+            class="rpt-table__td {% if col.align %}rpt-table__td--{{ col.align }}{% endif %} {% if col.type %}rpt-table__td--{{ col.type }}{% endif %}"
+          >
+            {{ cell }}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  
+  {% elif mode == 'custom' %}
+  {# Mode C: Custom HTML Table #}
+  {% set custom_html = data.get('custom_html', '') %}
+  {% set custom_css = data.get('custom_css_scoped', '') %}
+  
+  {% if custom_css %}
+  <style scoped>{{ custom_css | safe }}</style>
+  {% endif %}
+  <div class="rpt-table-wrapper rpt-table-wrapper--custom">
+    {{ custom_html | safe }}
+  </div>
+  
+  {% elif mode == 'image' %}
+  {# Mode D: Table as Image #}
+  {% set asset_id = data.get('asset_id') %}
+  {% set alt_text = fields.get('alt_text', caption or 'Table image') %}
+  
+  <div class="rpt-table-wrapper rpt-table-wrapper--image">
+    {% if asset_id %}
+    <img 
+      src="{{ assets_base_url }}/{{ asset_id }}"
+      alt="{{ alt_text }}"
+      class="rpt-table__image"
+      loading="lazy"
+    />
+    {% else %}
+    <div class="rpt-table__placeholder">
+      <span>📊 No image asset</span>
+    </div>
+    {% endif %}
+  </div>
+  
+  {% else %}
+  {# Fallback for unknown mode #}
+  <div class="rpt-table__placeholder">
+    <span>Unknown table mode: {{ mode }}</span>
+  </div>
+  {% endif %}
+  
+  {% if notes %}
+  <div class="rpt-table__notes">{{ notes }}</div>
+  {% endif %}
+</div>

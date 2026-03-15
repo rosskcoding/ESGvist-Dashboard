@@ -1,0 +1,48 @@
+{# Image block template #}
+{% set asset_id = data.get('asset_id', '') %}
+{% set aspect_ratio = data.get('aspect_ratio', 'original') %}
+{% set layout = data.get('layout', 'center') %}
+{% set alt_text = fields.get('alt_text', '') %}
+{% set caption = fields.get('caption', '') %}
+{% set credit = fields.get('credit', '') %}
+{% set _assets_base = assets_base_url or "/assets" %}
+
+<figure 
+  class="rpt-block rpt-block--image rpt-variant--{{ variant }} rpt-preset--{{ preset | css_class }} rpt-image--{{ layout }}"
+  id="block-{{ block.block_id }}"
+  data-block-id="{{ block.block_id }}"
+  data-block-type="image"
+>
+  {% if asset_id %}
+  {% set _asset_rel = asset_url_map.get(asset_id) if asset_url_map else None %}
+  {% if _asset_rel %}
+    {% set _asset_src = _assets_base ~ "/" ~ _asset_rel %}
+  {% else %}
+    {# Preview fallback (authoring) #}
+    {% set _asset_src = asset_id | asset_file_url %}
+  {% endif %}
+  <div class="rpt-image__wrapper rpt-image__wrapper--{{ aspect_ratio | replace(':', '-') }}">
+    <img 
+      src="{{ _asset_src }}"
+      alt="{{ alt_text }}"
+      class="rpt-image__img"
+      loading="lazy"
+      decoding="async"
+    >
+  </div>
+  {% else %}
+  <div class="rpt-image__placeholder">
+    <span>Image not set</span>
+  </div>
+  {% endif %}
+  
+  {% if caption or credit %}
+  <figcaption class="rpt-image__caption">
+    {% if caption %}{{ caption }}{% endif %}
+    {% if credit %}<span class="rpt-image__credit">{{ credit }}</span>{% endif %}
+  </figcaption>
+  {% endif %}
+</figure>
+
+
+

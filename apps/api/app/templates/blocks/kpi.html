@@ -1,0 +1,67 @@
+{# KPI Cards block template (v2) #}
+{# Schema: data.items[] + fields.items[] (paired by index) #}
+{# Backward-compat: still accept legacy keys if present #}
+{% set items_data = data.get('items', data.get('cards', [])) %}
+{% set items_i18n = fields.get('items', fields.get('cards', [])) %}
+{% set title = fields.get('title', '') %}
+{% set columns = data.get('columns', 3) %}
+
+<div 
+  class="rpt-block rpt-block--kpi rpt-variant--{{ variant }} rpt-preset--{{ preset | css_class }}"
+  id="block-{{ block.block_id }}"
+  data-block-id="{{ block.block_id }}"
+  data-block-type="kpi_cards"
+>
+  {% if title %}
+  <h3 class="rpt-kpi__title">{{ title }}</h3>
+  {% endif %}
+
+  {# Max 3 columns per row, 4+ wrap to next line #}
+  {% set grid_cols = 3 if columns > 3 else columns %}
+  <div class="rpt-kpi-grid rpt-kpi-grid--cols-{{ columns }}" style="grid-template-columns: repeat({{ grid_cols }}, 1fr);">
+    {% for item in items_data %}
+    {% set item_i18n = items_i18n[loop.index0] if items_i18n and (items_i18n|length > loop.index0) else {} %}
+    <div class="rpt-kpi-card">
+      <div class="rpt-kpi-card__label">{{ item_i18n.get('label', '') }}</div>
+
+      <div class="rpt-kpi-card__value">
+        {% if item_i18n.get('value') %}
+          {# Backward-compat: some data stores value in i18n #}
+          <span class="rpt-kpi-card__number">{{ item_i18n.get('value') }}</span>
+        {% else %}
+          <span class="rpt-kpi-card__number">{{ item.value if item is not none else '—' }}</span>
+        {% endif %}
+
+        {% if item_i18n.get('unit') %}
+          <span class="rpt-kpi-card__unit">{{ item_i18n.get('unit') }}</span>
+        {% elif item.unit %}
+          <span class="rpt-kpi-card__unit">{{ item.unit }}</span>
+        {% endif %}
+      </div>
+
+      {# Optional deltas (legacy) #}
+      {% if item_i18n.get('delta') %}
+      <div class="rpt-kpi-card__delta {% if item_i18n.delta.startswith('+') %}rpt-kpi-card__delta--positive{% elif item_i18n.delta.startswith('-') %}rpt-kpi-card__delta--negative{% endif %}">
+        {{ item_i18n.delta }}
+        {% if item_i18n.get('delta_label') %}
+        <span class="rpt-kpi-card__delta-label">{{ item_i18n.delta_label }}</span>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if item_i18n.get('note') %}
+      <div class="rpt-kpi-card__footnote">{{ item_i18n.note }}</div>
+      {% elif item_i18n.get('footnote') %}
+      <div class="rpt-kpi-card__footnote">{{ item_i18n.footnote }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    {% if not items_data or (items_data|length == 0) %}
+    <div class="rpt-kpi__placeholder">No KPIs to display</div>
+    {% endif %}
+  </div>
+</div>
+
+
+

@@ -1,0 +1,112 @@
+# ESGvist Dashboard - Docker Compose
+# Development environment configuration
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: esgvist-postgres
+    environment:
+      POSTGRES_DB: esgvist
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: esgvist-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # API (FastAPI)
+  api:
+    build:
+      context: ../
+      dockerfile: infra/docker/api.Dockerfile
+      target: dev
+    container_name: esgvist-api
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/esgvist
+      - REDIS_URL=redis://redis:6379/0
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+      - CORS_ORIGINS=["http://localhost:5173","http://localhost:3000"]
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../apps/api/app:/app/app
+      - ../apps/api/alembic:/app/alembic
+      - ../apps/api/tests:/app/tests
+      - ../apps/api/uploads:/app/uploads
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # API Tests (pytest) - Run on demand:
+  # docker compose -f infra/compose.yml --profile test run --rm api-tests
+  api-tests:
+    build:
+      context: ../
+      dockerfile: infra/docker/api.Dockerfile
+      target: dev
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/esgvist
+      - REDIS_URL=redis://redis:6379/0
+      - DEBUG=true
+      - LOG_LEVEL=INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../apps/api/app:/app/app
+      - ../apps/api/alembic:/app/alembic
+      - ../apps/api/tests:/app/tests
+      - ../apps/api/uploads:/app/uploads
+    command: pytest /app/tests -v
+    profiles:
+      - test
+
+  # Web (React/Vite) - Development
+  web:
+    build:
+      context: ../
+      dockerfile: infra/docker/web.Dockerfile
+      target: builder
+    container_name: esgvist-web
+    working_dir: /build
+    environment:
+      - VITE_API_URL=http://localhost:8000
+      - API_TARGET=http://api:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ../apps/web:/build
+      - /build/node_modules
+    command: npm run dev -- --host 0.0.0.0
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  redis_data:

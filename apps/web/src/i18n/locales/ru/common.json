@@ -1,0 +1,42 @@
+{
+  "actions": {
+    "add": "Add",
+    "back": "Back",
+    "cancel": "Cancel",
+    "close": "Close",
+    "confirm": "Confirm",
+    "copy": "Copy",
+    "create": "Create",
+    "delete": "Delete",
+    "edit": "Edit",
+    "logout": "Log out",
+    "next": "Next",
+    "prev": "Prev",
+    "retry": "Retry",
+    "save": "Save",
+    "showAll": "Show all"
+  },
+  "app": {
+    "name": "Platform"
+  },
+  "common": {
+    "error": "Something went wrong",
+    "loading": "Loading..."
+  },
+  "menuSections": {
+    "navigate": "Navigate",
+    "tools": "Tools"
+  },
+  "navigation": {
+    "dashboard": "Dashboard",
+    "glossary": "Glossary",
+    "logout": "Log out",
+    "reports": "Reports"
+  },
+  "status": {
+    "active": "Active",
+    "disabled": "Disabled",
+    "inactive": "Inactive",
+    "success": "Success"
+  }
+}

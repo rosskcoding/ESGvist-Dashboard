@@ -1,0 +1,23 @@
+{# Custom HTML block template #}
+{% set custom_html = i18n.custom_html_sanitized if i18n else '' %}
+
+<div 
+  class="rpt-block rpt-block--custom rpt-variant--{{ variant }} rpt-preset--{{ preset | css_class }}"
+  id="block-{{ block.block_id }}"
+  data-block-id="{{ block.block_id }}"
+  data-block-type="custom"
+>
+  {% if custom_html %}
+  <div class="rpt-custom__content">
+    {{ custom_html | safe }}
+  </div>
+  {% else %}
+  <div class="rpt-custom__placeholder">
+    <span>Custom HTML block</span>
+  </div>
+  {% endif %}
+</div>
+
+
+
+
