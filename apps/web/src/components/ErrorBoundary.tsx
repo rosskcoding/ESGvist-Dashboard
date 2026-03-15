@@ -75,7 +75,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           <button
             type="button"
             onClick={() => {
-              window.location.href = '/reports'
+              window.location.href = '/esg'
             }}
             style={{
               padding: '0.6rem 0.9rem',
@@ -86,7 +86,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               cursor: 'pointer',
             }}
           >
-            Back to reports
+            Back to dashboard
           </button>
           <button
             type="button"
