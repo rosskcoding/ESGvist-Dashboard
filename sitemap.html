@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ESGvist — User Flow & Sitemap</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; background: #f4f3f0; color: #1a1a1a; min-height: 100vh; }
+
+  /* ── Top bar ── */
+  .topbar {
+    background: #1a1a1a; color: #fff;
+    display: flex; align-items: center; gap: 16px;
+    padding: 0 32px; height: 52px; position: sticky; top: 0; z-index: 100;
+  }
+  .topbar-logo { font-size: 16px; font-weight: 900; letter-spacing: -.5px; }
+  .topbar-logo em { color: #4ade80; font-style: normal; }
+  .topbar-title { font-size: 13px; color: #aaa; font-weight: 500; }
+  .topbar-sep { color: #444; }
+  .topbar-badge {
+    margin-left: auto; display: flex; gap: 16px; align-items: center;
+    font-size: 11px; color: #aaa;
+  }
+  .topbar-badge span { background: #2d2d2d; border-radius: 5px; padding: 3px 9px; }
+  .topbar-badge .done { background: #14532d; color: #86efac; }
+  .topbar-badge .todo { background: #3b2000; color: #fcd34d; }
+
+  /* ── Legend ── */
+  .legend {
+    display: flex; gap: 20px; align-items: center;
+    padding: 14px 32px; background: #fff; border-bottom: 1px solid #e8e5e0;
+    flex-wrap: wrap;
+  }
+  .legend-item { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #555; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+  .legend-dot.built    { background: #2d8a56; }
+  .legend-dot.partial  { background: #d97706; }
+  .legend-dot.planned  { background: #c8c4bc; border: 1.5px dashed #aaa; }
+  .legend-sep { width: 1px; height: 20px; background: #e8e5e0; }
+  .legend-note { font-size: 11px; color: #aaa; margin-left: auto; }
+
+  /* ── Main layout ── */
+  .map-wrap { padding: 32px; display: flex; flex-direction: column; gap: 40px; max-width: 1400px; margin: 0 auto; }
+
+  /* ── Section header ── */
+  .section-hd {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
+  }
+  .section-hd-icon {
+    width: 32px; height: 32px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; flex-shrink: 0;
+  }
+  .section-hd-label { font-size: 15px; font-weight: 800; color: #1a1a1a; }
+  .section-hd-sub { font-size: 12px; color: #888; margin-top: 1px; }
+  .section-hd-line { flex: 1; height: 1px; background: #e8e5e0; }
+
+  /* ── Row of cards ── */
+  .card-row { display: flex; gap: 12px; flex-wrap: wrap; }
+
+  /* ── Individual node card ── */
+  .node {
+    background: #fff; border: 1.5px solid #e8e5e0; border-radius: 12px;
+    padding: 14px 16px; min-width: 180px; max-width: 220px; flex: 1;
+    display: flex; flex-direction: column; gap: 6px;
+    position: relative; transition: box-shadow .15s, transform .1s;
+  }
+  .node.built {
+    border-color: #bbf7d0; cursor: pointer;
+  }
+  .node.built:hover {
+    box-shadow: 0 4px 16px rgba(45,138,86,.18); transform: translateY(-2px);
+    border-color: #2d8a56;
+  }
+  .node.partial { border-color: #fde68a; }
+  .node.planned { border-color: #e8e5e0; opacity: .7; }
+
+  .node-status {
+    position: absolute; top: 10px; right: 12px;
+    width: 8px; height: 8px; border-radius: 50%;
+  }
+  .node-status.built   { background: #2d8a56; }
+  .node-status.partial { background: #d97706; }
+  .node-status.planned { background: #c8c4bc; }
+
+  .node-id   { font-size: 10px; font-weight: 700; color: #aaa; letter-spacing: .04em; text-transform: uppercase; }
+  .node-name { font-size: 12px; font-weight: 700; color: #1a1a1a; line-height: 1.35; }
+  .node-desc { font-size: 11px; color: #888; line-height: 1.45; }
+  .node-tag  {
+    display: inline-block; font-size: 10px; font-weight: 700; border-radius: 4px;
+    padding: 2px 7px; margin-top: 2px; align-self: flex-start;
+  }
+  .node-tag.built   { background: #f0fdf4; color: #2d8a56; }
+  .node-tag.partial { background: #fffbeb; color: #92400e; }
+  .node-tag.planned { background: #f7f6f3; color: #888; }
+
+  /* ── Wizard chain (horizontal steps) ── */
+  .wizard-row {
+    display: flex; align-items: center; gap: 0; flex-wrap: wrap;
+  }
+  .wizard-node {
+    background: #fff; border: 1.5px solid #bbf7d0; border-radius: 10px;
+    padding: 12px 16px; min-width: 150px; flex: 1;
+    display: flex; flex-direction: column; gap: 4px;
+    cursor: pointer; transition: box-shadow .15s, transform .1s; position: relative;
+  }
+  .wizard-node:hover {
+    box-shadow: 0 3px 12px rgba(45,138,86,.15); transform: translateY(-2px);
+    border-color: #2d8a56;
+  }
+  .wizard-node.planned {
+    border-color: #e8e5e0; cursor: default; opacity: .65;
+  }
+  .wizard-node.planned:hover { box-shadow: none; transform: none; }
+  .wizard-node-step { font-size: 10px; font-weight: 700; color: #aaa; letter-spacing: .04em; }
+  .wizard-node-name { font-size: 12px; font-weight: 700; color: #1a1a1a; line-height: 1.3; }
+  .wizard-arrow {
+    padding: 0 8px; font-size: 16px; color: #c8c4bc; flex-shrink: 0;
+  }
+
+  /* ── Connector labels ── */
+  .flow-row {
+    display: flex; align-items: flex-start; gap: 0;
+  }
+  .flow-branch {
+    display: flex; flex-direction: column; gap: 8px; flex: 1;
+    border-left: 2px solid #e8e5e0; padding-left: 16px; margin-left: 8px;
+  }
+  .flow-branch-label {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+    color: #aaa; margin-bottom: 2px;
+  }
+
+  /* ── Sub-group ── */
+  .subgroup {
+    background: #f9f8f6; border: 1px solid #e8e5e0; border-radius: 12px;
+    padding: 16px 20px; display: flex; flex-direction: column; gap: 12px;
+  }
+  .subgroup-title {
+    font-size: 11px; font-weight: 700; color: #888;
+    text-transform: uppercase; letter-spacing: .06em;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .subgroup-title::after { content: ''; flex: 1; height: 1px; background: #e8e5e0; }
+
+  /* ── Tooltip ── */
+  .node[data-target]:hover::after,
+  .wizard-node[data-target]:hover::after {
+    content: '→ открыть экран'; position: absolute; bottom: -24px; left: 50%;
+    transform: translateX(-50%); background: #1a1a1a; color: #fff;
+    font-size: 10px; padding: 3px 8px; border-radius: 4px; white-space: nowrap;
+    pointer-events: none; z-index: 10;
+  }
+
+  /* ── Not-built label ── */
+  .node.planned .node-name { color: #888; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-logo"><em>ESG</em>vist</div>
+  <div class="topbar-sep">·</div>
+  <div class="topbar-title">User Flow & Sitemap</div>
+  <div class="topbar-badge">
+    <span class="done">✓ 24 экрана готово</span>
+    <span class="todo">○ ~10 не построено</span>
+  </div>
+</div>
+
+<div style="display:flex;align-items:center;gap:20px;padding:14px 32px;background:#fff;border-bottom:1px solid #e8e5e0;flex-wrap:wrap;">
+  <div class="legend-item"><div class="legend-dot built"></div> Построен (кликабельный)</div>
+  <div class="legend-item"><div class="legend-dot partial"></div> Частично</div>
+  <div class="legend-item"><div class="legend-dot planned"></div> Запланирован / не построен</div>
+  <div class="legend-sep"></div>
+  <div class="legend-note">Клик по зелёной карточке открывает соответствующий экран в mockup-v2.html</div>
+</div>
+
+<div class="map-wrap">
+
+  <!-- ════ 1. ОНБОРДИНГ & ОБЗОР ════ -->
+  <div>
+    <div class="section-hd">
+      <div class="section-hd-icon" style="background:#f0fdf4;">🚀</div>
+      <div>
+        <div class="section-hd-label">Онбординг & Обзор</div>
+        <div class="section-hd-sub">Вход в систему → Dashboard</div>
+      </div>
+      <div class="section-hd-line"></div>
+    </div>
+    <div class="card-row">
+      <div class="node planned">
+        <div class="node-status planned"></div>
+        <div class="node-id">AUTH</div>
+        <div class="node-name">Вход / Авторизация</div>
+        <div class="node-desc">Email + пароль, SSO</div>
+        <div class="node-tag planned">не построен</div>
+      </div>
+      <div style="display:flex;align-items:center;color:#c8c4bc;font-size:18px;padding:0 4px;">→</div>
+      <div class="node built" data-target="mockup-v2.html#s-onboarding" onclick="window.location.href='mockup-v2.html#s-onboarding'">
+        <div class="node-status built"></div>
+        <div class="node-id">ONBOARD</div>
+        <div class="node-name">Онбординг</div>
+        <div class="node-desc">Три карточки вместо пустого экрана при первом входе</div>
+        <div class="node-tag built">построен</div>
+      </div>
+      <div style="display:flex;align-items:center;color:#c8c4bc;font-size:18px;padding:0 4px;">→</div>
+      <div class="node built" data-target="mockup-v2.html#s-overview" onclick="window.location.href='mockup-v2.html#s-overview'">
+        <div class="node-status built"></div>
+        <div class="node-id">OVERVIEW</div>
+        <div class="node-name">Обзор — Dashboard</div>
+        <div class="node-desc">Bento-grid: KPI, E/S/G прогресс, задачи, активность</div>
+        <div class="node-tag built">построен</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ 2. ОСНОВНАЯ НАВИГАЦИЯ ════ -->
+  <div>
+    <div class="section-hd">
+      <div class="section-hd-icon" style="background:#eff6ff;">🗂</div>
+      <div>
+        <div class="section-hd-label">Основная навигация</div>
+        <div class="section-hd-sub">Данные / Ревью / Доказательства / Отчёт</div>
+      </div>
+      <div class="section-hd-line"></div>
+    </div>
+    <div class="card-row">
+      <div class="node built" data-target="mockup-v2.html#s-data" onclick="window.location.href='mockup-v2.html#s-data'">
+        <div class="node-status built"></div>
+        <div class="node-id">DATA</div>
+        <div class="node-name">Данные — Kanban-доска</div>
+        <div class="node-desc">Все метрики по статусам: отсутствует / черновик / на ревью / опубликовано</div>
+        <div class="node-tag built">построен</div>
+      </div>
+      <div class="node built" data-target="mockup-v2.html#s-review" onclick="window.location.href='mockup-v2.html#s-review'">
+        <div class="node-status built"></div>
+        <div class="node-id">REVIEW</div>
+        <div class="node-name">Ревью — Split Panel</div>
+        <div class="node-desc">Email-клиент стиль: список задач + детальная панель + фильтры E/S/G</div>
+        <div class="node-tag built">построен</div>
+      </div>
+      <div class="node planned">
+        <div class="node-status planned"></div>
+        <div class="node-id">EVIDENCE</div>
+        <div class="node-name">Доказательства</div>
+        <div class="node-desc">Хранилище файлов, ссылок и документов по всем метрикам</div>
+        <div class="node-tag planned">не построен</div>
+      </div>
+      <div class="node planned">
+        <div class="node-status planned"></div>
+        <div class="node-id">REPORT</div>
+        <div class="node-name">Отчёт</div>
+        <div class="node-desc">GRI Content Index, экспорт PDF / Excel, настройка разделов</div>
+        <div class="node-tag planned">не построен</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ 3. РАБОЧИЕ ПРОСТРАНСТВА ════ -->
+  <div>
+    <div class="section-hd">
+      <div class="section-hd-icon" style="background:#f5f3ff;">👤</div>
+      <div>
+        <div class="section-hd-label">Рабочие пространства</div>
+        <div class="section-hd-sub">Персональные дашборды по роли</div>
+      </div>
+      <div class="section-hd-line"></div>
+    </div>
+    <div class="card-row">
+      <div class="node built" data-target="mockup-v2.html#s-ws1" onclick="window.location.href='mockup-v2.html#s-ws1'">
+        <div class="node-status built"></div>
+        <div class="node-id">WS-1</div>
+        <div class="node-name">Иванов И.А. — Сборщик</div>
+        <div class="node-desc">Задачи, дедлайны, статус доказательств, уведомления</div>
+        <div class="node-tag built">построен</div>
+      </div>
+      <div class="node built" data-target="mockup-v2.html#s-ws2" onclick="window.location.href='mockup-v2.html#s-ws2'">
+        <div class="node-status built"></div>
+        <div class="node-id">WS-2</div>
+        <div class="node-name">Сидоров К.А. — Ревьюер</div>
+        <div class="node-desc">Очередь на проверку, история, кнопки утверждения/возврата</div>
+        <div class="node-tag built">построен</div>
+      </div>
+      <div class="node planned">
+        <div class="node-status planned"></div>
+        <div class="node-id">WS-3-ADM</div>
+        <div class="node-name">Тимурова А.С. — Администратор</div>
+        <div class="node-desc">Сводка по всем метрикам, прогресс компании, экспорт</div>
+        <div class="node-tag planned">не построен</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ 4. ВВОД ДАННЫХ ════ -->
+  <div>
+    <div class="section-hd">
+      <div class="section-hd-icon" style="background:#fefce8;">✏️</div>
+      <div>
+        <div class="section-hd-label">Ввод данных</div>
+        <div class="section-hd-sub">Пошаговый wizard для сборщика</div>
+      </div>
+      <div class="section-hd-line"></div>
+    </div>
+
+    <div class="subgroup" style="margin-bottom:12px;">
+      <div class="subgroup-title">📊 Количественный показатель (пример: Прямые выбросы CO₂ · GRI 305-1)</div>
+      <div class="wizard-row">
+        <div class="wizard-node" data-target="mockup-v2.html#s-qn1" onclick="window.location.href='mockup-v2.html#s-qn1'">
+          <div class="wizard-node-step">ШАГ 1</div>
+          <div class="wizard-node-name">Значение + единица</div>
+        </div>
+        <div class="wizard-arrow">→</div>
+        <div class="wizard-node" data-target="mockup-v2.html#s-qn2" onclick="window.location.href='mockup-v2.html#s-qn2'">
+          <div class="wizard-node-step">ШАГ 2</div>
+          <div class="wizard-node-name">Разбивка по источникам</div>
+        </div>
+        <div class="wizard-arrow">→</div>
+        <div class="wizard-node" data-target="mockup-v2.html#s-qn3" onclick="window.location.href='mockup-v2.html#s-qn3'">
+          <div class="wizard-node-step">ШАГ 3</div>
+          <div class="wizard-node-name">Загрузка доказательств</div>
+        </div>
+        <div class="wizard-arrow">→</div>
+        <div class="wizard-node" data-target="mockup-v2.html#s-qn4" onclick="window.location.href='mockup-v2.html#s-qn4'">
+          <div class="wizard-node-step">ШАГ 4</div>
+          <div class="wizard-node-name">Проверка + отправка / черновик</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subgroup">
+      <div class="subgroup-title">📝 Качественный показатель (пример: Антикоррупционная политика · GRI 205-1)</div>
+      <div class="wizard-row">
+        <div class="wizard-node" data-target="mockup-v2.html#s-ql1" onclick="window.location.href='mockup-v2.html#s-ql1'">
+          <div class="wizard-node-step">ШАГ 1</div>
+          <div class="wizard-node-name">Описание (Rich Text)</div>
+        </div>
+        <div class="wizard-arrow">→</div>
+        <div class="wizard-node" data-target="mockup-v2.html#s-ql2" onclick="window.location.href='mockup-v2.html#s-ql2'">
+          <div class="wizard-node-step">ШАГ 2</div>
+          <div class="wizard-node-name">Подтверждающие документы</div>
+        </div>
+        <div class="wizard-arrow">→</div>
+        <div class="wizard-node" data-target="mockup-v2.html#s-ql3" onclick="window.location.href='mockup-v2.html#s-ql3'">
+          <div class="wizard-node-step">ШАГ 3</div>
+          <div class="wizard-node-name">Проверка + отправка / черновик</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ 5. БИБЛИОТЕКА МЕТРИК & НАСТРОЙКА ════ -->
+  <div>
+    <div class="section-hd">
+      <div class="section-hd-icon" style="background:#f0f9ff;">📚</div>
+      <div>
+        <div class="section-hd-label">Библиотека метрик & Настройка показателей</div>
+        <div class="section-hd-sub">Добавление стандартных и своих метрик в систему</div>
+      </div>
+      <div class="section-hd-line"></div>
+    </div>
+
+    <div class="subgroup" style="margin-bottom:12px;">
+      <div class="subgroup-title">Стандартные метрики (GRI / SASB / TCFD / CDP / ЦУР)</div>
+      <div class="wizard-row">
+        <div class="wizard-node" data-target="mockup-v2.html#s-setup0" onclick="window.location.href='mockup-v2.html#s-setup0'">
+          <div class="wizard-node-step">БИБЛИОТЕКА</div>
+          <div class="wizard-node-name">Лендинг стандартов</div>
+        </div>
+        <div class="wizard-arrow">→</div>
+        <div class="wizard-node" data-target="mockup-v2.html#s-setup1" onclick="window.location.href='mockup-v2.html#s-setup1'">
+          <div class="wizard-node-step">ВЫБОР МЕТРИКИ</div>
+          <div class="wizard-node-name">Браузер библиотеки GRI</div>
+        </div>
+        <div class="wizard-arrow">→</div>
+        <div class="wizard-node" data-target="mockup-v2.html#s-setup2" onclick="window.location.href='mockup-v2.html#s-setup2'">
+          <div class="wizard-node-step">КОНФИГУРАЦИЯ</div>
+          <div class="wizard-node-name">Настройка показателя</div>
+        </div>
+        <div class="wizard-arrow">→</div>
+        <div class="wizard-node" data-target="mockup-v2.html#s-setup3" onclick="window.location.href='mockup-v2.html#s-setup3'">
+          <div class="wizard-node-step">МАСТЕР-ЗАПИСЬ</div>
+          <div class="wizard-node-name">Карточка показателя</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subgroup">
+      <div class="subgroup-title">✨ Свои показатели (Custom)</div>
+      <div class="wizard-row">
+        <div class="wizard-node" data-target="mockup-v2.html#s-custom1" onclick="window.location.href='mockup-v2.html#s-custom1'">
+          <div class="wizard-node-step">ШАГ 1</div>
+          <div class="wizard-node-name">Тип & ESG-категория</div>
+        </div>
+        <div class="wizard-arrow">→</div>
+        <div class="wizard-node" data-target="mockup-v2.html#s-custom2" onclick="window.location.href='mockup-v2.html#s-custom2'">
+          <div class="wizard-node-step">ШАГ 2</div>
+          <div class="wizard-node-name">Единица, период, разбивка</div>
+        </div>
+        <div class="wizard-arrow">→</div>
+        <div class="wizard-node" data-target="mockup-v2.html#s-custom3" onclick="window.location.href='mockup-v2.html#s-custom3'">
+          <div class="wizard-node-step">ШАГ 3</div>
+          <div class="wizard-node-name">Ответственные & дедлайны</div>
+        </div>
+        <div class="wizard-arrow">→</div>
+        <div class="wizard-node" data-target="mockup-v2.html#s-custom4" onclick="window.location.href='mockup-v2.html#s-custom4'">
+          <div class="wizard-node-step">ШАГ 4</div>
+          <div class="wizard-node-name">Подтверждение & публикация</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ 6. АДМИНИСТРИРОВАНИЕ ════ -->
+  <div>
+    <div class="section-hd">
+      <div class="section-hd-icon" style="background:#fdf4ff;">⚙️</div>
+      <div>
+        <div class="section-hd-label">Администрирование</div>
+        <div class="section-hd-sub">Пользователи, роли, контур, настройки компании</div>
+      </div>
+      <div class="section-hd-line"></div>
+    </div>
+    <div class="card-row">
+      <div class="node built" data-target="mockup-v2.html#s-users1" onclick="window.location.href='mockup-v2.html#s-users1'">
+        <div class="node-status built"></div>
+        <div class="node-id">USERS-1</div>
+        <div class="node-name">Список пользователей</div>
+        <div class="node-desc">Таблица: имя, роль, кол-во метрик, статус, активность</div>
+        <div class="node-tag built">построен</div>
+      </div>
+      <div class="node built" data-target="mockup-v2.html#s-users2" onclick="window.location.href='mockup-v2.html#s-users2'">
+        <div class="node-status built"></div>
+        <div class="node-id">USERS-2</div>
+        <div class="node-name">Создание / редактирование</div>
+        <div class="node-desc">Личные данные, роль, назначение показателей, уведомления</div>
+        <div class="node-tag built">построен</div>
+      </div>
+      <div class="node built" data-target="mockup-v2.html#s-ws3" onclick="window.location.href='mockup-v2.html#s-ws3'">
+        <div class="node-status built"></div>
+        <div class="node-id">BOUNDARY</div>
+        <div class="node-name">Контур консолидации</div>
+        <div class="node-desc">Финансовый / операционный / свой контур, переключатели по юрлицам</div>
+        <div class="node-tag built">построен</div>
+      </div>
+      <div class="node planned">
+        <div class="node-status planned"></div>
+        <div class="node-id">ROLES</div>
+        <div class="node-name">Роли и права доступа</div>
+        <div class="node-desc">Настройка ролевой модели, кастомные права на метрики</div>
+        <div class="node-tag planned">не построен</div>
+      </div>
+      <div class="node planned">
+        <div class="node-status planned"></div>
+        <div class="node-id">COMPANY</div>
+        <div class="node-name">Настройки компании</div>
+        <div class="node-desc">Логотип, годовые периоды, часовой пояс, интеграции (1С / SAP)</div>
+        <div class="node-tag planned">не построен</div>
+      </div>
+      <div class="node planned">
+        <div class="node-status planned"></div>
+        <div class="node-id">AUDIT</div>
+        <div class="node-name">Журнал аудита</div>
+        <div class="node-desc">Кто, что и когда изменил — лог всех действий</div>
+        <div class="node-tag planned">не построен</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ 7. ЭКРАНЫ ЕЩЁ НЕ ПОСТРОЕНЫ ════ -->
+  <div>
+    <div class="section-hd">
+      <div class="section-hd-icon" style="background:#f7f6f3;">🔮</div>
+      <div>
+        <div class="section-hd-label">Потенциальные экраны (backlog)</div>
+        <div class="section-hd-sub">Идеи для следующих итераций</div>
+      </div>
+      <div class="section-hd-line"></div>
+    </div>
+    <div class="card-row">
+      <div class="node planned">
+        <div class="node-status planned"></div>
+        <div class="node-id">COMPARE</div>
+        <div class="node-name">Сравнение периодов</div>
+        <div class="node-desc">2022–2025: динамика, % изменений, выход на план</div>
+        <div class="node-tag planned">не построен</div>
+      </div>
+      <div class="node planned">
+        <div class="node-status planned"></div>
+        <div class="node-id">BENCH</div>
+        <div class="node-name">Бенчмарк / отрасль</div>
+        <div class="node-desc">Сравнение KPI с аналогами по отрасли (Нефть & Газ)</div>
+        <div class="node-tag planned">не построен</div>
+      </div>
+      <div class="node planned">
+        <div class="node-status planned"></div>
+        <div class="node-id">NOTIF</div>
+        <div class="node-name">Центр уведомлений</div>
+        <div class="node-desc">Все алерты в одном месте, настройки частоты и каналов</div>
+        <div class="node-tag planned">не построен</div>
+      </div>
+      <div class="node planned">
+        <div class="node-status planned"></div>
+        <div class="node-id">INTEGR</div>
+        <div class="node-name">Интеграции</div>
+        <div class="node-desc">Подключение 1С, SAP, Excel-импорт, API-ключи</div>
+        <div class="node-tag planned">не построен</div>
+      </div>
+      <div class="node planned">
+        <div class="node-status planned"></div>
+        <div class="node-id">MATURITY</div>
+        <div class="node-name">ESG Maturity Score</div>
+        <div class="node-desc">Автооценка зрелости ESG-процессов по 5 уровням</div>
+        <div class="node-tag planned">не построен</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// Smooth scroll-to anchor in mockup page + highlight
+// All node clicks use window.open since target is another file
+document.querySelectorAll('.node.built, .wizard-node:not(.planned)').forEach(el => {
+  const target = el.getAttribute('data-target') || el.getAttribute('onclick')?.match(/'([^']+)'/)?.[1];
+  if (target) {
+    el.style.cursor = 'pointer';
+  }
+});
+</script>
+
+</body>
+</html>
