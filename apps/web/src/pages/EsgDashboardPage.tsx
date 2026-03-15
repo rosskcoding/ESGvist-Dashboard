@@ -45,12 +45,6 @@ export function EsgDashboardPage() {
     return `/esg/gaps?${p.toString()}`
   }, [resolvedStandard, resolvedYear])
 
-  const dataLink = useMemo(() => {
-    const p = new URLSearchParams()
-    p.set('year', String(resolvedYear))
-    return `/esg/data?${p.toString()}`
-  }, [resolvedYear])
-
   const reviewLink = useMemo(() => {
     const p = new URLSearchParams()
     p.set('year', String(resolvedYear))
@@ -61,12 +55,6 @@ export function EsgDashboardPage() {
     const p = new URLSearchParams()
     p.set('year', String(resolvedYear))
     return `/esg/evidence?${p.toString()}`
-  }, [resolvedYear])
-
-  const reportsLink = useMemo(() => {
-    const p = new URLSearchParams()
-    p.set('year', String(resolvedYear))
-    return `/esg/reports?${p.toString()}`
   }, [resolvedYear])
 
   const snapshotLink = useMemo(() => {
@@ -197,14 +185,6 @@ export function EsgDashboardPage() {
   }, 0)
 
   const blockersCount = Math.max(0, issuesTotal - (issueCounts['review_overdue'] ?? 0))
-
-  const reportReady =
-    gapsTotal > 0 &&
-    gapsMissing === 0 &&
-    missingEvidenceCount === 0 &&
-    missingSourcesCount === 0 &&
-    outOfRangeCount === 0 &&
-    reviewOverdueCount === 0
 
   return (
     <EsgShell
@@ -432,45 +412,6 @@ export function EsgDashboardPage() {
           </ul>
         </div>
 
-        <div className={styles.panel}>
-          <div className={styles.panelHeader}>
-            <h2 className={styles.panelTitle}>{t('esg:dashboard.handoff.title')}</h2>
-            <span className={styles.panelHint}>
-              {reportReady ? t('esg:dashboard.handoff.ready') : t('esg:dashboard.handoff.notReady')}
-            </span>
-          </div>
-
-          <ul className={styles.taskList} aria-label={t('esg:dashboard.handoff.checklistAria')}>
-            <li className={styles.taskItem}>
-              <span className={styles.taskLinkMuted}>{t('esg:dashboard.handoff.items.missingMetrics')}</span>
-              <span className={styles.taskMeta}>{gapsLoading ? '…' : gapsMissing.toLocaleString()}</span>
-            </li>
-            <li className={styles.taskItem}>
-              <span className={styles.taskLinkMuted}>{t('esg:dashboard.handoff.items.blockers')}</span>
-              <span className={styles.taskMeta}>{gapsLoading ? '…' : blockersCount.toLocaleString()}</span>
-            </li>
-            <li className={styles.taskItem}>
-              <span className={styles.taskLinkMuted}>{t('esg:dashboard.handoff.items.overdue')}</span>
-              <span className={styles.taskMeta}>{gapsLoading ? '…' : reviewOverdueCount.toLocaleString()}</span>
-            </li>
-          </ul>
-
-          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-            <Button variant="secondary" onClick={() => navigate(snapshotLink)}>
-              {t('esg:dashboard.handoff.actions.openSnapshot')}
-            </Button>
-            <Button variant="secondary" onClick={() => navigate(dataLink)}>
-              {t('esg:dashboard.handoff.actions.openData')}
-            </Button>
-            <Button onClick={() => navigate(reportsLink)}>{t('esg:dashboard.handoff.actions.openReports')}</Button>
-          </div>
-
-          <div style={{ marginTop: '0.75rem' }}>
-            <div style={{ color: '#64748b', fontSize: '0.85rem' }}>
-              {t('esg:dashboard.handoff.hint')}
-            </div>
-          </div>
-        </div>
       </section>
     </EsgShell>
   )

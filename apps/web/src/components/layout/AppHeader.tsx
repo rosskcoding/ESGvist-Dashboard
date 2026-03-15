@@ -28,8 +28,6 @@ export function AppHeader() {
 
   const path = location.pathname
   const isEsg = path === '/esg' || path.startsWith('/esg/')
-  const isReports = path === '/reports' || path.startsWith('/reports/')
-  const isGlossary = path === '/glossary' || path.startsWith('/glossary/')
   const isCompany = path === '/company' || path.startsWith('/company/')
   const isPlatform = path === '/admin' || path.startsWith('/admin/')
 
@@ -46,10 +44,7 @@ export function AppHeader() {
   const canSeePlatformAdmin = Boolean(user?.isSuperuser)
 
   const moreMenuItems: DropdownMenuItem[] = useMemo(() => {
-    const items: DropdownMenuItem[] = [
-      { label: t('dashboard:nav.glossary'), onSelect: () => navigate('/glossary') },
-      { label: `${t('dashboard:nav.releases')} (${t('esg:labels.comingSoon')})`, onSelect: () => {}, disabled: true },
-    ]
+    const items: DropdownMenuItem[] = []
     if (canSeeCompanyAdmin) items.push({ label: t('dashboard:nav.company'), onSelect: () => navigate('/company') })
     if (canSeePlatformAdmin) items.push({ label: t('dashboard:nav.platform'), onSelect: () => navigate('/admin/companies') })
     return items
@@ -58,9 +53,6 @@ export function AppHeader() {
   const mobileMenuItems: DropdownMenuItem[] = useMemo(() => {
     const items: DropdownMenuItem[] = [
       { label: t('dashboard:nav.esgDashboard'), onSelect: () => navigate('/esg') },
-      { label: t('dashboard:nav.reports'), onSelect: () => navigate('/reports') },
-      { label: t('dashboard:nav.glossary'), onSelect: () => navigate('/glossary') },
-      { label: `${t('dashboard:nav.releases')} (${t('esg:labels.comingSoon')})`, onSelect: () => {}, disabled: true },
       { type: 'divider' },
     ]
     if (canSeeCompanyAdmin) items.push({ label: t('dashboard:nav.company'), onSelect: () => navigate('/company') })
@@ -116,19 +108,9 @@ export function AppHeader() {
             <Link to="/esg" className={styles.navLink} aria-current={isEsg ? 'page' : undefined}>
               {t('dashboard:nav.esgDashboard')}
             </Link>
-            <Link to="/reports" className={styles.navLink} aria-current={isReports ? 'page' : undefined}>
-              {t('dashboard:nav.reports')}
-            </Link>
           </div>
 
           <div className={styles.navSecondary}>
-            <Link to="/glossary" className={styles.navLink} aria-current={isGlossary ? 'page' : undefined}>
-              {t('dashboard:nav.glossary')}
-            </Link>
-            <span className={`${styles.navLink} ${styles.navDisabled}`} aria-disabled="true">
-              {t('dashboard:nav.releases')}
-              <span className={styles.comingSoonBadge}>{t('esg:labels.comingSoon')}</span>
-            </span>
             {canSeeCompanyAdmin && (
               <Tooltip content={t('dashboard:nav.company')}>
                 <Link

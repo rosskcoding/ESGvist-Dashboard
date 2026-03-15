@@ -22,7 +22,6 @@ export function EsgShell({ title, subtitle, actions, children }: EsgShellProps) 
   const isReview = path.startsWith('/esg/review')
   const isEvidence = path.startsWith('/esg/evidence')
   const isSnapshot = path.startsWith('/esg/snapshot')
-  const isReports = path.startsWith('/esg/reports')
 
   // Advanced/secondary sections kept for power users and implementation parity.
   const isIssues = path.startsWith('/esg/gaps')
@@ -39,9 +38,7 @@ export function EsgShell({ title, subtitle, actions, children }: EsgShellProps) 
           ? t('esg:nav.evidence')
           : isSnapshot
             ? t('esg:nav.snapshot')
-            : isReports
-              ? t('esg:nav.reports')
-              : isIssues
+            : isIssues
                 ? t('esg:nav.issues')
                 : isFactsAdvanced
                   ? t('esg:nav.factsAdvanced')
@@ -81,9 +78,6 @@ export function EsgShell({ title, subtitle, actions, children }: EsgShellProps) 
             </Link>
             <Link to="/esg/snapshot" className={`${styles.subnavLink} ${isSnapshot ? styles.subnavActive : ''}`}>
               {t('esg:nav.snapshot')}
-            </Link>
-            <Link to="/esg/reports" className={`${styles.subnavLink} ${isReports ? styles.subnavActive : ''}`}>
-              {t('esg:nav.reports')}
             </Link>
           </div>
 

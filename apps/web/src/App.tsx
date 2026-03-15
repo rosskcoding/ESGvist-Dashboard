@@ -3,7 +3,6 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { LoginPage } from './pages/LoginPage'
 import { StartPage } from './pages/StartPage'
 import { CorporateLeadLoginPage } from './pages/CorporateLeadLoginPage'
-import { DashboardPage } from './pages/DashboardPage'
 import { EsgDashboardPage } from './pages/EsgDashboardPage'
 import { EsgMetricsPage } from './pages/esg/EsgMetricsPage'
 import { EsgFactsPage } from './pages/esg/EsgFactsPage'
@@ -13,7 +12,6 @@ import { EsgSnapshotPage } from './pages/esg/EsgSnapshotPage'
 import { EsgDataPage } from './pages/esg/EsgDataPage'
 import { EsgReviewPage } from './pages/esg/EsgReviewPage'
 import { EsgEvidencePage } from './pages/esg/EsgEvidencePage'
-import { EsgReportsPage } from './pages/esg/EsgReportsPage'
 import {
   CompaniesPage,
   CompanyMembersPage,
@@ -189,10 +187,6 @@ export default function App() {
         <Route path="/esg/facts/new" element={<ProtectedRoute><EsgFactCreatePage /></ProtectedRoute>} />
         <Route path="/esg/gaps" element={<ProtectedRoute><EsgGapsPage /></ProtectedRoute>} />
         <Route path="/esg/snapshot" element={<ProtectedRoute><EsgSnapshotPage /></ProtectedRoute>} />
-        <Route path="/esg/reports" element={<ProtectedRoute><EsgReportsPage /></ProtectedRoute>} />
-
-        {/* Legacy dashboard redirect */}
-        <Route path="/reports" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
 
         {/* Platform Admin (superuser) */}
         <Route path="/admin/platform" element={<SuperuserRoute><SuperuserDashboardPage /></SuperuserRoute>} />
