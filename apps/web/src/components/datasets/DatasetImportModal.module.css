@@ -1,0 +1,192 @@
+.error {
+  margin-bottom: 1rem;
+  padding: 0.875rem 1rem;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 12px;
+  color: #dc2626;
+  font-size: 0.875rem;
+}
+
+.uploadArea {
+  padding: 0.25rem;
+}
+
+.fileLabel {
+  display: block;
+  cursor: pointer;
+}
+
+.fileLabel input[type="file"] {
+  display: none;
+}
+
+.uploadPrompt {
+  border: 2px dashed rgba(8, 145, 178, 0.25);
+  border-radius: 16px;
+  padding: 3rem 2rem;
+  text-align: center;
+  background: rgba(8, 145, 178, 0.02);
+  transition: all 0.2s ease;
+}
+
+.uploadPrompt:hover {
+  border-color: rgba(8, 145, 178, 0.55);
+  background: rgba(8, 145, 178, 0.05);
+}
+
+.uploadIcon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.uploadText {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #0f172a;
+  margin-bottom: 0.5rem;
+}
+
+.uploadHint {
+  font-size: 0.875rem;
+  color: #64748b;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.section h3 {
+  margin: 0;
+  font-size: 1.125rem;
+  color: #0f172a;
+}
+
+.warnings {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.warning {
+  padding: 0.625rem 0.75rem;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: 12px;
+  color: #92400e;
+  font-size: 0.8125rem;
+}
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  font-size: 0.875rem;
+  color: #475569;
+}
+
+.previewTable {
+  overflow-x: auto;
+  border: 1px solid rgba(8, 145, 178, 0.12);
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.previewTable table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.previewTable th,
+.previewTable td {
+  padding: 0.65rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(8, 145, 178, 0.08);
+}
+
+.previewTable th {
+  background: #f8fafc;
+  font-weight: 600;
+  color: #475569;
+  vertical-align: bottom;
+}
+
+.previewTable td {
+  color: #475569;
+}
+
+.columnHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.typeSelect {
+  padding: 0.35rem 0.5rem;
+  background: #ffffff;
+  border: 1px solid rgba(8, 145, 178, 0.2);
+  border-radius: 8px;
+  color: #0f172a;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.typeSelect:focus {
+  outline: none;
+  border-color: #0891b2;
+  box-shadow: 0 0 0 3px rgba(8, 145, 178, 0.12);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.fieldLabel {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #475569;
+}
+
+.textarea {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: #f8fafc;
+  border: 1px solid rgba(8, 145, 178, 0.2);
+  border-radius: 10px;
+  color: #0f172a;
+  font-family: inherit;
+  font-size: 0.9375rem;
+  resize: vertical;
+  transition: all 0.2s ease;
+}
+
+.textarea::placeholder {
+  color: #94a3b8;
+}
+
+.textarea:focus {
+  outline: none;
+  border-color: #0891b2;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(8, 145, 178, 0.12);
+}
+
+.actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  padding-top: 0.25rem;
+}
+
+@media (max-width: 640px) {
+  .uploadPrompt {
+    padding: 2.25rem 1.25rem;
+  }
+}
+
