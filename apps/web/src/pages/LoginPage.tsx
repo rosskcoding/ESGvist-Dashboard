@@ -165,8 +165,8 @@ export function LoginPage() {
     <div className={styles.container}>
       <div className={styles.card}>
         <div className={styles.header}>
-          <h1 className={styles.title}>{t('login.title')}</h1>
-          <p className={styles.subtitle}>{t('login.subtitle')}</p>
+          <h1 className={styles.title}>ESGvist</h1>
+          <p className={styles.subtitle}>ESG Data Dashboard</p>
         </div>
 
         <form onSubmit={handleSubmit} className={styles.form}>
@@ -230,18 +230,18 @@ export function LoginPage() {
           <div style={{
             marginTop: '1rem',
             padding: '0.75rem',
-            background: '#f0f9ff',
-            border: '1px solid #bae6fd',
+            background: '#f0fdf4',
+            border: '1px solid #bbf7d0',
             borderRadius: '8px',
             fontSize: '0.75rem',
             color: '#334155',
           }}>
-            <div style={{ fontWeight: 600, marginBottom: '0.5rem', color: '#0284c7' }}>
+            <div style={{ fontWeight: 600, marginBottom: '0.5rem', color: '#16a34a' }}>
               Test Accounts
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.7rem' }}>
               <thead>
-                <tr style={{ borderBottom: '1px solid #bae6fd' }}>
+                <tr style={{ borderBottom: '1px solid #bbf7d0' }}>
                   <th style={{ textAlign: 'left', padding: '2px 4px' }}>Role</th>
                   <th style={{ textAlign: 'left', padding: '2px 4px' }}>Email</th>
                   <th style={{ textAlign: 'left', padding: '2px 4px' }}>Password</th>
@@ -253,20 +253,15 @@ export function LoginPage() {
                   <td style={{ padding: '2px 4px' }}>e2e-test@example.com</td>
                   <td style={{ padding: '2px 4px' }}>TestPassword123!</td>
                 </tr>
-                <tr style={{ borderTop: '1px solid #e0f2fe' }}>
-                  <td colSpan={3} style={{ padding: '4px 4px 2px', fontWeight: 600, color: '#0284c7', fontSize: '0.65rem' }}>
-                    Middle East Airport
+                <tr style={{ borderTop: '1px solid #dcfce7' }}>
+                  <td colSpan={3} style={{ padding: '4px 4px 2px', fontWeight: 600, color: '#16a34a', fontSize: '0.65rem' }}>
+                    KazEnergo JSC
                   </td>
                 </tr>
                 <tr>
                   <td style={{ padding: '2px 4px' }}>Corporate Lead</td>
-                  <td style={{ padding: '2px 4px' }}>lead@middleeastairport.aero</td>
-                  <td style={{ padding: '2px 4px' }}>MEAlead2026!Access</td>
-                </tr>
-                <tr>
-                  <td style={{ padding: '2px 4px' }}>Editor in Chief</td>
-                  <td style={{ padding: '2px 4px' }}>editor@middleeastairport.aero</td>
-                  <td style={{ padding: '2px 4px' }}>MEAeditor2026!Access</td>
+                  <td style={{ padding: '2px 4px' }}>lead@kazenergo.kz</td>
+                  <td style={{ padding: '2px 4px' }}>KazEnergy2024!</td>
                 </tr>
               </tbody>
             </table>

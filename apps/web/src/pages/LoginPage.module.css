@@ -3,7 +3,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #f8fafc 0%, #e0f2fe 50%, #cffafe 100%);
+  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 50%, #d1fae5 100%);
   padding: 1rem;
 }
 
@@ -11,12 +11,12 @@
   width: 100%;
   max-width: 420px;
   background: #ffffff;
-  border: 1px solid rgba(8, 145, 178, 0.15);
+  border: 1px solid rgba(22, 163, 74, 0.15);
   border-radius: 24px;
   padding: 3rem 2.5rem;
   box-shadow: 
-    0 25px 50px -12px rgba(8, 145, 178, 0.15),
-    0 0 0 1px rgba(8, 145, 178, 0.05);
+    0 25px 50px -12px rgba(22, 163, 74, 0.15),
+    0 0 0 1px rgba(22, 163, 74, 0.05);
 }
 
 .header {
@@ -28,7 +28,7 @@
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
   font-size: 1.75rem;
   font-weight: 600;
-  color: #0891b2;
+  color: #16a34a;
   margin: 0 0 0.5rem;
   letter-spacing: -0.02em;
 }
@@ -60,7 +60,7 @@
 .input {
   padding: 0.875rem 1rem;
   background: #f8fafc;
-  border: 1px solid rgba(8, 145, 178, 0.2);
+  border: 1px solid rgba(22, 163, 74, 0.2);
   border-radius: 12px;
   color: #0f172a;
   font-size: 1rem;
@@ -73,14 +73,14 @@
 
 .input:focus {
   outline: none;
-  border-color: #0891b2;
-  box-shadow: 0 0 0 3px rgba(8, 145, 178, 0.15);
+  border-color: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15);
   background: #ffffff;
 }
 
 .button {
   padding: 0.875rem 1.5rem;
-  background: linear-gradient(135deg, #0891b2 0%, #0284c7 100%);
+  background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
   border: none;
   border-radius: 12px;
   color: white;
@@ -88,13 +88,13 @@
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 4px 14px rgba(8, 145, 178, 0.35);
+  box-shadow: 0 4px 14px rgba(22, 163, 74, 0.35);
 }
 
 .button:hover:not(:disabled) {
-  background: linear-gradient(135deg, #0e7490 0%, #0369a1 100%);
+  background: linear-gradient(135deg, #15803d 0%, #166534 100%);
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(8, 145, 178, 0.45);
+  box-shadow: 0 6px 20px rgba(22, 163, 74, 0.45);
 }
 
 .button:disabled {
@@ -105,7 +105,7 @@
 .demoButton {
   padding: 0.75rem 1rem;
   background: transparent;
-  border: 1px dashed rgba(8, 145, 178, 0.3);
+  border: 1px dashed rgba(22, 163, 74, 0.3);
   border-radius: 12px;
   color: #64748b;
   font-size: 0.875rem;
@@ -114,9 +114,9 @@
 }
 
 .demoButton:hover {
-  border-color: rgba(8, 145, 178, 0.5);
-  color: #0891b2;
-  background: rgba(8, 145, 178, 0.04);
+  border-color: rgba(22, 163, 74, 0.5);
+  color: #16a34a;
+  background: rgba(22, 163, 74, 0.04);
 }
 
 .error {
