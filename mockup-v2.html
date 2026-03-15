@@ -4575,6 +4575,529 @@
     </div>
   </div>
 
+  <!-- ROLES: Роли и права доступа -->
+  <div id="s-roles">
+    <div class="screen-label">Администрирование · <span>Роли и права доступа</span></div>
+    <div class="screen">
+      <div class="topbar2">
+        <div class="t2-logo"><em>ESG</em>vist</div>
+        <div class="t2-nav">
+          <div class="t2-nav-item">Обзор</div><div class="t2-nav-item">Данные</div>
+          <div class="t2-nav-item">Ревью</div><div class="t2-nav-item">Доказательства</div>
+          <div class="t2-nav-item">Отчёт</div><div class="t2-nav-item active">Настройка</div>
+        </div>
+        <div class="t2-right">
+          <div class="t2-ctx">📅 <b>2025</b> · <b>GRI</b></div>
+          <div class="t2-company"><div class="t2-company-avatar">KE</div><div><div class="t2-company-name">KazEnergo JSC</div></div></div>
+        </div>
+      </div>
+      <div class="entry-crumb">
+        <a>Настройка</a><span class="entry-crumb-sep">/</span>
+        <span style="color:#1a1a1a;font-weight:600;">Роли и права доступа</span>
+      </div>
+
+      <div style="padding:20px 24px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+          <div>
+            <div style="font-size:16px;font-weight:900;color:#1a1a1a;">Роли и права доступа</div>
+            <div style="font-size:11px;color:#888;margin-top:2px;">Управление ролевой моделью. Каждый пользователь получает набор прав через свою роль.</div>
+          </div>
+          <button class="btn2 btn2-green" style="font-size:12px;padding:8px 16px;">+ Создать роль</button>
+        </div>
+
+        <!-- Roles cards -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px;">
+
+          <!-- Admin -->
+          <div style="border:2px solid #2d8a56;border-radius:12px;padding:18px;background:white;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+              <div style="width:32px;height:32px;border-radius:8px;background:#2d8a56;display:flex;align-items:center;justify-content:center;font-size:14px;">👑</div>
+              <div>
+                <div style="font-size:14px;font-weight:800;color:#1a1a1a;">Администратор</div>
+                <div style="font-size:10px;color:#888;">Системная роль · нельзя удалить</div>
+              </div>
+              <span style="margin-left:auto;font-size:10px;font-weight:700;color:#2d8a56;background:#f0fdf4;padding:3px 8px;border-radius:5px;">2 польз.</span>
+            </div>
+            <div style="font-size:11px;color:#555;line-height:1.6;margin-bottom:12px;">
+              Полный доступ ко всем разделам: данные, ревью, отчёт, настройка. Управление пользователями и метриками.
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;">
+              <span style="font-size:9px;font-weight:700;padding:3px 7px;border-radius:4px;background:#f0fdf4;color:#2d8a56;">Данные</span>
+              <span style="font-size:9px;font-weight:700;padding:3px 7px;border-radius:4px;background:#f0fdf4;color:#2d8a56;">Ревью</span>
+              <span style="font-size:9px;font-weight:700;padding:3px 7px;border-radius:4px;background:#f0fdf4;color:#2d8a56;">Отчёт</span>
+              <span style="font-size:9px;font-weight:700;padding:3px 7px;border-radius:4px;background:#f0fdf4;color:#2d8a56;">Настройка</span>
+              <span style="font-size:9px;font-weight:700;padding:3px 7px;border-radius:4px;background:#f0fdf4;color:#2d8a56;">Пользователи</span>
+              <span style="font-size:9px;font-weight:700;padding:3px 7px;border-radius:4px;background:#f0fdf4;color:#2d8a56;">Аудит</span>
+            </div>
+          </div>
+
+          <!-- Reviewer -->
+          <div style="border:1px solid #e8e5e0;border-radius:12px;padding:18px;background:white;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+              <div style="width:32px;height:32px;border-radius:8px;background:#3b82f6;display:flex;align-items:center;justify-content:center;font-size:14px;">✅</div>
+              <div>
+                <div style="font-size:14px;font-weight:800;color:#1a1a1a;">Ревьюер</div>
+                <div style="font-size:10px;color:#888;">Системная роль</div>
+              </div>
+              <span style="margin-left:auto;font-size:10px;font-weight:700;color:#3b82f6;background:#eff6ff;padding:3px 8px;border-radius:5px;">3 польз.</span>
+            </div>
+            <div style="font-size:11px;color:#555;line-height:1.6;margin-bottom:12px;">
+              Проверка и утверждение данных. Просмотр отчётов. Нет доступа к настройкам системы и управлению пользователями.
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;">
+              <span style="font-size:9px;font-weight:700;padding:3px 7px;border-radius:4px;background:#eff6ff;color:#3b82f6;">Данные (чтение)</span>
+              <span style="font-size:9px;font-weight:700;padding:3px 7px;border-radius:4px;background:#eff6ff;color:#3b82f6;">Ревью</span>
+              <span style="font-size:9px;font-weight:700;padding:3px 7px;border-radius:4px;background:#eff6ff;color:#3b82f6;">Отчёт (чтение)</span>
+              <span style="font-size:9px;font-weight:700;padding:3px 7px;border-radius:4px;background:#f7f6f3;color:#aaa;">Настройка ✕</span>
+              <span style="font-size:9px;font-weight:700;padding:3px 7px;border-radius:4px;background:#f7f6f3;color:#aaa;">Пользователи ✕</span>
+            </div>
+          </div>
+
+          <!-- Collector -->
+          <div style="border:1px solid #e8e5e0;border-radius:12px;padding:18px;background:white;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+              <div style="width:32px;height:32px;border-radius:8px;background:#8b5cf6;display:flex;align-items:center;justify-content:center;font-size:14px;">📝</div>
+              <div>
+                <div style="font-size:14px;font-weight:800;color:#1a1a1a;">Сборщик данных</div>
+                <div style="font-size:10px;color:#888;">Системная роль</div>
+              </div>
+              <span style="margin-left:auto;font-size:10px;font-weight:700;color:#8b5cf6;background:#f5f3ff;padding:3px 8px;border-radius:5px;">4 польз.</span>
+            </div>
+            <div style="font-size:11px;color:#555;line-height:1.6;margin-bottom:12px;">
+              Ввод данных по назначенным метрикам. Загрузка доказательств. Нет доступа к чужим метрикам и настройкам.
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;">
+              <span style="font-size:9px;font-weight:700;padding:3px 7px;border-radius:4px;background:#f5f3ff;color:#8b5cf6;">Свои данные</span>
+              <span style="font-size:9px;font-weight:700;padding:3px 7px;border-radius:4px;background:#f5f3ff;color:#8b5cf6;">Доказательства</span>
+              <span style="font-size:9px;font-weight:700;padding:3px 7px;border-radius:4px;background:#f7f6f3;color:#aaa;">Ревью ✕</span>
+              <span style="font-size:9px;font-weight:700;padding:3px 7px;border-radius:4px;background:#f7f6f3;color:#aaa;">Отчёт ✕</span>
+              <span style="font-size:9px;font-weight:700;padding:3px 7px;border-radius:4px;background:#f7f6f3;color:#aaa;">Настройка ✕</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Permission matrix -->
+        <div style="font-size:13px;font-weight:800;color:#1a1a1a;margin-bottom:10px;">Матрица прав</div>
+        <div style="border:1px solid #e8e5e0;border-radius:12px;overflow:hidden;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+              <tr style="background:#f7f6f3;">
+                <th style="text-align:left;padding:10px 14px;font-size:10px;font-weight:800;color:#888;text-transform:uppercase;letter-spacing:.5px;width:30%;">Раздел / Действие</th>
+                <th style="text-align:center;padding:10px 14px;font-size:10px;font-weight:800;color:#2d8a56;width:17%;">Администратор</th>
+                <th style="text-align:center;padding:10px 14px;font-size:10px;font-weight:800;color:#3b82f6;width:17%;">Ревьюер</th>
+                <th style="text-align:center;padding:10px 14px;font-size:10px;font-weight:800;color:#8b5cf6;width:17%;">Сборщик</th>
+                <th style="text-align:center;padding:10px 14px;font-size:10px;font-weight:800;color:#f59e0b;width:19%;">Наблюдатель (custom)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="border-top:1px solid #f0ede8;">
+                <td style="padding:8px 14px;font-weight:600;">Просмотр дашборда</td>
+                <td style="padding:8px 14px;text-align:center;color:#2d8a56;font-weight:800;">✓</td>
+                <td style="padding:8px 14px;text-align:center;color:#2d8a56;font-weight:800;">✓</td>
+                <td style="padding:8px 14px;text-align:center;color:#2d8a56;font-weight:800;">✓</td>
+                <td style="padding:8px 14px;text-align:center;color:#2d8a56;font-weight:800;">✓</td>
+              </tr>
+              <tr style="border-top:1px solid #f0ede8;">
+                <td style="padding:8px 14px;font-weight:600;">Ввод данных</td>
+                <td style="padding:8px 14px;text-align:center;color:#2d8a56;font-weight:800;">✓</td>
+                <td style="padding:8px 14px;text-align:center;color:#ccc;">—</td>
+                <td style="padding:8px 14px;text-align:center;color:#2d8a56;font-weight:800;">✓ свои</td>
+                <td style="padding:8px 14px;text-align:center;color:#ccc;">—</td>
+              </tr>
+              <tr style="border-top:1px solid #f0ede8;">
+                <td style="padding:8px 14px;font-weight:600;">Ревью и утверждение</td>
+                <td style="padding:8px 14px;text-align:center;color:#2d8a56;font-weight:800;">✓</td>
+                <td style="padding:8px 14px;text-align:center;color:#2d8a56;font-weight:800;">✓</td>
+                <td style="padding:8px 14px;text-align:center;color:#ccc;">—</td>
+                <td style="padding:8px 14px;text-align:center;color:#ccc;">—</td>
+              </tr>
+              <tr style="border-top:1px solid #f0ede8;">
+                <td style="padding:8px 14px;font-weight:600;">Загрузка доказательств</td>
+                <td style="padding:8px 14px;text-align:center;color:#2d8a56;font-weight:800;">✓</td>
+                <td style="padding:8px 14px;text-align:center;color:#ccc;">—</td>
+                <td style="padding:8px 14px;text-align:center;color:#2d8a56;font-weight:800;">✓ свои</td>
+                <td style="padding:8px 14px;text-align:center;color:#ccc;">—</td>
+              </tr>
+              <tr style="border-top:1px solid #f0ede8;">
+                <td style="padding:8px 14px;font-weight:600;">Генерация отчёта</td>
+                <td style="padding:8px 14px;text-align:center;color:#2d8a56;font-weight:800;">✓</td>
+                <td style="padding:8px 14px;text-align:center;color:#2d8a56;font-weight:800;">✓ чтение</td>
+                <td style="padding:8px 14px;text-align:center;color:#ccc;">—</td>
+                <td style="padding:8px 14px;text-align:center;color:#2d8a56;font-weight:800;">✓ чтение</td>
+              </tr>
+              <tr style="border-top:1px solid #f0ede8;">
+                <td style="padding:8px 14px;font-weight:600;">Настройка метрик</td>
+                <td style="padding:8px 14px;text-align:center;color:#2d8a56;font-weight:800;">✓</td>
+                <td style="padding:8px 14px;text-align:center;color:#ccc;">—</td>
+                <td style="padding:8px 14px;text-align:center;color:#ccc;">—</td>
+                <td style="padding:8px 14px;text-align:center;color:#ccc;">—</td>
+              </tr>
+              <tr style="border-top:1px solid #f0ede8;">
+                <td style="padding:8px 14px;font-weight:600;">Управление пользователями</td>
+                <td style="padding:8px 14px;text-align:center;color:#2d8a56;font-weight:800;">✓</td>
+                <td style="padding:8px 14px;text-align:center;color:#ccc;">—</td>
+                <td style="padding:8px 14px;text-align:center;color:#ccc;">—</td>
+                <td style="padding:8px 14px;text-align:center;color:#ccc;">—</td>
+              </tr>
+              <tr style="border-top:1px solid #f0ede8;">
+                <td style="padding:8px 14px;font-weight:600;">Журнал аудита</td>
+                <td style="padding:8px 14px;text-align:center;color:#2d8a56;font-weight:800;">✓</td>
+                <td style="padding:8px 14px;text-align:center;color:#ccc;">—</td>
+                <td style="padding:8px 14px;text-align:center;color:#ccc;">—</td>
+                <td style="padding:8px 14px;text-align:center;color:#ccc;">—</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Custom role hint -->
+        <div style="margin-top:14px;padding:12px 16px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;font-size:11px;color:#92400e;line-height:1.6;">
+          💡 <b>Кастомные роли:</b> Вы можете создать роль с гранулярными правами — например, «Наблюдатель» с доступом только к дашборду и отчётам. Нажмите «+ Создать роль» для настройки.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COMPANY: Настройки компании -->
+  <div id="s-company">
+    <div class="screen-label">Администрирование · <span>Настройки компании</span></div>
+    <div class="screen">
+      <div class="topbar2">
+        <div class="t2-logo"><em>ESG</em>vist</div>
+        <div class="t2-nav">
+          <div class="t2-nav-item">Обзор</div><div class="t2-nav-item">Данные</div>
+          <div class="t2-nav-item">Ревью</div><div class="t2-nav-item">Доказательства</div>
+          <div class="t2-nav-item">Отчёт</div><div class="t2-nav-item active">Настройка</div>
+        </div>
+        <div class="t2-right">
+          <div class="t2-ctx">📅 <b>2025</b> · <b>GRI</b></div>
+          <div class="t2-company"><div class="t2-company-avatar">KE</div><div><div class="t2-company-name">KazEnergo JSC</div></div></div>
+        </div>
+      </div>
+      <div class="entry-crumb">
+        <a>Настройка</a><span class="entry-crumb-sep">/</span>
+        <span style="color:#1a1a1a;font-weight:600;">Настройки компании</span>
+      </div>
+
+      <div style="padding:20px 24px;display:flex;flex-direction:column;gap:20px;">
+        <div style="font-size:16px;font-weight:900;color:#1a1a1a;">Настройки компании</div>
+
+        <!-- Company identity -->
+        <div style="border:1px solid #e8e5e0;border-radius:12px;padding:20px;">
+          <div style="font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#aaa;margin-bottom:14px;padding-bottom:6px;border-bottom:1px solid #f0ede8;">Идентификация</div>
+          <div style="display:grid;grid-template-columns:80px 1fr;gap:20px;align-items:start;">
+            <div>
+              <div style="width:72px;height:72px;border-radius:12px;background:#f0fdf4;border:2px dashed #bbf7d0;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:900;color:#2d8a56;cursor:pointer;">KE</div>
+              <div style="font-size:9px;color:#aaa;text-align:center;margin-top:4px;">Логотип</div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+              <div class="form-group" style="grid-column:span 2;">
+                <div class="form-lbl">Название организации <span class="form-lbl-req">*</span></div>
+                <input class="f-input filled" value="KazEnergo JSC">
+              </div>
+              <div class="form-group">
+                <div class="form-lbl">БИН / ИНН</div>
+                <input class="f-input filled" value="070540002891">
+              </div>
+              <div class="form-group">
+                <div class="form-lbl">Юрисдикция</div>
+                <select class="f-select filled">
+                  <option selected>Казахстан</option>
+                  <option>Россия</option>
+                  <option>Узбекистан</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <div class="form-lbl">Отрасль (ОКВЭД / NACE)</div>
+                <input class="f-input filled" value="35.11 — Производство электроэнергии">
+              </div>
+              <div class="form-group">
+                <div class="form-lbl">Количество сотрудников</div>
+                <input class="f-input filled" value="2 450">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Reporting periods -->
+        <div style="border:1px solid #e8e5e0;border-radius:12px;padding:20px;">
+          <div style="font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#aaa;margin-bottom:14px;padding-bottom:6px;border-bottom:1px solid #f0ede8;">Отчётные периоды</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;">
+            <div class="form-group">
+              <div class="form-lbl">Текущий отчётный год <span class="form-lbl-req">*</span></div>
+              <select class="f-select filled">
+                <option>2024</option>
+                <option selected>2025</option>
+                <option>2026</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <div class="form-lbl">Начало финансового года</div>
+              <input class="f-input filled" value="1 января">
+            </div>
+            <div class="form-group">
+              <div class="form-lbl">Часовой пояс</div>
+              <select class="f-select filled">
+                <option selected>UTC+6 (Алматы)</option>
+                <option>UTC+5 (Ташкент)</option>
+                <option>UTC+3 (Москва)</option>
+              </select>
+            </div>
+          </div>
+          <div style="margin-top:12px;display:flex;gap:8px;">
+            <div style="flex:1;padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;text-align:center;">
+              <div style="font-size:12px;font-weight:800;color:#2d8a56;">2025</div>
+              <div style="font-size:10px;color:#888;">Текущий · активен</div>
+            </div>
+            <div style="flex:1;padding:10px 14px;background:#f7f6f3;border:1px solid #e8e5e0;border-radius:8px;text-align:center;">
+              <div style="font-size:12px;font-weight:800;color:#555;">2024</div>
+              <div style="font-size:10px;color:#888;">Завершён · опубликован</div>
+            </div>
+            <div style="flex:1;padding:10px 14px;background:#f7f6f3;border:1px solid #e8e5e0;border-radius:8px;text-align:center;">
+              <div style="font-size:12px;font-weight:800;color:#555;">2023</div>
+              <div style="font-size:10px;color:#888;">Завершён · опубликован</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Integrations -->
+        <div style="border:1px solid #e8e5e0;border-radius:12px;padding:20px;">
+          <div style="font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#aaa;margin-bottom:14px;padding-bottom:6px;border-bottom:1px solid #f0ede8;">Интеграции</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border:1px solid #e8e5e0;border-radius:10px;background:white;">
+              <div style="width:36px;height:36px;border-radius:8px;background:#eff6ff;display:flex;align-items:center;justify-content:center;font-size:16px;">📊</div>
+              <div style="flex:1;">
+                <div style="font-size:12px;font-weight:700;color:#1a1a1a;">SAP ERP</div>
+                <div style="font-size:10px;color:#888;">Модули MM, FI, HR</div>
+              </div>
+              <span style="font-size:10px;font-weight:700;color:#2d8a56;background:#f0fdf4;padding:3px 8px;border-radius:5px;">Подключено</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border:1px solid #e8e5e0;border-radius:10px;background:white;">
+              <div style="width:36px;height:36px;border-radius:8px;background:#fef3c7;display:flex;align-items:center;justify-content:center;font-size:16px;">🔗</div>
+              <div style="flex:1;">
+                <div style="font-size:12px;font-weight:700;color:#1a1a1a;">1С:Предприятие</div>
+                <div style="font-size:10px;color:#888;">Бухгалтерия, ЗУП</div>
+              </div>
+              <span style="font-size:10px;font-weight:700;color:#d97706;background:#fef3c7;padding:3px 8px;border-radius:5px;">Настройка...</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border:1px dashed #e8e5e0;border-radius:10px;background:#fafaf7;">
+              <div style="width:36px;height:36px;border-radius:8px;background:#f7f6f3;display:flex;align-items:center;justify-content:center;font-size:16px;">📧</div>
+              <div style="flex:1;">
+                <div style="font-size:12px;font-weight:700;color:#1a1a1a;">Email-уведомления (SMTP)</div>
+                <div style="font-size:10px;color:#888;">Рассылка напоминаний и дедлайнов</div>
+              </div>
+              <span style="font-size:10px;font-weight:700;color:#2d8a56;background:#f0fdf4;padding:3px 8px;border-radius:5px;">Подключено</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border:1px dashed #e8e5e0;border-radius:10px;background:#fafaf7;cursor:pointer;">
+              <div style="width:36px;height:36px;border-radius:8px;background:#f7f6f3;display:flex;align-items:center;justify-content:center;font-size:20px;color:#aaa;">+</div>
+              <div style="flex:1;">
+                <div style="font-size:12px;font-weight:700;color:#888;">Добавить интеграцию</div>
+                <div style="font-size:10px;color:#aaa;">API, Webhook, SSO, LDAP</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div style="display:flex;justify-content:flex-end;gap:10px;">
+          <button class="btn2 btn2-outline" style="font-size:12px;padding:10px 20px;">Отменить</button>
+          <button class="btn2 btn2-green" style="font-size:12px;padding:10px 20px;">Сохранить настройки</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AUDIT: Журнал аудита -->
+  <div id="s-audit">
+    <div class="screen-label">Администрирование · <span>Журнал аудита</span></div>
+    <div class="screen">
+      <div class="topbar2">
+        <div class="t2-logo"><em>ESG</em>vist</div>
+        <div class="t2-nav">
+          <div class="t2-nav-item">Обзор</div><div class="t2-nav-item">Данные</div>
+          <div class="t2-nav-item">Ревью</div><div class="t2-nav-item">Доказательства</div>
+          <div class="t2-nav-item">Отчёт</div><div class="t2-nav-item active">Настройка</div>
+        </div>
+        <div class="t2-right">
+          <div class="t2-ctx">📅 <b>2025</b> · <b>GRI</b></div>
+          <div class="t2-company"><div class="t2-company-avatar">KE</div><div><div class="t2-company-name">KazEnergo JSC</div></div></div>
+        </div>
+      </div>
+      <div class="entry-crumb">
+        <a>Настройка</a><span class="entry-crumb-sep">/</span>
+        <span style="color:#1a1a1a;font-weight:600;">Журнал аудита</span>
+      </div>
+
+      <div style="padding:20px 24px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+          <div>
+            <div style="font-size:16px;font-weight:900;color:#1a1a1a;">Журнал аудита</div>
+            <div style="font-size:11px;color:#888;margin-top:2px;">Лог всех действий в системе. Фильтруйте по пользователю, действию или дате.</div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <div style="display:flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid #e8e5e0;border-radius:8px;background:white;font-size:11px;">
+              🔍 <input style="border:none;outline:none;font-size:11px;width:140px;background:transparent;" placeholder="Поиск по событию...">
+            </div>
+            <select style="padding:6px 12px;border:1px solid #e8e5e0;border-radius:8px;font-size:11px;color:#555;background:white;">
+              <option>Все пользователи</option>
+              <option>Тимурова А. С.</option>
+              <option>Иванов И. А.</option>
+              <option>Петрова М. В.</option>
+              <option>Сидоров К. А.</option>
+            </select>
+            <select style="padding:6px 12px;border:1px solid #e8e5e0;border-radius:8px;font-size:11px;color:#555;background:white;">
+              <option>Все действия</option>
+              <option>Ввод данных</option>
+              <option>Ревью</option>
+              <option>Настройка</option>
+              <option>Авторизация</option>
+            </select>
+            <select style="padding:6px 12px;border:1px solid #e8e5e0;border-radius:8px;font-size:11px;color:#555;background:white;">
+              <option>Последние 7 дней</option>
+              <option>Последние 30 дней</option>
+              <option>Весь период</option>
+            </select>
+            <button class="btn2 btn2-outline" style="font-size:11px;padding:6px 12px;">Экспорт CSV</button>
+          </div>
+        </div>
+
+        <!-- Audit log table -->
+        <div style="border:1px solid #e8e5e0;border-radius:12px;overflow:hidden;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+              <tr style="background:#f7f6f3;">
+                <th style="text-align:left;padding:10px 14px;font-size:10px;font-weight:800;color:#888;text-transform:uppercase;letter-spacing:.5px;width:14%;">Дата и время</th>
+                <th style="text-align:left;padding:10px 14px;font-size:10px;font-weight:800;color:#888;text-transform:uppercase;letter-spacing:.5px;width:15%;">Пользователь</th>
+                <th style="text-align:left;padding:10px 14px;font-size:10px;font-weight:800;color:#888;text-transform:uppercase;letter-spacing:.5px;width:12%;">Действие</th>
+                <th style="text-align:left;padding:10px 14px;font-size:10px;font-weight:800;color:#888;text-transform:uppercase;letter-spacing:.5px;width:30%;">Описание</th>
+                <th style="text-align:left;padding:10px 14px;font-size:10px;font-weight:800;color:#888;text-transform:uppercase;letter-spacing:.5px;width:15%;">Объект</th>
+                <th style="text-align:center;padding:10px 14px;font-size:10px;font-weight:800;color:#888;text-transform:uppercase;letter-spacing:.5px;width:14%;">IP / Сессия</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="border-top:1px solid #f0ede8;">
+                <td style="padding:9px 14px;font-size:11px;color:#555;">15.03.2026 09:42</td>
+                <td style="padding:9px 14px;">
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <div style="width:20px;height:20px;border-radius:5px;background:#2d8a56;display:flex;align-items:center;justify-content:center;color:white;font-size:8px;font-weight:800;">АТ</div>
+                    <span style="font-size:11px;font-weight:600;">Тимурова А. С.</span>
+                  </div>
+                </td>
+                <td style="padding:9px 14px;"><span style="font-size:10px;font-weight:700;color:#3b82f6;background:#eff6ff;padding:2px 7px;border-radius:4px;">Ревью</span></td>
+                <td style="padding:9px 14px;font-size:11px;color:#555;">Утвердила показатель «Текучесть кадров» — статус изменён на «Утверждено»</td>
+                <td style="padding:9px 14px;font-size:11px;color:#888;">GRI 401-1</td>
+                <td style="padding:9px 14px;text-align:center;font-size:10px;color:#aaa;">10.65.2.***</td>
+              </tr>
+              <tr style="border-top:1px solid #f0ede8;">
+                <td style="padding:9px 14px;font-size:11px;color:#555;">15.03.2026 09:15</td>
+                <td style="padding:9px 14px;">
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <div style="width:20px;height:20px;border-radius:5px;background:#8b5cf6;display:flex;align-items:center;justify-content:center;color:white;font-size:8px;font-weight:800;">ИИ</div>
+                    <span style="font-size:11px;font-weight:600;">Иванов И. А.</span>
+                  </div>
+                </td>
+                <td style="padding:9px 14px;"><span style="font-size:10px;font-weight:700;color:#2d8a56;background:#f0fdf4;padding:2px 7px;border-radius:4px;">Ввод данных</span></td>
+                <td style="padding:9px 14px;font-size:11px;color:#555;">Загрузил файл «carbon_calculation_2025.xlsx» к показателю «Прямые выбросы CO₂»</td>
+                <td style="padding:9px 14px;font-size:11px;color:#888;">GRI 305-1</td>
+                <td style="padding:9px 14px;text-align:center;font-size:10px;color:#aaa;">10.65.3.***</td>
+              </tr>
+              <tr style="border-top:1px solid #f0ede8;">
+                <td style="padding:9px 14px;font-size:11px;color:#555;">15.03.2026 08:50</td>
+                <td style="padding:9px 14px;">
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <div style="width:20px;height:20px;border-radius:5px;background:#8b5cf6;display:flex;align-items:center;justify-content:center;color:white;font-size:8px;font-weight:800;">ИИ</div>
+                    <span style="font-size:11px;font-weight:600;">Иванов И. А.</span>
+                  </div>
+                </td>
+                <td style="padding:9px 14px;"><span style="font-size:10px;font-weight:700;color:#2d8a56;background:#f0fdf4;padding:2px 7px;border-radius:4px;">Ввод данных</span></td>
+                <td style="padding:9px 14px;font-size:11px;color:#555;">Отправил на ревью показатель «Прямые выбросы CO₂» — значение: 1 240 т CO₂e</td>
+                <td style="padding:9px 14px;font-size:11px;color:#888;">GRI 305-1</td>
+                <td style="padding:9px 14px;text-align:center;font-size:10px;color:#aaa;">10.65.3.***</td>
+              </tr>
+              <tr style="border-top:1px solid #f0ede8;">
+                <td style="padding:9px 14px;font-size:11px;color:#555;">14.03.2026 17:30</td>
+                <td style="padding:9px 14px;">
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <div style="width:20px;height:20px;border-radius:5px;background:#2d8a56;display:flex;align-items:center;justify-content:center;color:white;font-size:8px;font-weight:800;">АТ</div>
+                    <span style="font-size:11px;font-weight:600;">Тимурова А. С.</span>
+                  </div>
+                </td>
+                <td style="padding:9px 14px;"><span style="font-size:10px;font-weight:700;color:#d97706;background:#fef3c7;padding:2px 7px;border-radius:4px;">Настройка</span></td>
+                <td style="padding:9px 14px;font-size:11px;color:#555;">Создала новый показатель «Доля закупок у местных поставщиков» (Custom)</td>
+                <td style="padding:9px 14px;font-size:11px;color:#888;">Custom metric</td>
+                <td style="padding:9px 14px;text-align:center;font-size:10px;color:#aaa;">10.65.2.***</td>
+              </tr>
+              <tr style="border-top:1px solid #f0ede8;">
+                <td style="padding:9px 14px;font-size:11px;color:#555;">14.03.2026 16:45</td>
+                <td style="padding:9px 14px;">
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <div style="width:20px;height:20px;border-radius:5px;background:#2d8a56;display:flex;align-items:center;justify-content:center;color:white;font-size:8px;font-weight:800;">АТ</div>
+                    <span style="font-size:11px;font-weight:600;">Тимурова А. С.</span>
+                  </div>
+                </td>
+                <td style="padding:9px 14px;"><span style="font-size:10px;font-weight:700;color:#d97706;background:#fef3c7;padding:2px 7px;border-radius:4px;">Настройка</span></td>
+                <td style="padding:9px 14px;font-size:11px;color:#555;">Изменила дедлайн ввода данных для GRI 302-2: 01.03 → 15.03.2026</td>
+                <td style="padding:9px 14px;font-size:11px;color:#888;">GRI 302-2</td>
+                <td style="padding:9px 14px;text-align:center;font-size:10px;color:#aaa;">10.65.2.***</td>
+              </tr>
+              <tr style="border-top:1px solid #f0ede8;">
+                <td style="padding:9px 14px;font-size:11px;color:#555;">14.03.2026 14:20</td>
+                <td style="padding:9px 14px;">
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <div style="width:20px;height:20px;border-radius:5px;background:#3b82f6;display:flex;align-items:center;justify-content:center;color:white;font-size:8px;font-weight:800;">СК</div>
+                    <span style="font-size:11px;font-weight:600;">Сидоров К. А.</span>
+                  </div>
+                </td>
+                <td style="padding:9px 14px;"><span style="font-size:10px;font-weight:700;color:#dc2626;background:#fef2f2;padding:2px 7px;border-radius:4px;">Ревью</span></td>
+                <td style="padding:9px 14px;font-size:11px;color:#555;">Вернул на доработку «Потребление энергии внутри» — комментарий: «Нет разбивки по типу топлива»</td>
+                <td style="padding:9px 14px;font-size:11px;color:#888;">GRI 302-1</td>
+                <td style="padding:9px 14px;text-align:center;font-size:10px;color:#aaa;">10.65.1.***</td>
+              </tr>
+              <tr style="border-top:1px solid #f0ede8;">
+                <td style="padding:9px 14px;font-size:11px;color:#555;">14.03.2026 10:05</td>
+                <td style="padding:9px 14px;">
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <div style="width:20px;height:20px;border-radius:5px;background:#3b82f6;display:flex;align-items:center;justify-content:center;color:white;font-size:8px;font-weight:800;">МП</div>
+                    <span style="font-size:11px;font-weight:600;">Петрова М. В.</span>
+                  </div>
+                </td>
+                <td style="padding:9px 14px;"><span style="font-size:10px;font-weight:700;color:#6366f1;background:#eef2ff;padding:2px 7px;border-radius:4px;">Авторизация</span></td>
+                <td style="padding:9px 14px;font-size:11px;color:#555;">Вход в систему через SSO (Microsoft Entra ID)</td>
+                <td style="padding:9px 14px;font-size:11px;color:#888;">—</td>
+                <td style="padding:9px 14px;text-align:center;font-size:10px;color:#aaa;">10.65.4.***</td>
+              </tr>
+              <tr style="border-top:1px solid #f0ede8;">
+                <td style="padding:9px 14px;font-size:11px;color:#555;">13.03.2026 16:30</td>
+                <td style="padding:9px 14px;">
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <div style="width:20px;height:20px;border-radius:5px;background:#8b5cf6;display:flex;align-items:center;justify-content:center;color:white;font-size:8px;font-weight:800;">АН</div>
+                    <span style="font-size:11px;font-weight:600;">Назарова А. К.</span>
+                  </div>
+                </td>
+                <td style="padding:9px 14px;"><span style="font-size:10px;font-weight:700;color:#2d8a56;background:#f0fdf4;padding:2px 7px;border-radius:4px;">Ввод данных</span></td>
+                <td style="padding:9px 14px;font-size:11px;color:#555;">Сохранила черновик «Часы обучения сотрудников» — значение: 18.4 ч/чел.</td>
+                <td style="padding:9px 14px;font-size:11px;color:#888;">GRI 404-1</td>
+                <td style="padding:9px 14px;text-align:center;font-size:10px;color:#aaa;">10.65.5.***</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;">
+          <div style="font-size:11px;color:#888;">Показано 8 из 247 событий</div>
+          <div style="display:flex;gap:4px;">
+            <span style="padding:4px 10px;border:1px solid #2d8a56;border-radius:6px;font-size:11px;font-weight:700;color:#2d8a56;background:#f0fdf4;">1</span>
+            <span style="padding:4px 10px;border:1px solid #e8e5e0;border-radius:6px;font-size:11px;color:#888;cursor:pointer;">2</span>
+            <span style="padding:4px 10px;border:1px solid #e8e5e0;border-radius:6px;font-size:11px;color:#888;cursor:pointer;">3</span>
+            <span style="padding:4px 10px;border:1px solid #e8e5e0;border-radius:6px;font-size:11px;color:#888;cursor:pointer;">…</span>
+            <span style="padding:4px 10px;border:1px solid #e8e5e0;border-radius:6px;font-size:11px;color:#888;cursor:pointer;">31</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <script>
