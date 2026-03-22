@@ -441,7 +441,7 @@ create table data_points (
     boundary_id             bigint references boundaries(id) on delete set null,
     source_record_id        bigint references source_records(id) on delete set null,
     -- Workflow
-    status                  text not null default 'draft' check (status in ('draft', 'submitted', 'in_review', 'approved', 'rejected')),
+    status                  text not null default 'draft' check (status in ('draft', 'submitted', 'in_review', 'approved', 'rejected', 'needs_revision')),
     submitted_by            bigint references users(id) on delete set null,
     submitted_at            timestamptz,
     reviewed_by             bigint references users(id) on delete set null,
@@ -472,6 +472,7 @@ create table data_points (
 ```
 draft → submitted → in_review → approved
                               → rejected → (fix) → submitted
+                              → needs_revision → (clarify) → submitted
 ```
 
 | Из | В | Кто | Условия |
@@ -481,7 +482,9 @@ draft → submitted → in_review → approved
 | submitted | in_review | Система | Автоматически при наличии ревьюера |
 | in_review | approved | Ревьюер | Данные корректны |
 | in_review | rejected | Ревьюер | Обязателен review_comment |
+| in_review | needs_revision | Ревьюер | Обязателен review_comment (мягкий возврат) |
 | rejected | submitted | Сборщик | Исправления внесены |
+| needs_revision | submitted | Сборщик | Уточнения внесены |
 | approved | draft | ESG-менеджер | Откат (с обоснованием, запись в audit_log) |
 
 #### data_point_dimensions
@@ -674,6 +677,30 @@ create table metric_assignments (
 - В этом случае `status = 'pending'`, в UI: "Не назначен"
 - ESG-менеджер назначает позже (через карточку метрики или матрицу назначений)
 - Constraint: `collector_id != reviewer_id` — один человек не может и вводить, и ревьюить одну метрику
+
+#### comments
+
+Threaded comments для review-процесса.
+
+```sql
+create table comments (
+    id                  bigserial primary key,
+    data_point_id       bigint references data_points(id) on delete cascade,
+    requirement_item_id bigint references requirement_items(id) on delete cascade,
+    parent_comment_id   bigint references comments(id) on delete cascade,
+    user_id             bigint not null references users(id) on delete cascade,
+    comment_type        text not null check (comment_type in ('question', 'issue', 'suggestion', 'resolution', 'general')),
+    body                text not null,
+    is_resolved         boolean not null default false,
+    created_at          timestamptz not null default now()
+);
+```
+
+**Бизнес-правила:**
+- Комментарий привязан к data_point и/или requirement_item
+- Поддерживает threading через `parent_comment_id`
+- `comment_type` помогает категоризировать: вопрос, проблема, рекомендация, решение
+- `is_resolved` позволяет закрывать threads
 
 #### audit_log
 
@@ -1365,11 +1392,12 @@ requirement_item_statuses
 
 ```
 data_points.status:
-  draft       — черновик, можно редактировать
-  submitted   — отправлен, ожидает ревью
-  in_review   — ревьюер взял в работу
-  approved    — одобрен
-  rejected    — отклонён, нужны исправления
+  draft           — черновик, можно редактировать
+  submitted       — отправлен, ожидает ревью
+  in_review       — ревьюер взял в работу
+  approved        — одобрен
+  rejected        — отклонён, нужны исправления
+  needs_revision  — требует доработки (мягкий возврат)
 
 requirement_item_statuses.status:
   missing         — данных нет
