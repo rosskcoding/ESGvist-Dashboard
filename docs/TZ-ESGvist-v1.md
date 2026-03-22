@@ -46,7 +46,7 @@ ESGvist — веб-приложение для сбора, валидации и
 3. Сквозной слой               (shared_elements, dimensions, mappings)
 4. Дельты и переопределения    (requirement_deltas, requirement_item_overrides)
 5. Проект отчётности           (organizations, reporting_periods, reporting_projects)
-6. Фактические данные          (data_points, data_point_dimensions, attachments)
+6. Фактические данные          (data_points, data_point_dimensions, evidences)
 7. Привязка и покрытие         (requirement_item_data_points, statuses)
 8. Пользователи и workflow     (users, roles, assignments, audit_log)
 ```
@@ -564,25 +564,65 @@ create table source_records (
 );
 ```
 
-#### attachments
+#### Evidence (доказательная база)
 
-Доказательства (evidence).
+> **Полная спецификация модуля Evidence:** см. `docs/TZ-Evidence.md`
+
+Evidence — отдельная доменная сущность (не attachment). Поддерживает файлы и ссылки, M:N привязки к data_points и requirement_items, обязательность через `requires_evidence`.
 
 ```sql
-create table attachments (
+-- Добавить в requirement_items:
+ALTER TABLE requirement_items
+    ADD COLUMN requires_evidence boolean NOT NULL DEFAULT false;
+
+-- Основная таблица
+create table evidences (
     id                  bigserial primary key,
-    data_point_id       bigint references data_points(id) on delete cascade,
-    requirement_item_id bigint references requirement_items(id) on delete cascade,
-    file_name           text not null,
-    file_uri            text not null,              -- S3 path или внешняя ссылка
-    mime_type           text,
-    file_size           integer,                    -- bytes
+    organization_id     bigint not null references organizations(id) on delete cascade,
+    type                text not null check (type in ('file', 'link')),
+    title               text not null,
     description         text,
-    uploaded_by         bigint references users(id) on delete set null,
-    uploaded_at         timestamptz not null default now(),
-    check (
-        data_point_id is not null or requirement_item_id is not null
-    )
+    source_type         text not null check (source_type in ('manual', 'upload', 'integration')),
+    created_by          bigint references users(id) on delete set null,
+    created_at          timestamptz not null default now(),
+    updated_at          timestamptz not null default now()
+);
+
+-- Файлы (1:1 с evidences)
+create table evidence_files (
+    evidence_id         bigint primary key references evidences(id) on delete cascade,
+    file_name           text not null,
+    file_uri            text not null,
+    mime_type           text,
+    file_size           integer
+);
+
+-- Ссылки (1:1 с evidences)
+create table evidence_links (
+    evidence_id         bigint primary key references evidences(id) on delete cascade,
+    url                 text not null,
+    label               text,
+    access_note         text
+);
+
+-- Привязка evidence к data_point (M:N)
+create table data_point_evidences (
+    id                  bigserial primary key,
+    data_point_id       bigint not null references data_points(id) on delete cascade,
+    evidence_id         bigint not null references evidences(id) on delete cascade,
+    linked_by           bigint references users(id) on delete set null,
+    linked_at           timestamptz not null default now(),
+    unique (data_point_id, evidence_id)
+);
+
+-- Привязка evidence к requirement_item (M:N)
+create table requirement_item_evidences (
+    id                  bigserial primary key,
+    requirement_item_id bigint not null references requirement_items(id) on delete cascade,
+    evidence_id         bigint not null references evidences(id) on delete cascade,
+    linked_by           bigint references users(id) on delete set null,
+    linked_at           timestamptz not null default now(),
+    unique (requirement_item_id, evidence_id)
 );
 ```
 
@@ -1243,11 +1283,21 @@ POST   /api/data-points/:id/reject              — Отклонить (+ commen
 
 ### 10.4. Evidence
 
+> Полная спецификация: `docs/TZ-Evidence.md`, раздел 6
+
 ```
-GET    /api/attachments                         — Список файлов
-POST   /api/attachments                         — Загрузить
-POST   /api/attachments/:id/bind                — Привязать к DataPoint
-DELETE /api/attachments/:id                     — Удалить
+GET    /api/evidences                                    — Список (фильтры: type, source_type, unlinked)
+GET    /api/evidences/:id                                — Детали + файл/ссылка + привязки
+POST   /api/evidences                                    — Создать (file или link)
+POST   /api/evidences/upload                             — Upload файла (multipart/form-data)
+PUT    /api/evidences/:id                                — Обновить title, description
+DELETE /api/evidences/:id                                — Удалить (если не в approved scope)
+POST   /api/data-points/:id/evidences                    — Привязать evidence к data_point
+DELETE /api/data-points/:id/evidences/:evidenceId        — Отвязать
+GET    /api/data-points/:id/evidences                    — Список evidence для data_point
+POST   /api/requirement-items/:id/evidences              — Привязать evidence к requirement_item
+DELETE /api/requirement-items/:id/evidences/:evidenceId  — Отвязать
+GET    /api/requirement-items/:id/evidences              — Список evidence для requirement_item
 ```
 
 ### 10.5. Completeness
