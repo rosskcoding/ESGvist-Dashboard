@@ -533,36 +533,31 @@
         <!-- MAIN CONTENT -->
         <div style="padding:24px;background:#f5f5f0;overflow-y:auto;">
 
-          <!-- ═══ BLOCK 1: PROGRESS HERO ═══ -->
-          <div style="background:white;border:1px solid #e8e5e0;border-radius:12px;padding:24px;margin-bottom:16px;">
+          <!-- ═══ BLOCK 1: BREAKDOWN STATS (no duplicate progress) ═══ -->
+          <div style="background:white;border:1px solid #e8e5e0;border-radius:12px;padding:20px 24px;margin-bottom:16px;">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
               <div>
-                <div style="font-size:22px;font-weight:800;color:#1a1a1a;letter-spacing:-.3px;">Reporting Progress</div>
-                <div style="font-size:12px;color:#888;margin-top:3px;">Q2 2025 · GRI Standards · KazEnergo JSC</div>
+                <div style="font-size:18px;font-weight:800;color:#1a1a1a;letter-spacing:-.3px;">Q2 2025 · GRI Standards</div>
+                <div style="font-size:12px;color:#888;margin-top:2px;">KazEnergo JSC · 18 metrics total</div>
               </div>
               <button class="btn2 btn2-green" style="font-size:14px;padding:12px 24px;box-shadow:0 2px 8px rgba(45,138,86,.3);">👉 Continue collection →</button>
             </div>
-            <div style="height:18px;background:#e8e5e0;border-radius:9px;overflow:hidden;margin-bottom:16px;box-shadow:inset 0 1px 3px rgba(0,0,0,.08);">
-              <div style="width:68%;height:100%;background:linear-gradient(90deg,#2d8a56,#34d399);border-radius:9px;position:relative;">
-                <span style="position:absolute;right:8px;top:1px;font-size:11px;font-weight:800;color:white;">68%</span>
-              </div>
-            </div>
-            <div style="display:flex;gap:0;">
-              <div style="flex:1;text-align:center;padding:12px;border-right:1px solid #f0ede8;">
+            <div style="display:flex;gap:10px;">
+              <div style="flex:1;text-align:center;padding:14px;background:#ecfdf5;border-radius:10px;cursor:pointer;">
                 <div style="font-size:28px;font-weight:800;color:#2d8a56;">12</div>
-                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#2d8a56;margin-top:3px;">Submitted</div>
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#166534;margin-top:3px;">Submitted</div>
               </div>
-              <div style="flex:1;text-align:center;padding:14px;border-right:1px solid #f0ede8;background:#fef2f2;border-radius:8px;cursor:pointer;">
-                <div style="font-size:32px;font-weight:800;color:#e74c3c;">6</div>
-                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#e74c3c;margin-top:3px;">Missing →</div>
+              <div style="flex:1;text-align:center;padding:14px;background:#dc2626;border-radius:10px;cursor:pointer;transition:transform .1s;" onmouseover="this.style.transform='scale(1.04)'" onmouseout="this.style.transform='scale(1)'">
+                <div style="font-size:32px;font-weight:900;color:white;">6</div>
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:rgba(255,255,255,.85);margin-top:3px;">Missing → Fix now</div>
               </div>
-              <div style="flex:1;text-align:center;padding:12px;border-right:1px solid #f0ede8;cursor:pointer;">
+              <div style="flex:1;text-align:center;padding:14px;background:#fef2f2;border-radius:10px;cursor:pointer;">
                 <div style="font-size:28px;font-weight:800;color:#e74c3c;">5</div>
-                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#e74c3c;margin-top:3px;">Overdue →</div>
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#991b1b;margin-top:3px;">Overdue →</div>
               </div>
-              <div style="flex:1;text-align:center;padding:12px;cursor:pointer;">
+              <div style="flex:1;text-align:center;padding:14px;background:#fff7ed;border-radius:10px;cursor:pointer;">
                 <div style="font-size:28px;font-weight:800;color:#d97706;">3</div>
-                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#d97706;margin-top:3px;">Issues →</div>
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#92400e;margin-top:3px;">Issues →</div>
               </div>
             </div>
           </div>
@@ -571,7 +566,7 @@
           <div style="background:#fff5f5;border:1px solid #fecaca;border-radius:12px;padding:16px 20px;margin-bottom:16px;">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
               <div style="font-size:13px;font-weight:800;color:#991b1b;">⚠️ Issues (3)</div>
-              <span style="font-size:11px;color:#e74c3c;font-weight:600;cursor:pointer;">View all →</span>
+              <span style="font-size:10px;font-weight:700;color:#fff;padding:4px 12px;background:#e74c3c;border-radius:5px;cursor:pointer;">Fix all critical →</span>
             </div>
 
             <!-- Critical -->
@@ -607,6 +602,7 @@
           </div>
 
           <!-- ═══ BLOCK 3: CATEGORY CARDS (sorted by problems) ═══ -->
+          <div style="font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#e74c3c;margin-bottom:8px;display:flex;align-items:center;gap:6px;">⚠ Needs attention</div>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:16px;">
 
             <!-- Workforce 33% — WORST, red border -->
@@ -664,6 +660,11 @@
               </div>
             </div>
 
+          </div>
+
+          <div style="font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#2d8a56;margin-bottom:8px;display:flex;align-items:center;gap:6px;">✓ Good / Complete</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:16px;">
+
             <!-- Emissions 80% -->
             <div style="background:white;border:1px solid #e8e5e0;border-radius:12px;padding:18px;cursor:pointer;transition:all .15s;" onmouseover="this.style.borderColor='#2d8a56'" onmouseout="this.style.borderColor='#e8e5e0'">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
@@ -700,84 +701,57 @@
               </div>
             </div>
 
-            <!-- Completed (collapsed) -->
-            <div style="background:#fafaf7;border:1px solid #e8e5e0;border-radius:12px;padding:18px;cursor:pointer;opacity:.6;">
-              <div style="display:flex;align-items:center;justify-content:space-between;">
-                <div style="font-size:13px;font-weight:700;color:#888;">✅ Completed (1)</div>
-                <span style="font-size:12px;color:#aaa;">💧 Water · 2/2</span>
-              </div>
-              <div style="font-size:10px;color:#aaa;margin-top:6px;">All metrics submitted and verified</div>
+            <!-- Completed (collapsed, minimal) -->
+            <div style="background:#fafaf7;border:1px solid #e8e5e0;border-radius:10px;padding:12px 16px;cursor:pointer;opacity:.5;display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:12px;font-weight:600;color:#888;">✅ Completed (1) · 💧 Water 2/2</span>
+              <span style="font-size:10px;color:#aaa;">▾</span>
             </div>
           </div>
 
-          <!-- ═══ BLOCK 4: TASKS (priority) + ACTIVITY (muted) ═══ -->
-          <div style="display:grid;grid-template-columns:3fr 2fr;gap:14px;">
+          <!-- ═══ BLOCK 4: TASKS (priority) + ACTIVITY (collapsed) ═══ -->
+          <div style="display:grid;grid-template-columns:1fr;gap:14px;">
 
-            <!-- Tasks — priority sorted, with CTA -->
+            <!-- Tasks — priority sorted, unified CTA style -->
             <div style="background:white;border:1px solid #e8e5e0;border-radius:12px;padding:18px;">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-                <div style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#aaa;">Your Tasks</div>
-                <span style="font-size:10px;color:#2d8a56;font-weight:600;cursor:pointer;">All (7) →</span>
+                <div style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#aaa;">🔥 Priority Tasks</div>
+                <span style="font-size:10px;color:#888;font-weight:600;cursor:pointer;">All tasks (7) →</span>
               </div>
-              <!-- Overdue (top priority) -->
-              <div class="task2" style="background:#fef2f2;margin:0 -18px;padding:10px 18px;border-left:3px solid #e74c3c;">
-                <div class="task2-check urgent"></div>
-                <div class="task2-body">
-                  <div class="task2-title" style="color:#991b1b;">Fill Scope 3 emissions data</div>
-                  <div class="task2-meta">
-                    <span class="task2-tag deadline">⚠ OVERDUE: Mar 20</span>
-                    <span>GRI 305-3</span>
-                  </div>
+              <!-- Overdue #1 -->
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:#fef2f2;border:1px solid #fecaca;border-left:3px solid #e74c3c;border-radius:8px;margin-bottom:8px;cursor:pointer;" onmouseover="this.style.background='#fee2e2'" onmouseout="this.style.background='#fef2f2'">
+                <span style="font-size:16px;">🔥</span>
+                <div style="flex:1;">
+                  <div style="font-size:13px;font-weight:700;color:#991b1b;">Fill Scope 3 emissions data</div>
+                  <div style="font-size:10px;color:#888;margin-top:2px;">GRI 305-3 · <span style="color:#e74c3c;font-weight:700;">⚠ OVERDUE: Mar 20</span></div>
                 </div>
-                <span style="font-size:10px;font-weight:700;color:#fff;cursor:pointer;white-space:nowrap;padding:5px 12px;background:#e74c3c;border-radius:5px;">Complete now →</span>
+                <span style="font-size:11px;font-weight:700;color:#fff;padding:6px 14px;background:#e74c3c;border-radius:6px;cursor:pointer;white-space:nowrap;">Complete now →</span>
               </div>
-              <div class="task2" style="background:#fef2f2;margin:0 -18px;padding:10px 18px;border-left:3px solid #e74c3c;">
-                <div class="task2-check urgent"></div>
-                <div class="task2-body">
-                  <div class="task2-title" style="color:#991b1b;">Attach evidence for Energy</div>
-                  <div class="task2-meta">
-                    <span class="task2-tag deadline">⚠ OVERDUE</span>
-                    <span>No evidence</span>
-                  </div>
+              <!-- Overdue #2 -->
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:#fef2f2;border:1px solid #fecaca;border-left:3px solid #e74c3c;border-radius:8px;margin-bottom:8px;cursor:pointer;" onmouseover="this.style.background='#fee2e2'" onmouseout="this.style.background='#fef2f2'">
+                <span style="font-size:16px;">🔥</span>
+                <div style="flex:1;">
+                  <div style="font-size:13px;font-weight:700;color:#991b1b;">Attach evidence for Energy consumption</div>
+                  <div style="font-size:10px;color:#888;margin-top:2px;">GRI 302-1 · <span style="color:#e74c3c;font-weight:700;">⚠ OVERDUE</span> · No evidence attached</div>
                 </div>
-                <span style="font-size:10px;font-weight:700;color:#fff;cursor:pointer;white-space:nowrap;padding:5px 12px;background:#e74c3c;border-radius:5px;">Fix now →</span>
+                <span style="font-size:11px;font-weight:700;color:#fff;padding:6px 14px;background:#e74c3c;border-radius:6px;cursor:pointer;white-space:nowrap;">Complete now →</span>
               </div>
-              <!-- Normal priority -->
-              <div class="task2">
-                <div class="task2-check"></div>
-                <div class="task2-body">
-                  <div class="task2-title">Review 3 pending metrics (&gt;7 days)</div>
-                  <div class="task2-meta">
-                    <span class="task2-tag" style="background:#eff6ff;color:#3b82f6">Review</span>
-                  </div>
+              <!-- Normal -->
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;background:white;border:1px solid #e8e5e0;border-left:3px solid #3b82f6;border-radius:8px;cursor:pointer;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='white'">
+                <span style="font-size:14px;">📋</span>
+                <div style="flex:1;">
+                  <div style="font-size:12px;font-weight:700;color:#1a1a1a;">Review 3 pending metrics (&gt;7 days)</div>
+                  <div style="font-size:10px;color:#888;margin-top:2px;">Water, Waste, Occupational safety</div>
                 </div>
-                <span style="font-size:10px;font-weight:700;color:#3b82f6;cursor:pointer;white-space:nowrap;padding:3px 8px;background:#eff6ff;border-radius:5px;">Review →</span>
+                <span style="font-size:11px;font-weight:700;color:#fff;padding:6px 14px;background:#3b82f6;border-radius:6px;cursor:pointer;white-space:nowrap;">Review →</span>
               </div>
             </div>
 
-            <!-- Activity (muted, smaller) -->
-            <div style="background:#fafaf7;border:1px solid #e8e5e0;border-radius:12px;padding:16px;opacity:.75;">
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-                <div style="font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#ccc;">Recent Activity</div>
-                <span style="font-size:10px;color:#aaa;font-weight:600;cursor:pointer;">Full log →</span>
-              </div>
-              <div class="timeline">
-                <div class="timeline-item">
-                  <div class="timeline-dot" style="background:#2d8a56"></div>
-                  <div class="timeline-text" style="font-size:11px;"><b>Иванов И.</b> submitted Water</div>
-                  <div class="timeline-time">2h ago</div>
-                </div>
-                <div class="timeline-item">
-                  <div class="timeline-dot" style="background:#d97706"></div>
-                  <div class="timeline-text" style="font-size:11px;"><b>Петрова М.</b> sent CO₂ to review</div>
-                  <div class="timeline-time">5h ago</div>
-                </div>
-                <div class="timeline-item">
-                  <div class="timeline-dot" style="background:#3b82f6"></div>
-                  <div class="timeline-text" style="font-size:11px;"><b>Сидоров К.</b> published Energy</div>
-                  <div class="timeline-time">yesterday</div>
-                </div>
-              </div>
+            <!-- Activity (collapsed, single line) -->
+            <div style="background:#fafaf7;border:1px solid #e8e5e0;border-radius:8px;padding:10px 16px;display:flex;align-items:center;gap:12px;opacity:.5;cursor:pointer;">
+              <span style="font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#ccc;">Activity</span>
+              <span style="font-size:11px;color:#aaa;"><b style="color:#888;">Иванов И.</b> submitted Water · 2h ago</span>
+              <span style="font-size:11px;color:#aaa;"><b style="color:#888;">Петрова М.</b> sent CO₂ · 5h</span>
+              <span style="margin-left:auto;font-size:10px;color:#aaa;cursor:pointer;">Full log ▾</span>
             </div>
           </div>
 
@@ -844,32 +818,23 @@
                 <span style="padding:5px 12px;font-size:11px;font-weight:700;background:#1a1a1a;color:white;cursor:pointer;border-right:1px solid #e0ddd8;">📋 Table</span>
                 <span style="padding:5px 12px;font-size:11px;font-weight:700;background:white;color:#555;cursor:pointer;">⬜ Board</span>
               </div>
-              <button class="btn2 btn2-green" style="font-size:13px;padding:9px 18px;">👉 Continue collection →</button>
+              <button class="btn2 btn2-green" style="font-size:14px;padding:11px 22px;box-shadow:0 2px 8px rgba(45,138,86,.3);">👉 Continue collection →</button>
             </div>
           </div>
 
-          <!-- FAST SCAN SUMMARY -->
-          <div style="display:flex;gap:12px;margin:14px 0;flex-wrap:wrap;">
-            <div style="display:flex;align-items:center;gap:6px;padding:7px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;color:#991b1b;">🔴 <span style="font-size:16px;font-weight:800;">6</span> missing</div>
-            <div style="display:flex;align-items:center;gap:6px;padding:7px 14px;background:#fffbeb;border:1px solid #fed7aa;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;color:#92400e;">🟡 <span style="font-size:16px;font-weight:800;">3</span> in progress</div>
-            <div style="display:flex;align-items:center;gap:6px;padding:7px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;color:#1e40af;">🔵 <span style="font-size:16px;font-weight:800;">3</span> in review</div>
-            <div style="display:flex;align-items:center;gap:6px;padding:7px 14px;background:#ecfdf5;border:1px solid #bbf7d0;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;color:#166534;">🟢 <span style="font-size:16px;font-weight:800;">6</span> submitted</div>
-          </div>
-
-          <!-- FILTERS — Missing active by default -->
-          <div class="filter-chips">
-            <div class="filter-chip">All (18)</div>
-            <div class="filter-chip active" style="background:#e74c3c;color:white;border-color:#e74c3c;"><span class="chip-dot" style="background:white"></span> Missing (6)</div>
-            <div class="filter-chip"><span class="chip-dot" style="background:#d97706"></span> In progress (3)</div>
-            <div class="filter-chip"><span class="chip-dot" style="background:#3b82f6"></span> In review (3)</div>
-            <div class="filter-chip"><span class="chip-dot" style="background:#2d8a56"></span> Submitted (6)</div>
-            <div class="search-bar2" style="max-width:220px;">🔍 <input placeholder="Search metrics..."></div>
+          <!-- SINGLE FILTER ROW (summary + filter combined) -->
+          <div style="display:flex;gap:10px;margin:14px 0;flex-wrap:wrap;align-items:center;">
+            <div style="display:flex;align-items:center;gap:6px;padding:8px 16px;background:#fef2f2;border:2px solid #e74c3c;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;color:#991b1b;box-shadow:0 1px 4px rgba(231,76,60,.15);">🔴 <span style="font-size:16px;font-weight:800;">6</span> missing</div>
+            <div style="display:flex;align-items:center;gap:6px;padding:8px 16px;background:white;border:1px solid #fed7aa;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;color:#92400e;">🟡 <span style="font-size:16px;font-weight:800;">3</span> in progress</div>
+            <div style="display:flex;align-items:center;gap:6px;padding:8px 16px;background:white;border:1px solid #bfdbfe;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;color:#1e40af;">🔵 <span style="font-size:16px;font-weight:800;">3</span> in review</div>
+            <div style="display:flex;align-items:center;gap:6px;padding:8px 16px;background:white;border:1px solid #bbf7d0;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;color:#166534;">🟢 <span style="font-size:16px;font-weight:800;">6</span> submitted</div>
+            <div class="search-bar2" style="max-width:220px;margin-left:auto;">🔍 <input placeholder="Search metrics..."></div>
           </div>
 
           <!-- DATA TABLE -->
           <div style="background:white;border:1px solid #e8e5e0;border-radius:12px;overflow:hidden;">
             <div style="display:grid;grid-template-columns:44px 1fr 100px 110px 130px 90px 100px 80px;padding:0 16px;background:#fafaf7;border-bottom:1px solid #e8e5e0;">
-              <div class="th-cell">Status</div><div class="th-cell">Metric</div><div class="th-cell">Standard</div><div class="th-cell">Category</div><div class="th-cell">Value</div><div class="th-cell">Source</div><div class="th-cell">Updated</div><div class="th-cell">Action</div>
+              <div class="th-cell" style="text-align:center;">●</div><div class="th-cell">Metric</div><div class="th-cell">Standard</div><div class="th-cell">Category</div><div class="th-cell">Value</div><div class="th-cell">Source</div><div class="th-cell">Updated</div><div class="th-cell">Action</div>
             </div>
 
             <!-- Missing rows (red) -->
@@ -917,7 +882,7 @@
             </div>
             <div style="display:grid;grid-template-columns:44px 1fr 100px 110px 130px 90px 100px 80px;padding:0 16px;border-bottom:1px solid #f0ede8;background:#fffbeb;cursor:pointer;">
               <div class="task-cell"><span style="font-size:14px;">🟡</span></div>
-              <div class="task-cell" style="font-weight:700;color:#1a1a1a;">Energy consumption <span style="font-size:9px;font-weight:700;color:#d97706;background:#fff7ed;padding:1px 5px;border-radius:3px;margin-left:4px;">⚠ outlier</span></div>
+              <div class="task-cell" style="font-weight:700;color:#1a1a1a;">Energy consumption <span style="font-size:10px;font-weight:700;color:#fff;background:#d97706;padding:2px 8px;border-radius:4px;margin-left:6px;">⚠ Outlier</span></div>
               <div class="task-cell">GRI 302-1</div>
               <div class="task-cell"><span class="kanban-tag env">Env</span></div>
               <div class="task-cell" style="font-weight:700;color:#d97706;">45,000 MJ</div>
@@ -935,7 +900,7 @@
               <div class="task-cell" style="font-weight:700;">45,000 m³</div>
               <div class="task-cell" style="color:#2d8a56;font-size:11px;">📎 2</div>
               <div class="task-cell" style="font-size:11px;">Mar 10</div>
-              <div class="task-cell"><span style="font-size:10px;font-weight:700;color:#fff;cursor:pointer;padding:3px 8px;background:#3b82f6;border-radius:5px;">Review data</span></div>
+              <div class="task-cell"><span style="font-size:10px;font-weight:700;color:#3b82f6;cursor:pointer;padding:3px 8px;background:white;border:1px solid #3b82f6;border-radius:5px;">Review data</span></div>
             </div>
             <div style="display:grid;grid-template-columns:44px 1fr 100px 110px 130px 90px 100px 80px;padding:0 16px;border-bottom:1px solid #f0ede8;background:#eff6ff;cursor:pointer;">
               <div class="task-cell"><span style="font-size:14px;">🔵</span></div>
@@ -945,7 +910,7 @@
               <div class="task-cell" style="font-weight:700;">1,240 t</div>
               <div class="task-cell" style="color:#2d8a56;font-size:11px;">📎 3</div>
               <div class="task-cell" style="font-size:11px;">Mar 18</div>
-              <div class="task-cell"><span style="font-size:10px;font-weight:700;color:#fff;cursor:pointer;padding:3px 8px;background:#3b82f6;border-radius:5px;">Review data</span></div>
+              <div class="task-cell"><span style="font-size:10px;font-weight:700;color:#3b82f6;cursor:pointer;padding:3px 8px;background:white;border:1px solid #3b82f6;border-radius:5px;">Review data</span></div>
             </div>
 
             <!-- Submitted rows (white/green) -->
