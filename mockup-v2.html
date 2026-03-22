@@ -965,43 +965,50 @@
        v2 SCREEN 3: REVIEW — SPLIT PANEL (email-style)
   ════════════════════════════════════════════════ -->
   <div id="s-review">
-    <div class="screen-label">v2 Мокап 3 <span>Ревью — split panel (как email-клиент)</span></div>
+    <div class="screen-label">v2 Мокап 3 <span>Ревью — split panel + sidebar</span></div>
     <div class="screen">
-      <div class="topbar2">
+      <!-- Context topbar -->
+      <div style="display:flex;align-items:center;height:52px;padding:0 20px;background:#fff;border-bottom:1px solid #e8e5e0;">
         <div class="t2-logo"><em>ESG</em>vist</div>
-        <div class="t2-nav">
-          <div class="t2-nav-item">Обзор</div>
-          <div class="t2-nav-item">Данные</div>
-          <div class="t2-nav-item active">Ревью<span class="t2-nav-badge">3</span></div>
-          <div class="t2-nav-item">Доказательства</div>
-          <div class="t2-nav-item">Отчёт</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-left:20px;font-size:12px;color:#555;background:#f5f5f0;padding:5px 12px;border-radius:7px;border:1px solid #e8e5e0;">📅 <b style="color:#1a1a1a;">Q2 2025</b></div>
+        <div style="margin:0 auto;display:flex;align-items:center;gap:10px;">
+          <div style="width:160px;height:7px;background:#e8e5e0;border-radius:4px;overflow:hidden;"><div style="width:68%;height:100%;background:#2d8a56;border-radius:4px;"></div></div>
+          <span style="font-size:13px;font-weight:800;color:#2d8a56;">68%</span>
         </div>
-        <div class="t2-right">
-          <div class="t2-ctx">📅 <b>2025</b> · <b>GRI</b></div>
-          <div class="t2-company">
-            <div class="t2-company-avatar">KE</div>
-            <div><div class="t2-company-name">KazEnergo JSC</div></div>
-          </div>
+        <div style="display:flex;align-items:center;gap:14px;">
+          <span style="font-size:12px;color:#555;">⏰ Deadline: <b style="color:#1a1a1a;">June 30</b></span>
+          <button class="btn2 btn2-outline" style="font-size:11px;padding:6px 14px;">📤 Export</button>
+          <div class="t2-company"><div class="t2-company-avatar">KE</div></div>
         </div>
       </div>
-      <div class="content2">
-        <div class="page-head2">
-          <div>
-            <div class="page-title2">Ревью</div>
-            <div class="page-sub2">5 метрик ожидают вашего решения</div>
+
+      <div style="display:grid;grid-template-columns:200px 1fr;min-height:600px;">
+        <div style="background:#fafaf7;border-right:1px solid #e8e5e0;padding:16px 0;">
+          <div style="padding:0 16px;margin-bottom:20px;"><div style="font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#aaa;margin-bottom:10px;">Навигация</div></div>
+          <div style="padding:9px 16px 9px 23px;font-size:13px;font-weight:500;color:#555;cursor:pointer;border-left:3px solid transparent;">📊 Overview</div>
+          <div style="padding:9px 16px 9px 23px;font-size:13px;font-weight:500;color:#555;cursor:pointer;border-left:3px solid transparent;">📁 Collection</div>
+          <div style="padding:9px 16px 9px 20px;font-size:13px;font-weight:700;color:#2d8a56;background:#ecfdf5;border-left:3px solid #2d8a56;cursor:pointer;">✅ Validation <span style="background:#e74c3c;color:white;font-size:9px;font-weight:800;border-radius:8px;padding:1px 6px;margin-left:4px;">3</span></div>
+          <div style="padding:9px 16px 9px 23px;font-size:13px;font-weight:500;color:#555;cursor:pointer;border-left:3px solid transparent;">📋 Tasks</div>
+          <div style="padding:9px 16px 9px 23px;font-size:13px;font-weight:500;color:#555;cursor:pointer;border-left:3px solid transparent;">📎 Data Sources</div>
+          <div style="padding:9px 16px 9px 23px;font-size:13px;font-weight:500;color:#555;cursor:pointer;border-left:3px solid transparent;">📤 Export</div>
+        </div>
+
+        <div style="padding:20px;background:#f5f5f0;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+            <div>
+              <div style="font-size:18px;font-weight:800;color:#1a1a1a;letter-spacing:-.3px;">Validation</div>
+              <div style="font-size:12px;color:#888;margin-top:2px;">5 metrics pending review · <span style="color:#e74c3c;font-weight:600;">2 overdue</span></div>
+            </div>
+            <button class="btn2 btn2-green" style="font-size:13px;padding:10px 20px;">✓ Approve all ready (3)</button>
           </div>
-          <button class="btn2 btn2-green">✓ Одобрить все готовые (3)</button>
-        </div>
 
-        <div class="filter-chips" style="margin-bottom:14px;">
-          <div class="filter-chip active">Все</div>
-          <div class="filter-chip"><span class="chip-dot" style="background:#2d8a56"></span> Environmental</div>
-          <div class="filter-chip"><span class="chip-dot" style="background:#3b82f6"></span> Social</div>
-          <div class="filter-chip"><span class="chip-dot" style="background:#d97706"></span> Governance</div>
-          <div class="search-bar2">🔍 <input placeholder="Поиск..."></div>
-        </div>
+          <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
+            <div style="display:flex;align-items:center;gap:6px;padding:7px 14px;background:#fef2f2;border:2px solid #e74c3c;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;color:#991b1b;">🔴 <span style="font-size:14px;font-weight:800;">2</span> overdue</div>
+            <div style="display:flex;align-items:center;gap:6px;padding:7px 14px;background:white;border:1px solid #bfdbfe;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;color:#1e40af;">🔵 <span style="font-size:14px;font-weight:800;">3</span> pending</div>
+            <div class="search-bar2" style="max-width:220px;margin-left:auto;">🔍 <input placeholder="Search..."></div>
+          </div>
 
-        <div class="review-split">
+          <div class="review-split">
           <div class="review-list">
             <div class="review-list-head">Ожидают ревью <span style="color:#1a1a1a;font-weight:800;">5</span></div>
             <div class="review-list-item overdue-item">
@@ -1095,32 +1102,45 @@
             </div>
           </div>
         </div>
-      </div>
+        </div><!-- /main content -->
+      </div><!-- /sidebar+content -->
       <div class="annotation2">
-        💡 v2: Split panel как email-клиент. Список слева — детали справа. Видно значение, доказательства, комментарий и сравнение с прошлым годом — всё в одном экране.
+        💡 Redesigned: Context topbar + sidebar. Split panel validation. Overdue/pending filter chips.
       </div>
     </div>
   </div>
 
   <!-- EVIDENCE: Доказательства — хранилище файлов -->
   <div id="s-evidence">
-    <div class="screen-label">Основная навигация · <span>Доказательства — хранилище файлов и ссылок</span></div>
+    <div class="screen-label">Основная навигация · <span>Доказательства — хранилище файлов + sidebar</span></div>
     <div class="screen">
-      <div class="topbar2">
+      <!-- Context topbar -->
+      <div style="display:flex;align-items:center;height:52px;padding:0 20px;background:#fff;border-bottom:1px solid #e8e5e0;">
         <div class="t2-logo"><em>ESG</em>vist</div>
-        <div class="t2-nav">
-          <div class="t2-nav-item">Обзор</div><div class="t2-nav-item">Данные</div>
-          <div class="t2-nav-item">Ревью</div>
-          <div class="t2-nav-item active">Доказательства</div>
-          <div class="t2-nav-item">Отчёт</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-left:20px;font-size:12px;color:#555;background:#f5f5f0;padding:5px 12px;border-radius:7px;border:1px solid #e8e5e0;">📅 <b style="color:#1a1a1a;">Q2 2025</b></div>
+        <div style="margin:0 auto;display:flex;align-items:center;gap:10px;">
+          <div style="width:160px;height:7px;background:#e8e5e0;border-radius:4px;overflow:hidden;"><div style="width:68%;height:100%;background:#2d8a56;border-radius:4px;"></div></div>
+          <span style="font-size:13px;font-weight:800;color:#2d8a56;">68%</span>
         </div>
-        <div class="t2-right">
-          <div class="t2-ctx">📅 <b>2025</b> · <b>GRI</b></div>
-          <div class="t2-company"><div class="t2-company-avatar">KE</div><div><div class="t2-company-name">KazEnergo JSC</div></div></div>
+        <div style="display:flex;align-items:center;gap:14px;">
+          <span style="font-size:12px;color:#555;">⏰ Deadline: <b style="color:#1a1a1a;">June 30</b></span>
+          <button class="btn2 btn2-outline" style="font-size:11px;padding:6px 14px;">📤 Export</button>
+          <div class="t2-company"><div class="t2-company-avatar">KE</div></div>
         </div>
       </div>
 
-      <div style="padding:20px 28px;display:flex;flex-direction:column;gap:16px;">
+      <div style="display:grid;grid-template-columns:200px 1fr;min-height:600px;">
+        <div style="background:#fafaf7;border-right:1px solid #e8e5e0;padding:16px 0;">
+          <div style="padding:0 16px;margin-bottom:20px;"><div style="font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#aaa;margin-bottom:10px;">Навигация</div></div>
+          <div style="padding:9px 16px 9px 23px;font-size:13px;font-weight:500;color:#555;cursor:pointer;border-left:3px solid transparent;">📊 Overview</div>
+          <div style="padding:9px 16px 9px 23px;font-size:13px;font-weight:500;color:#555;cursor:pointer;border-left:3px solid transparent;">📁 Collection</div>
+          <div style="padding:9px 16px 9px 23px;font-size:13px;font-weight:500;color:#555;cursor:pointer;border-left:3px solid transparent;">✅ Validation <span style="background:#e74c3c;color:white;font-size:9px;font-weight:800;border-radius:8px;padding:1px 6px;margin-left:4px;">3</span></div>
+          <div style="padding:9px 16px 9px 23px;font-size:13px;font-weight:500;color:#555;cursor:pointer;border-left:3px solid transparent;">📋 Tasks</div>
+          <div style="padding:9px 16px 9px 20px;font-size:13px;font-weight:700;color:#2d8a56;background:#ecfdf5;border-left:3px solid #2d8a56;cursor:pointer;">📎 Data Sources</div>
+          <div style="padding:9px 16px 9px 23px;font-size:13px;font-weight:500;color:#555;cursor:pointer;border-left:3px solid transparent;">📤 Export</div>
+        </div>
+
+        <div style="padding:20px;background:#f5f5f0;display:flex;flex-direction:column;gap:16px;">
 
         <!-- Summary strip -->
         <div style="display:flex;gap:0;background:#f7f6f3;border:1px solid #e8e5e0;border-radius:10px;overflow:hidden;">
@@ -1222,28 +1242,42 @@
           </div>
         </div>
 
-      </div>
+        </div><!-- /main content -->
+      </div><!-- /sidebar+content -->
     </div>
   </div>
 
   <!-- REPORT: Отчёт — GRI Content Index & экспорт -->
   <div id="s-report">
-    <div class="screen-label">Основная навигация · <span>Отчёт — GRI Content Index и экспорт</span></div>
+    <div class="screen-label">Основная навигация · <span>Отчёт — GRI Content Index + sidebar</span></div>
     <div class="screen">
-      <div class="topbar2">
+      <!-- Context topbar -->
+      <div style="display:flex;align-items:center;height:52px;padding:0 20px;background:#fff;border-bottom:1px solid #e8e5e0;">
         <div class="t2-logo"><em>ESG</em>vist</div>
-        <div class="t2-nav">
-          <div class="t2-nav-item">Обзор</div><div class="t2-nav-item">Данные</div>
-          <div class="t2-nav-item">Ревью</div><div class="t2-nav-item">Доказательства</div>
-          <div class="t2-nav-item active">Отчёт</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-left:20px;font-size:12px;color:#555;background:#f5f5f0;padding:5px 12px;border-radius:7px;border:1px solid #e8e5e0;">📅 <b style="color:#1a1a1a;">Q2 2025</b></div>
+        <div style="margin:0 auto;display:flex;align-items:center;gap:10px;">
+          <div style="width:160px;height:7px;background:#e8e5e0;border-radius:4px;overflow:hidden;"><div style="width:68%;height:100%;background:#2d8a56;border-radius:4px;"></div></div>
+          <span style="font-size:13px;font-weight:800;color:#2d8a56;">68%</span>
         </div>
-        <div class="t2-right">
-          <div class="t2-ctx">📅 <b>2025</b> · <b>GRI</b></div>
-          <div class="t2-company"><div class="t2-company-avatar">KE</div><div><div class="t2-company-name">KazEnergo JSC</div></div></div>
+        <div style="display:flex;align-items:center;gap:14px;">
+          <span style="font-size:12px;color:#555;">⏰ Deadline: <b style="color:#1a1a1a;">June 30</b></span>
+          <button class="btn2 btn2-outline" style="font-size:11px;padding:6px 14px;">📤 Export</button>
+          <div class="t2-company"><div class="t2-company-avatar">KE</div></div>
         </div>
       </div>
 
-      <div style="padding:20px 28px;display:flex;flex-direction:column;gap:20px;">
+      <div style="display:grid;grid-template-columns:200px 1fr;min-height:600px;">
+        <div style="background:#fafaf7;border-right:1px solid #e8e5e0;padding:16px 0;">
+          <div style="padding:0 16px;margin-bottom:20px;"><div style="font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#aaa;margin-bottom:10px;">Навигация</div></div>
+          <div style="padding:9px 16px 9px 23px;font-size:13px;font-weight:500;color:#555;cursor:pointer;border-left:3px solid transparent;">📊 Overview</div>
+          <div style="padding:9px 16px 9px 23px;font-size:13px;font-weight:500;color:#555;cursor:pointer;border-left:3px solid transparent;">📁 Collection</div>
+          <div style="padding:9px 16px 9px 23px;font-size:13px;font-weight:500;color:#555;cursor:pointer;border-left:3px solid transparent;">✅ Validation <span style="background:#e74c3c;color:white;font-size:9px;font-weight:800;border-radius:8px;padding:1px 6px;margin-left:4px;">3</span></div>
+          <div style="padding:9px 16px 9px 23px;font-size:13px;font-weight:500;color:#555;cursor:pointer;border-left:3px solid transparent;">📋 Tasks</div>
+          <div style="padding:9px 16px 9px 23px;font-size:13px;font-weight:500;color:#555;cursor:pointer;border-left:3px solid transparent;">📎 Data Sources</div>
+          <div style="padding:9px 16px 9px 20px;font-size:13px;font-weight:700;color:#2d8a56;background:#ecfdf5;border-left:3px solid #2d8a56;cursor:pointer;">📤 Export</div>
+        </div>
+
+        <div style="padding:20px;background:#f5f5f0;display:flex;flex-direction:column;gap:20px;">
 
         <!-- Tabs -->
         <div style="display:flex;gap:4px;border-bottom:2px solid #e8e5e0;padding-bottom:0;">
@@ -1394,7 +1428,8 @@
           </div>
         </div>
 
-      </div>
+        </div><!-- /main content -->
+      </div><!-- /sidebar+content -->
     </div>
   </div>
 
