@@ -472,19 +472,31 @@
        v2 SCREEN 1: OVERVIEW — BENTO DASHBOARD
   ════════════════════════════════════════════════ -->
   <div id="s-overview">
-    <div class="screen-label">v2 Мокап 1 <span>Обзор — bento dashboard, светлый, горизонт. навигация</span></div>
+    <div class="screen-label">v2 Мокап 1 <span>Обзор — redesigned: sidebar + context topbar + issues</span></div>
     <div class="screen">
-      <div class="topbar2">
+
+      <!-- ═══ CONTEXT TOPBAR ═══ -->
+      <div style="display:flex;align-items:center;height:52px;padding:0 20px;background:#fff;border-bottom:1px solid #e8e5e0;">
         <div class="t2-logo"><em>ESG</em>vist</div>
-        <div class="t2-nav">
-          <div class="t2-nav-item active">Обзор</div>
-          <div class="t2-nav-item">Данные</div>
-          <div class="t2-nav-item">Ревью<span class="t2-nav-badge">3</span></div>
-          <div class="t2-nav-item">Доказательства</div>
-          <div class="t2-nav-item">Отчёт</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-left:20px;font-size:12px;color:#555;background:#f5f5f0;padding:5px 12px;border-radius:7px;border:1px solid #e8e5e0;">
+          📅 <b style="color:#1a1a1a;">Q2 2025</b>
         </div>
-        <div class="t2-right">
-          <div class="t2-ctx">📅 <b>2025</b> · <b>GRI</b></div>
+
+        <!-- center: progress -->
+        <div style="margin:0 auto;display:flex;align-items:center;gap:10px;">
+          <div style="width:160px;height:7px;background:#e8e5e0;border-radius:4px;overflow:hidden;">
+            <div style="width:68%;height:100%;background:#2d8a56;border-radius:4px;"></div>
+          </div>
+          <span style="font-size:13px;font-weight:800;color:#2d8a56;">68%</span>
+          <span style="font-size:11px;color:#888;">complete</span>
+        </div>
+
+        <!-- right: deadline + export -->
+        <div style="display:flex;align-items:center;gap:14px;">
+          <div style="display:flex;align-items:center;gap:5px;font-size:12px;color:#555;">
+            <span style="font-size:14px;">⏰</span> Deadline: <b style="color:#1a1a1a;">June 30</b>
+          </div>
+          <button class="btn2 btn2-outline" style="font-size:11px;padding:6px 14px;">📤 Export</button>
           <div class="t2-company">
             <div class="t2-company-avatar">KE</div>
             <div>
@@ -494,159 +506,292 @@
           </div>
         </div>
       </div>
-      <div class="subbar">
-        <div class="subbar-tag">Период: <b>01.01 – 31.12.2025</b></div>
-        <div class="subbar-divider"></div>
-        <div class="subbar-tag">Метрик: <b>18</b></div>
-        <div class="subbar-divider"></div>
-        <div class="subbar-tag">Заполнено: <b>12 (68%)</b></div>
-      </div>
-      <div class="content2">
-        <div class="bento">
-          <!-- Donut chart -->
-          <div class="bento-card">
-            <div class="bento-card-title">Общий прогресс</div>
-            <div class="donut-wrap">
-              <div class="donut" style="background: conic-gradient(#2d8a56 0% 44%, #3b82f6 44% 61%, #d97706 61% 67%, #e8e5e0 67% 100%);">
-                <div style="width: 50px; height: 50px; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center; z-index: 2;">
-                  <div class="donut-center">68<small>%</small></div>
-                </div>
-              </div>
-              <div class="donut-legend">
-                <div class="donut-legend-item"><div class="donut-legend-dot" style="background:#2d8a56"></div> Опубликовано <span class="donut-legend-val">8</span></div>
-                <div class="donut-legend-item"><div class="donut-legend-dot" style="background:#3b82f6"></div> На ревью <span class="donut-legend-val">3</span></div>
-                <div class="donut-legend-item"><div class="donut-legend-dot" style="background:#d97706"></div> Черновик <span class="donut-legend-val">1</span></div>
-                <div class="donut-legend-item"><div class="donut-legend-dot" style="background:#e8e5e0"></div> Нет данных <span class="donut-legend-val">6</span></div>
-              </div>
-            </div>
-          </div>
 
-          <!-- Stat cards -->
-          <div class="bento-card">
-            <div class="bento-card-title">Ключевые метрики</div>
-            <div class="stat-row">
-              <div class="stat-block">
-                <div class="stat-num green">8</div>
-                <div class="stat-label">Опубликовано</div>
-              </div>
-              <div class="stat-block">
-                <div class="stat-num orange">3</div>
-                <div class="stat-label">Ждут ревью</div>
-              </div>
-              <div class="stat-block">
-                <div class="stat-num red">2</div>
-                <div class="stat-label">Проблемы</div>
-              </div>
-            </div>
-          </div>
+      <!-- ═══ SIDEBAR + CONTENT LAYOUT ═══ -->
+      <div style="display:grid;grid-template-columns:200px 1fr;min-height:640px;">
 
-          <!-- E/S/G bars -->
-          <div class="bento-card">
-            <div class="bento-card-title">По категориям <span style="font-size:10px;color:#2d8a56;cursor:pointer;text-transform:none;letter-spacing:0;font-weight:600;">Детали →</span></div>
-            <div class="esg-bars2">
-              <div class="esg-bar2">
-                <div class="esg-bar2-head">
-                  <div class="esg-bar2-name"><span style="color:#2d8a56">●</span> Environmental</div>
-                  <div class="esg-bar2-pct" style="color:#2d8a56">80%</div>
-                </div>
-                <div class="esg-bar2-track"><div class="esg-bar2-fill" style="width:80%;background:#2d8a56"></div></div>
-                <div class="esg-bar2-sub"><span>8 / 10 метрик</span><span>+2 на этой неделе</span></div>
-              </div>
-              <div class="esg-bar2">
-                <div class="esg-bar2-head">
-                  <div class="esg-bar2-name"><span style="color:#3b82f6">●</span> Social</div>
-                  <div class="esg-bar2-pct" style="color:#3b82f6">50%</div>
-                </div>
-                <div class="esg-bar2-track"><div class="esg-bar2-fill" style="width:50%;background:#3b82f6"></div></div>
-                <div class="esg-bar2-sub"><span>3 / 6 метрик</span><span>+1 на этой неделе</span></div>
-              </div>
-              <div class="esg-bar2">
-                <div class="esg-bar2-head">
-                  <div class="esg-bar2-name"><span style="color:#d97706">●</span> Governance</div>
-                  <div class="esg-bar2-pct" style="color:#d97706">50%</div>
-                </div>
-                <div class="esg-bar2-track"><div class="esg-bar2-fill" style="width:50%;background:#d97706"></div></div>
-                <div class="esg-bar2-sub"><span>1 / 2 метрики</span><span>без изменений</span></div>
-              </div>
-            </div>
+        <!-- SIDEBAR -->
+        <div style="background:#fafaf7;border-right:1px solid #e8e5e0;padding:16px 0;">
+          <div style="padding:0 16px;margin-bottom:20px;">
+            <div style="font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#aaa;margin-bottom:10px;">Навигация</div>
           </div>
+          <div style="padding:9px 16px 9px 20px;font-size:13px;font-weight:700;color:#2d8a56;background:#ecfdf5;border-left:3px solid #2d8a56;cursor:pointer;">📊 Overview</div>
+          <div style="padding:9px 16px 9px 23px;font-size:13px;font-weight:500;color:#555;cursor:pointer;border-left:3px solid transparent;" onmouseover="this.style.background='#f0ede8'" onmouseout="this.style.background='transparent'">📁 Collection</div>
+          <div style="padding:9px 16px 9px 23px;font-size:13px;font-weight:500;color:#555;cursor:pointer;border-left:3px solid transparent;display:flex;align-items:center;justify-content:space-between;" onmouseover="this.style.background='#f0ede8'" onmouseout="this.style.background='transparent'">✅ Validation <span style="background:#e74c3c;color:white;font-size:9px;font-weight:800;border-radius:8px;padding:1px 6px;">3</span></div>
+          <div style="padding:9px 16px 9px 23px;font-size:13px;font-weight:500;color:#555;cursor:pointer;border-left:3px solid transparent;" onmouseover="this.style.background='#f0ede8'" onmouseout="this.style.background='transparent'">📋 Tasks</div>
+          <div style="padding:9px 16px 9px 23px;font-size:13px;font-weight:500;color:#555;cursor:pointer;border-left:3px solid transparent;" onmouseover="this.style.background='#f0ede8'" onmouseout="this.style.background='transparent'">📎 Data Sources</div>
+          <div style="padding:9px 16px 9px 23px;font-size:13px;font-weight:500;color:#555;cursor:pointer;border-left:3px solid transparent;" onmouseover="this.style.background='#f0ede8'" onmouseout="this.style.background='transparent'">📤 Export</div>
 
-          <!-- Tasks -->
-          <div class="bento-card bento-wide">
-            <div class="bento-card-title">Ваши задачи <span style="font-size:10px;color:#2d8a56;cursor:pointer;text-transform:none;letter-spacing:0;font-weight:600;">Все задачи (7) →</span></div>
-            <div class="task2">
-              <div class="task2-check urgent"></div>
-              <div class="task2-body">
-                <div class="task2-title">Заполнить данные по утечкам и выбросам</div>
-                <div class="task2-meta">
-                  <span class="task2-tag env">Environmental</span>
-                  <span class="task2-tag deadline">Дедлайн: 20 мар</span>
-                  <span>GRI 305-7</span>
-                </div>
-              </div>
-            </div>
-            <div class="task2">
-              <div class="task2-check urgent"></div>
-              <div class="task2-body">
-                <div class="task2-title">Добавить источник для «Энергопотребление»</div>
-                <div class="task2-meta">
-                  <span class="task2-tag env">Environmental</span>
-                  <span>Нет доказательств</span>
-                </div>
-              </div>
-            </div>
-            <div class="task2">
-              <div class="task2-check"></div>
-              <div class="task2-body">
-                <div class="task2-title">Одобрить 3 метрики, ожидающие ревью > 7 дн.</div>
-                <div class="task2-meta">
-                  <span class="task2-tag" style="background:#eff6ff;color:#3b82f6">Ревью</span>
-                  <span>Водопотребление, Отходы, Охрана труда</span>
-                </div>
-              </div>
-            </div>
-            <div class="task2">
-              <div class="task2-check"></div>
-              <div class="task2-body">
-                <div class="task2-title">Заполнить данные по охране труда</div>
-                <div class="task2-meta">
-                  <span class="task2-tag soc">Social</span>
-                  <span>GRI 403-9</span>
-                </div>
-              </div>
-            </div>
+          <div style="border-top:1px solid #e8e5e0;margin:20px 16px 12px;"></div>
+          <div style="padding:0 16px;margin-bottom:10px;">
+            <div style="font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#aaa;margin-bottom:10px;">Настройки</div>
           </div>
-
-          <!-- Activity timeline -->
-          <div class="bento-card">
-            <div class="bento-card-title">Активность</div>
-            <div class="timeline">
-              <div class="timeline-item">
-                <div class="timeline-dot" style="background:#2d8a56"></div>
-                <div class="timeline-text"><b>Иванов И.</b> добавил «Водопотребление»</div>
-                <div class="timeline-time">2 часа назад</div>
-              </div>
-              <div class="timeline-item">
-                <div class="timeline-dot" style="background:#d97706"></div>
-                <div class="timeline-text"><b>Петрова М.</b> отправила CO₂ на ревью</div>
-                <div class="timeline-time">5 часов назад</div>
-              </div>
-              <div class="timeline-item">
-                <div class="timeline-dot" style="background:#3b82f6"></div>
-                <div class="timeline-text"><b>Сидоров К.</b> опубликовал «Энергоэффективность»</div>
-                <div class="timeline-time">вчера</div>
-              </div>
-              <div class="timeline-item">
-                <div class="timeline-dot" style="background:#e8e5e0"></div>
-                <div class="timeline-text"><b>Система</b> напомнила о дедлайне CO₂</div>
-                <div class="timeline-time">вчера</div>
-              </div>
-            </div>
-          </div>
+          <div style="padding:9px 16px 9px 23px;font-size:13px;font-weight:500;color:#555;cursor:pointer;border-left:3px solid transparent;" onmouseover="this.style.background='#f0ede8'" onmouseout="this.style.background='transparent'">👥 Users</div>
+          <div style="padding:9px 16px 9px 23px;font-size:13px;font-weight:500;color:#555;cursor:pointer;border-left:3px solid transparent;" onmouseover="this.style.background='#f0ede8'" onmouseout="this.style.background='transparent'">⚙️ Settings</div>
         </div>
-      </div>
+
+        <!-- MAIN CONTENT -->
+        <div style="padding:24px;background:#f5f5f0;overflow-y:auto;">
+
+          <!-- ═══ BLOCK 1: PROGRESS HERO ═══ -->
+          <div style="background:white;border:1px solid #e8e5e0;border-radius:12px;padding:24px;margin-bottom:16px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+              <div>
+                <div style="font-size:20px;font-weight:800;color:#1a1a1a;letter-spacing:-.3px;">Reporting Progress</div>
+                <div style="font-size:12px;color:#888;margin-top:3px;">Q2 2025 · GRI Standards · KazEnergo JSC</div>
+              </div>
+              <button class="btn2 btn2-green" style="font-size:13px;padding:10px 20px;">👉 Continue collection</button>
+            </div>
+            <div style="height:14px;background:#e8e5e0;border-radius:7px;overflow:hidden;margin-bottom:14px;">
+              <div style="width:68%;height:100%;background:linear-gradient(90deg,#2d8a56,#34d399);border-radius:7px;"></div>
+            </div>
+            <div style="display:flex;gap:0;">
+              <div style="flex:1;text-align:center;padding:12px;border-right:1px solid #f0ede8;">
+                <div style="font-size:28px;font-weight:800;color:#2d8a56;">12</div>
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;margin-top:3px;">Submitted</div>
+              </div>
+              <div style="flex:1;text-align:center;padding:12px;border-right:1px solid #f0ede8;">
+                <div style="font-size:28px;font-weight:800;color:#d97706;">6</div>
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;margin-top:3px;">Missing</div>
+              </div>
+              <div style="flex:1;text-align:center;padding:12px;border-right:1px solid #f0ede8;">
+                <div style="font-size:28px;font-weight:800;color:#e74c3c;">5</div>
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;margin-top:3px;">Overdue</div>
+              </div>
+              <div style="flex:1;text-align:center;padding:12px;">
+                <div style="font-size:28px;font-weight:800;color:#e74c3c;">3</div>
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;margin-top:3px;">Issues</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ═══ BLOCK 2: ISSUES ═══ -->
+          <div style="background:#fff5f5;border:1px solid #fecaca;border-radius:12px;padding:16px 20px;margin-bottom:16px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+              <div style="font-size:13px;font-weight:800;color:#991b1b;">⚠️ Issues (3)</div>
+              <span style="font-size:11px;color:#e74c3c;font-weight:600;cursor:pointer;">View all →</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:white;border:1px solid #fecaca;border-radius:8px;cursor:pointer;" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='white'">
+                <span style="font-size:14px;">🔴</span>
+                <div style="flex:1;">
+                  <div style="font-size:12px;font-weight:700;color:#1a1a1a;">Missing Scope 3 data — GRI 305-3</div>
+                  <div style="font-size:10px;color:#888;margin-top:2px;">No data submitted · Deadline: 20 Mar · Assigned: Иванов И.</div>
+                </div>
+                <span style="font-size:11px;font-weight:700;color:#e74c3c;white-space:nowrap;">→ Fix</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:white;border:1px solid #fecaca;border-radius:8px;cursor:pointer;" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='white'">
+                <span style="font-size:14px;">🟡</span>
+                <div style="flex:1;">
+                  <div style="font-size:12px;font-weight:700;color:#1a1a1a;">Energy data inconsistent — GRI 302-1</div>
+                  <div style="font-size:10px;color:#888;margin-top:2px;">Value differs &gt;40% from prev. period · Needs review</div>
+                </div>
+                <span style="font-size:11px;font-weight:700;color:#d97706;white-space:nowrap;">→ Review</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:white;border:1px solid #fecaca;border-radius:8px;cursor:pointer;" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='white'">
+                <span style="font-size:14px;">🔴</span>
+                <div style="flex:1;">
+                  <div style="font-size:12px;font-weight:700;color:#1a1a1a;">Workforce data outdated — GRI 401-1</div>
+                  <div style="font-size:10px;color:#888;margin-top:2px;">Last updated 6+ months ago · Evidence expired</div>
+                </div>
+                <span style="font-size:11px;font-weight:700;color:#e74c3c;white-space:nowrap;">→ Update</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- ═══ BLOCK 3: CATEGORY CARDS ═══ -->
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:16px;">
+
+            <!-- Emissions -->
+            <div style="background:white;border:1px solid #e8e5e0;border-radius:12px;padding:18px;cursor:pointer;transition:all .15s;" onmouseover="this.style.borderColor='#2d8a56';this.style.boxShadow='0 2px 12px rgba(45,138,86,.1)'" onmouseout="this.style.borderColor='#e8e5e0';this.style.boxShadow='none'">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                <div style="font-size:13px;font-weight:800;color:#1a1a1a;">🏭 Emissions</div>
+                <span style="font-size:14px;font-weight:800;color:#2d8a56;">80%</span>
+              </div>
+              <div style="height:6px;background:#e8e5e0;border-radius:3px;overflow:hidden;margin-bottom:10px;">
+                <div style="width:80%;height:100%;background:#2d8a56;border-radius:3px;"></div>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+                <span style="font-size:10px;font-weight:700;color:#d97706;background:#fff7ed;padding:2px 7px;border-radius:4px;">🟡 1 in progress</span>
+                <span style="font-size:10px;font-weight:700;color:#e74c3c;background:#fef2f2;padding:2px 7px;border-radius:4px;">🔴 1 missing</span>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <span style="font-size:10px;color:#888;">4/5 metrics</span>
+                <span style="font-size:11px;font-weight:700;color:#2d8a56;">View details →</span>
+              </div>
+            </div>
+
+            <!-- Energy -->
+            <div style="background:white;border:1px solid #e8e5e0;border-radius:12px;padding:18px;cursor:pointer;transition:all .15s;" onmouseover="this.style.borderColor='#2d8a56';this.style.boxShadow='0 2px 12px rgba(45,138,86,.1)'" onmouseout="this.style.borderColor='#e8e5e0';this.style.boxShadow='none'">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                <div style="font-size:13px;font-weight:800;color:#1a1a1a;">⚡ Energy</div>
+                <span style="font-size:14px;font-weight:800;color:#d97706;">60%</span>
+              </div>
+              <div style="height:6px;background:#e8e5e0;border-radius:3px;overflow:hidden;margin-bottom:10px;">
+                <div style="width:60%;height:100%;background:#d97706;border-radius:3px;"></div>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+                <span style="font-size:10px;font-weight:700;color:#d97706;background:#fff7ed;padding:2px 7px;border-radius:4px;">🟡 2 in progress</span>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <span style="font-size:10px;color:#888;">3/5 metrics</span>
+                <span style="font-size:11px;font-weight:700;color:#2d8a56;">View details →</span>
+              </div>
+            </div>
+
+            <!-- Water -->
+            <div style="background:white;border:1px solid #e8e5e0;border-radius:12px;padding:18px;cursor:pointer;transition:all .15s;" onmouseover="this.style.borderColor='#2d8a56';this.style.boxShadow='0 2px 12px rgba(45,138,86,.1)'" onmouseout="this.style.borderColor='#e8e5e0';this.style.boxShadow='none'">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                <div style="font-size:13px;font-weight:800;color:#1a1a1a;">💧 Water</div>
+                <span style="font-size:14px;font-weight:800;color:#2d8a56;">100%</span>
+              </div>
+              <div style="height:6px;background:#e8e5e0;border-radius:3px;overflow:hidden;margin-bottom:10px;">
+                <div style="width:100%;height:100%;background:#2d8a56;border-radius:3px;"></div>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+                <span style="font-size:10px;font-weight:700;color:#2d8a56;background:#ecfdf5;padding:2px 7px;border-radius:4px;">✅ Complete</span>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <span style="font-size:10px;color:#888;">2/2 metrics</span>
+                <span style="font-size:11px;font-weight:700;color:#2d8a56;">View details →</span>
+              </div>
+            </div>
+
+            <!-- Workforce -->
+            <div style="background:white;border:1px solid #e8e5e0;border-radius:12px;padding:18px;cursor:pointer;transition:all .15s;" onmouseover="this.style.borderColor='#2d8a56';this.style.boxShadow='0 2px 12px rgba(45,138,86,.1)'" onmouseout="this.style.borderColor='#e8e5e0';this.style.boxShadow='none'">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                <div style="font-size:13px;font-weight:800;color:#1a1a1a;">👥 Workforce</div>
+                <span style="font-size:14px;font-weight:800;color:#e74c3c;">33%</span>
+              </div>
+              <div style="height:6px;background:#e8e5e0;border-radius:3px;overflow:hidden;margin-bottom:10px;">
+                <div style="width:33%;height:100%;background:#e74c3c;border-radius:3px;"></div>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+                <span style="font-size:10px;font-weight:700;color:#e74c3c;background:#fef2f2;padding:2px 7px;border-radius:4px;">🔴 2 missing</span>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <span style="font-size:10px;color:#888;">1/3 metrics</span>
+                <span style="font-size:11px;font-weight:700;color:#2d8a56;">View details →</span>
+              </div>
+            </div>
+
+            <!-- Health & Safety -->
+            <div style="background:white;border:1px solid #e8e5e0;border-radius:12px;padding:18px;cursor:pointer;transition:all .15s;" onmouseover="this.style.borderColor='#2d8a56';this.style.boxShadow='0 2px 12px rgba(45,138,86,.1)'" onmouseout="this.style.borderColor='#e8e5e0';this.style.boxShadow='none'">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                <div style="font-size:13px;font-weight:800;color:#1a1a1a;">🛡️ Health &amp; Safety</div>
+                <span style="font-size:14px;font-weight:800;color:#d97706;">50%</span>
+              </div>
+              <div style="height:6px;background:#e8e5e0;border-radius:3px;overflow:hidden;margin-bottom:10px;">
+                <div style="width:50%;height:100%;background:#d97706;border-radius:3px;"></div>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+                <span style="font-size:10px;font-weight:700;color:#d97706;background:#fff7ed;padding:2px 7px;border-radius:4px;">🟡 1 in progress</span>
+                <span style="font-size:10px;font-weight:700;color:#e74c3c;background:#fef2f2;padding:2px 7px;border-radius:4px;">🔴 1 missing</span>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <span style="font-size:10px;color:#888;">1/2 metrics</span>
+                <span style="font-size:11px;font-weight:700;color:#2d8a56;">View details →</span>
+              </div>
+            </div>
+
+            <!-- Governance -->
+            <div style="background:white;border:1px solid #e8e5e0;border-radius:12px;padding:18px;cursor:pointer;transition:all .15s;" onmouseover="this.style.borderColor='#2d8a56';this.style.boxShadow='0 2px 12px rgba(45,138,86,.1)'" onmouseout="this.style.borderColor='#e8e5e0';this.style.boxShadow='none'">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                <div style="font-size:13px;font-weight:800;color:#1a1a1a;">⚖️ Governance</div>
+                <span style="font-size:14px;font-weight:800;color:#d97706;">50%</span>
+              </div>
+              <div style="height:6px;background:#e8e5e0;border-radius:3px;overflow:hidden;margin-bottom:10px;">
+                <div style="width:50%;height:100%;background:#d97706;border-radius:3px;"></div>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+                <span style="font-size:10px;font-weight:700;color:#d97706;background:#fff7ed;padding:2px 7px;border-radius:4px;">🟡 1 in progress</span>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <span style="font-size:10px;color:#888;">1/2 metrics</span>
+                <span style="font-size:11px;font-weight:700;color:#2d8a56;">View details →</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- ═══ BLOCK 4: RECENT ACTIVITY (compact) ═══ -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+
+            <!-- Tasks -->
+            <div style="background:white;border:1px solid #e8e5e0;border-radius:12px;padding:18px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+                <div style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#aaa;">Your Tasks</div>
+                <span style="font-size:10px;color:#2d8a56;font-weight:600;cursor:pointer;">All (7) →</span>
+              </div>
+              <div class="task2">
+                <div class="task2-check urgent"></div>
+                <div class="task2-body">
+                  <div class="task2-title">Fill Scope 3 emissions data</div>
+                  <div class="task2-meta">
+                    <span class="task2-tag deadline">Overdue: Mar 20</span>
+                    <span>GRI 305-3</span>
+                  </div>
+                </div>
+                <span style="font-size:10px;font-weight:700;color:#e74c3c;cursor:pointer;white-space:nowrap;padding:3px 8px;background:#fef2f2;border-radius:5px;">→ Add value</span>
+              </div>
+              <div class="task2">
+                <div class="task2-check urgent"></div>
+                <div class="task2-body">
+                  <div class="task2-title">Attach evidence for Energy consumption</div>
+                  <div class="task2-meta">
+                    <span class="task2-tag env">Environmental</span>
+                    <span>No evidence</span>
+                  </div>
+                </div>
+                <span style="font-size:10px;font-weight:700;color:#d97706;cursor:pointer;white-space:nowrap;padding:3px 8px;background:#fff7ed;border-radius:5px;">→ Fix</span>
+              </div>
+              <div class="task2">
+                <div class="task2-check"></div>
+                <div class="task2-body">
+                  <div class="task2-title">Review 3 pending metrics (&gt;7 days)</div>
+                  <div class="task2-meta">
+                    <span class="task2-tag" style="background:#eff6ff;color:#3b82f6">Review</span>
+                  </div>
+                </div>
+                <span style="font-size:10px;font-weight:700;color:#3b82f6;cursor:pointer;white-space:nowrap;padding:3px 8px;background:#eff6ff;border-radius:5px;">→ Review</span>
+              </div>
+            </div>
+
+            <!-- Activity -->
+            <div style="background:white;border:1px solid #e8e5e0;border-radius:12px;padding:18px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+                <div style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#aaa;">Activity</div>
+                <span style="font-size:10px;color:#2d8a56;font-weight:600;cursor:pointer;">Full log →</span>
+              </div>
+              <div class="timeline">
+                <div class="timeline-item">
+                  <div class="timeline-dot" style="background:#2d8a56"></div>
+                  <div class="timeline-text"><b>Иванов И.</b> submitted «Water consumption»</div>
+                  <div class="timeline-time">2 hours ago</div>
+                </div>
+                <div class="timeline-item">
+                  <div class="timeline-dot" style="background:#d97706"></div>
+                  <div class="timeline-text"><b>Петрова М.</b> sent CO₂ to review</div>
+                  <div class="timeline-time">5 hours ago</div>
+                </div>
+                <div class="timeline-item">
+                  <div class="timeline-dot" style="background:#3b82f6"></div>
+                  <div class="timeline-text"><b>Сидоров К.</b> published «Energy efficiency»</div>
+                  <div class="timeline-time">yesterday</div>
+                </div>
+                <div class="timeline-item">
+                  <div class="timeline-dot" style="background:#e74c3c"></div>
+                  <div class="timeline-text"><b>System</b> flagged CO₂ data as overdue</div>
+                  <div class="timeline-time">yesterday</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /main content -->
+      </div><!-- /sidebar+content grid -->
+
       <div class="annotation2">
-        💡 v2: Светлая тема. Горизонтальная навигация (привычная). Bento-сетка для дашборда. Donut-диаграмма для прогресса. Задачи с чекбоксами. Timeline-активность.
+        💡 Redesigned: Context topbar (period, progress %, deadline, export). Left sidebar navigation. Hero progress block + "Continue collection" CTA. Issues panel (clickable, red). Category cards with mini-progress bars + status badges + quick actions. Tasks with inline action buttons.
       </div>
     </div>
   </div>
@@ -655,167 +800,188 @@
        v2 SCREEN 2: DATA — KANBAN BOARD
   ════════════════════════════════════════════════ -->
   <div id="s-data">
-    <div class="screen-label">v2 Мокап 2 <span>Данные — kanban-доска по статусам</span></div>
+    <div class="screen-label">v2 Мокап 2 <span>Данные — table view с status column, inline actions, problem highlighting</span></div>
     <div class="screen">
-      <div class="topbar2">
+
+      <!-- Context topbar -->
+      <div style="display:flex;align-items:center;height:52px;padding:0 20px;background:#fff;border-bottom:1px solid #e8e5e0;">
         <div class="t2-logo"><em>ESG</em>vist</div>
-        <div class="t2-nav">
-          <div class="t2-nav-item">Обзор</div>
-          <div class="t2-nav-item active">Данные</div>
-          <div class="t2-nav-item">Ревью<span class="t2-nav-badge">3</span></div>
-          <div class="t2-nav-item">Доказательства</div>
-          <div class="t2-nav-item">Отчёт</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-left:20px;font-size:12px;color:#555;background:#f5f5f0;padding:5px 12px;border-radius:7px;border:1px solid #e8e5e0;">📅 <b style="color:#1a1a1a;">Q2 2025</b></div>
+        <div style="margin:0 auto;display:flex;align-items:center;gap:10px;">
+          <div style="width:160px;height:7px;background:#e8e5e0;border-radius:4px;overflow:hidden;"><div style="width:68%;height:100%;background:#2d8a56;border-radius:4px;"></div></div>
+          <span style="font-size:13px;font-weight:800;color:#2d8a56;">68%</span>
         </div>
-        <div class="t2-right">
-          <div class="t2-ctx">📅 <b>2025</b> · <b>GRI</b></div>
-          <div class="t2-company">
-            <div class="t2-company-avatar">KE</div>
+        <div style="display:flex;align-items:center;gap:14px;">
+          <span style="font-size:12px;color:#555;">⏰ Deadline: <b style="color:#1a1a1a;">June 30</b></span>
+          <button class="btn2 btn2-outline" style="font-size:11px;padding:6px 14px;">📤 Export</button>
+          <div class="t2-company"><div class="t2-company-avatar">KE</div></div>
+        </div>
+      </div>
+
+      <!-- Sidebar + Content -->
+      <div style="display:grid;grid-template-columns:200px 1fr;min-height:600px;">
+
+        <!-- Sidebar -->
+        <div style="background:#fafaf7;border-right:1px solid #e8e5e0;padding:16px 0;">
+          <div style="padding:0 16px;margin-bottom:20px;"><div style="font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#aaa;margin-bottom:10px;">Навигация</div></div>
+          <div style="padding:9px 16px 9px 23px;font-size:13px;font-weight:500;color:#555;cursor:pointer;border-left:3px solid transparent;">📊 Overview</div>
+          <div style="padding:9px 16px 9px 20px;font-size:13px;font-weight:700;color:#2d8a56;background:#ecfdf5;border-left:3px solid #2d8a56;cursor:pointer;">📁 Collection</div>
+          <div style="padding:9px 16px 9px 23px;font-size:13px;font-weight:500;color:#555;cursor:pointer;border-left:3px solid transparent;display:flex;align-items:center;justify-content:space-between;">✅ Validation <span style="background:#e74c3c;color:white;font-size:9px;font-weight:800;border-radius:8px;padding:1px 6px;">3</span></div>
+          <div style="padding:9px 16px 9px 23px;font-size:13px;font-weight:500;color:#555;cursor:pointer;border-left:3px solid transparent;">📋 Tasks</div>
+          <div style="padding:9px 16px 9px 23px;font-size:13px;font-weight:500;color:#555;cursor:pointer;border-left:3px solid transparent;">📎 Data Sources</div>
+          <div style="padding:9px 16px 9px 23px;font-size:13px;font-weight:500;color:#555;cursor:pointer;border-left:3px solid transparent;">📤 Export</div>
+        </div>
+
+        <!-- Main content -->
+        <div style="padding:24px;background:#f5f5f0;">
+
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
             <div>
-              <div class="t2-company-name">KazEnergo JSC</div>
+              <div style="font-size:20px;font-weight:800;color:#1a1a1a;letter-spacing:-.3px;">Data Collection</div>
+              <div style="font-size:12px;color:#888;margin-top:3px;">18 metrics · GRI Standards · 12 submitted, 6 remaining</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <div style="display:flex;border:1px solid #e0ddd8;border-radius:8px;overflow:hidden;">
+                <span style="padding:5px 12px;font-size:11px;font-weight:700;background:#1a1a1a;color:white;cursor:pointer;border-right:1px solid #e0ddd8;">📋 Table</span>
+                <span style="padding:5px 12px;font-size:11px;font-weight:700;background:white;color:#555;cursor:pointer;">⬜ Board</span>
+              </div>
+              <button class="btn2 btn2-green" style="font-size:12px;">+ Add metric</button>
             </div>
           </div>
+
+          <div class="filter-chips">
+            <div class="filter-chip active">All (18)</div>
+            <div class="filter-chip" style="border-color:#e74c3c;color:#e74c3c;"><span class="chip-dot" style="background:#e74c3c"></span> Missing (6)</div>
+            <div class="filter-chip"><span class="chip-dot" style="background:#d97706"></span> In progress (3)</div>
+            <div class="filter-chip"><span class="chip-dot" style="background:#3b82f6"></span> In review (3)</div>
+            <div class="filter-chip"><span class="chip-dot" style="background:#2d8a56"></span> Submitted (6)</div>
+            <div class="search-bar2" style="max-width:220px;">🔍 <input placeholder="Search metrics..."></div>
+          </div>
+
+          <!-- DATA TABLE -->
+          <div style="background:white;border:1px solid #e8e5e0;border-radius:12px;overflow:hidden;">
+            <div style="display:grid;grid-template-columns:44px 1fr 100px 110px 130px 90px 100px 80px;padding:0 16px;background:#fafaf7;border-bottom:1px solid #e8e5e0;">
+              <div class="th-cell"></div><div class="th-cell">Metric</div><div class="th-cell">Standard</div><div class="th-cell">Category</div><div class="th-cell">Value</div><div class="th-cell">Source</div><div class="th-cell">Updated</div><div class="th-cell">Action</div>
+            </div>
+
+            <!-- Missing rows (red) -->
+            <div style="display:grid;grid-template-columns:44px 1fr 100px 110px 130px 90px 100px 80px;padding:0 16px;border-bottom:1px solid #f0ede8;background:#fef2f2;cursor:pointer;">
+              <div class="task-cell"><span style="font-size:14px;">🔴</span></div>
+              <div class="task-cell" style="font-weight:700;color:#1a1a1a;">Scope 3 emissions</div>
+              <div class="task-cell">GRI 305-3</div>
+              <div class="task-cell"><span class="kanban-tag env">Env</span></div>
+              <div class="task-cell" style="color:#ccc;font-style:italic;">—</div>
+              <div class="task-cell" style="color:#e74c3c;font-size:11px;">No src</div>
+              <div class="task-cell" style="color:#e74c3c;font-size:11px;">Overdue</div>
+              <div class="task-cell"><span style="font-size:10px;font-weight:700;color:#fff;cursor:pointer;padding:3px 8px;background:#e74c3c;border-radius:5px;">Add</span></div>
+            </div>
+            <div style="display:grid;grid-template-columns:44px 1fr 100px 110px 130px 90px 100px 80px;padding:0 16px;border-bottom:1px solid #f0ede8;background:#fef2f2;cursor:pointer;">
+              <div class="task-cell"><span style="font-size:14px;">🔴</span></div>
+              <div class="task-cell" style="font-weight:700;color:#1a1a1a;">Occupational safety</div>
+              <div class="task-cell">GRI 403-9</div>
+              <div class="task-cell"><span class="kanban-tag soc">Soc</span></div>
+              <div class="task-cell" style="color:#ccc;font-style:italic;">—</div>
+              <div class="task-cell" style="color:#e74c3c;font-size:11px;">No src</div>
+              <div class="task-cell" style="color:#e74c3c;font-size:11px;">Overdue</div>
+              <div class="task-cell"><span style="font-size:10px;font-weight:700;color:#fff;cursor:pointer;padding:3px 8px;background:#e74c3c;border-radius:5px;">Add</span></div>
+            </div>
+            <div style="display:grid;grid-template-columns:44px 1fr 100px 110px 130px 90px 100px 80px;padding:0 16px;border-bottom:1px solid #f0ede8;background:#fef2f2;cursor:pointer;">
+              <div class="task-cell"><span style="font-size:14px;">🔴</span></div>
+              <div class="task-cell" style="font-weight:700;color:#1a1a1a;">Anti-corruption policy</div>
+              <div class="task-cell">GRI 205-1</div>
+              <div class="task-cell"><span class="kanban-tag gov">Gov</span></div>
+              <div class="task-cell" style="color:#ccc;font-style:italic;">—</div>
+              <div class="task-cell" style="color:#ccc;">—</div>
+              <div class="task-cell" style="color:#e74c3c;font-size:11px;">Not started</div>
+              <div class="task-cell"><span style="font-size:10px;font-weight:700;color:#fff;cursor:pointer;padding:3px 8px;background:#e74c3c;border-radius:5px;">Add</span></div>
+            </div>
+
+            <!-- In progress rows (yellow) -->
+            <div style="display:grid;grid-template-columns:44px 1fr 100px 110px 130px 90px 100px 80px;padding:0 16px;border-bottom:1px solid #f0ede8;background:#fffbeb;cursor:pointer;">
+              <div class="task-cell"><span style="font-size:14px;">🟡</span></div>
+              <div class="task-cell" style="font-weight:700;color:#1a1a1a;">Employee turnover</div>
+              <div class="task-cell">GRI 401-1</div>
+              <div class="task-cell"><span class="kanban-tag soc">Soc</span></div>
+              <div class="task-cell" style="font-weight:700;">12.4%</div>
+              <div class="task-cell" style="color:#e74c3c;font-size:11px;">Missing</div>
+              <div class="task-cell" style="font-size:11px;">Mar 15</div>
+              <div class="task-cell"><span style="font-size:10px;font-weight:700;color:#fff;cursor:pointer;padding:3px 8px;background:#d97706;border-radius:5px;">Fix</span></div>
+            </div>
+            <div style="display:grid;grid-template-columns:44px 1fr 100px 110px 130px 90px 100px 80px;padding:0 16px;border-bottom:1px solid #f0ede8;background:#fffbeb;cursor:pointer;">
+              <div class="task-cell"><span style="font-size:14px;">🟡</span></div>
+              <div class="task-cell" style="font-weight:700;color:#1a1a1a;">Energy consumption <span style="font-size:9px;font-weight:700;color:#d97706;background:#fff7ed;padding:1px 5px;border-radius:3px;margin-left:4px;">⚠ outlier</span></div>
+              <div class="task-cell">GRI 302-1</div>
+              <div class="task-cell"><span class="kanban-tag env">Env</span></div>
+              <div class="task-cell" style="font-weight:700;color:#d97706;">45,000 MJ</div>
+              <div class="task-cell" style="color:#d97706;font-size:11px;">⚠ No src</div>
+              <div class="task-cell" style="font-size:11px;">Mar 12</div>
+              <div class="task-cell"><span style="font-size:10px;font-weight:700;color:#fff;cursor:pointer;padding:3px 8px;background:#d97706;border-radius:5px;">Fix</span></div>
+            </div>
+
+            <!-- In review rows (blue) -->
+            <div style="display:grid;grid-template-columns:44px 1fr 100px 110px 130px 90px 100px 80px;padding:0 16px;border-bottom:1px solid #f0ede8;background:#eff6ff;cursor:pointer;">
+              <div class="task-cell"><span style="font-size:14px;">🔵</span></div>
+              <div class="task-cell" style="font-weight:700;color:#1a1a1a;">Water consumption</div>
+              <div class="task-cell">GRI 303-1</div>
+              <div class="task-cell"><span class="kanban-tag soc">Soc</span></div>
+              <div class="task-cell" style="font-weight:700;">45,000 m³</div>
+              <div class="task-cell" style="color:#2d8a56;font-size:11px;">📎 2</div>
+              <div class="task-cell" style="font-size:11px;">Mar 10</div>
+              <div class="task-cell"><span style="font-size:10px;font-weight:700;color:#fff;cursor:pointer;padding:3px 8px;background:#3b82f6;border-radius:5px;">Review</span></div>
+            </div>
+            <div style="display:grid;grid-template-columns:44px 1fr 100px 110px 130px 90px 100px 80px;padding:0 16px;border-bottom:1px solid #f0ede8;background:#eff6ff;cursor:pointer;">
+              <div class="task-cell"><span style="font-size:14px;">🔵</span></div>
+              <div class="task-cell" style="font-weight:700;color:#1a1a1a;">Direct CO₂ emissions</div>
+              <div class="task-cell">GRI 305-1</div>
+              <div class="task-cell"><span class="kanban-tag env">Env</span></div>
+              <div class="task-cell" style="font-weight:700;">1,240 t</div>
+              <div class="task-cell" style="color:#2d8a56;font-size:11px;">📎 3</div>
+              <div class="task-cell" style="font-size:11px;">Mar 18</div>
+              <div class="task-cell"><span style="font-size:10px;font-weight:700;color:#fff;cursor:pointer;padding:3px 8px;background:#3b82f6;border-radius:5px;">Review</span></div>
+            </div>
+
+            <!-- Submitted rows (white/green) -->
+            <div style="display:grid;grid-template-columns:44px 1fr 100px 110px 130px 90px 100px 80px;padding:0 16px;border-bottom:1px solid #f0ede8;cursor:pointer;">
+              <div class="task-cell"><span style="font-size:14px;">🟢</span></div>
+              <div class="task-cell" style="font-weight:700;color:#1a1a1a;">Total employees</div>
+              <div class="task-cell">GRI 102-7</div>
+              <div class="task-cell"><span class="kanban-tag soc">Soc</span></div>
+              <div class="task-cell" style="font-weight:700;">3,200</div>
+              <div class="task-cell" style="color:#2d8a56;font-size:11px;">✓</div>
+              <div class="task-cell" style="color:#2d8a56;font-size:11px;">Mar 5</div>
+              <div class="task-cell"><span style="font-size:10px;font-weight:700;color:#888;cursor:pointer;padding:3px 8px;background:#f0ede8;border-radius:5px;">View</span></div>
+            </div>
+            <div style="display:grid;grid-template-columns:44px 1fr 100px 110px 130px 90px 100px 80px;padding:0 16px;border-bottom:1px solid #f0ede8;cursor:pointer;">
+              <div class="task-cell"><span style="font-size:14px;">🟢</span></div>
+              <div class="task-cell" style="font-weight:700;color:#1a1a1a;">Production waste</div>
+              <div class="task-cell">SASB EM</div>
+              <div class="task-cell"><span class="kanban-tag env">Env</span></div>
+              <div class="task-cell" style="font-weight:700;">230 t</div>
+              <div class="task-cell" style="color:#2d8a56;font-size:11px;">✓</div>
+              <div class="task-cell" style="color:#2d8a56;font-size:11px;">Mar 3</div>
+              <div class="task-cell"><span style="font-size:10px;font-weight:700;color:#888;cursor:pointer;padding:3px 8px;background:#f0ede8;border-radius:5px;">View</span></div>
+            </div>
+            <div style="display:grid;grid-template-columns:44px 1fr 100px 110px 130px 90px 100px 80px;padding:0 16px;border-bottom:1px solid #f0ede8;cursor:pointer;">
+              <div class="task-cell"><span style="font-size:14px;">🟢</span></div>
+              <div class="task-cell" style="font-weight:700;color:#1a1a1a;">Board composition</div>
+              <div class="task-cell">GRI 102-22</div>
+              <div class="task-cell"><span class="kanban-tag gov">Gov</span></div>
+              <div class="task-cell" style="font-weight:700;">7 members</div>
+              <div class="task-cell" style="color:#2d8a56;font-size:11px;">✓</div>
+              <div class="task-cell" style="color:#2d8a56;font-size:11px;">Mar 1</div>
+              <div class="task-cell"><span style="font-size:10px;font-weight:700;color:#888;cursor:pointer;padding:3px 8px;background:#f0ede8;border-radius:5px;">View</span></div>
+            </div>
+
+            <div style="padding:10px 16px;text-align:center;font-size:11px;color:#888;background:#fafaf7;">
+              Showing 10 of 18 metrics · <span style="color:#2d8a56;font-weight:600;cursor:pointer;">Show all →</span>
+            </div>
+          </div>
+
         </div>
       </div>
-      <div class="content2">
-        <div class="page-head2">
-          <div>
-            <div class="page-title2">Данные</div>
-            <div class="page-sub2">12 из 18 метрик заполнено · Перетаскивайте карточки для смены статуса</div>
-          </div>
-          <div style="display:flex;gap:10px;align-items:center;">
-            <button class="btn2 btn2-outline">📋 Таблица</button>
-            <button class="btn2 btn2-outline" style="border-color:#1a1a1a;font-weight:800;">▦ Доска</button>
-            <!-- Download dropdown (open state) -->
-            <div class="dl-wrap" style="position:relative;">
-              <div class="dl-btn" style="border-color:#1a1a1a;">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                Скачать <span class="dl-caret">▴</span>
-              </div>
-              <div class="dl-menu">
-                <div class="dl-item"><span class="dl-item-icon">📄</span> PDF</div>
-                <div class="dl-item" style="background:#f5f5f0;font-weight:700;"><span class="dl-item-icon">📊</span> Excel</div>
-                <div class="dl-item"><span class="dl-item-icon">🖼</span> Изображение</div>
-              </div>
-            </div>
-            <button class="btn2 btn2-green">+ Добавить</button>
-          </div>
-        </div>
 
-        <div class="filter-chips">
-          <div class="filter-chip active">Все</div>
-          <div class="filter-chip"><span class="chip-dot" style="background:#2d8a56"></span> Environmental</div>
-          <div class="filter-chip"><span class="chip-dot" style="background:#3b82f6"></span> Social</div>
-          <div class="filter-chip"><span class="chip-dot" style="background:#d97706"></span> Governance</div>
-          <div class="search-bar2">🔍 <input placeholder="Поиск..."></div>
-          <div class="grouping-wrap" style="margin-left:auto;">
-            <span class="grouping-label">Группировка</span>
-            <select class="grouping-sel">
-              <option>По статусу</option>
-              <option>По E/S/G</option>
-              <option>По стандарту</option>
-              <option>По ответственному</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="kanban">
-          <!-- Col: Missing -->
-          <div class="kanban-col col-missing">
-            <div class="kanban-col-head">Нет данных <span class="kanban-count">4</span></div>
-            <div class="kanban-card">
-              <div class="kanban-card-name">Утечки и выбросы</div>
-              <div class="kanban-card-std">GRI 305-7</div>
-              <div class="kanban-card-tags"><span class="kanban-tag env">Environmental</span></div>
-              <div class="kanban-card-value empty">Данные не введены</div>
-              <div class="kanban-card-actions"><span class="kanban-card-btn">✏ Заполнить</span></div>
-            </div>
-            <div class="kanban-card">
-              <div class="kanban-card-name">Охрана труда</div>
-              <div class="kanban-card-std">GRI 403-9</div>
-              <div class="kanban-card-tags"><span class="kanban-tag soc">Social</span></div>
-              <div class="kanban-card-value empty">Данные не введены</div>
-              <div class="kanban-card-actions"><span class="kanban-card-btn">✏ Заполнить</span></div>
-            </div>
-            <div class="kanban-card">
-              <div class="kanban-card-name">Антикоррупционная политика</div>
-              <div class="kanban-card-std">GRI 205-1</div>
-              <div class="kanban-card-tags"><span class="kanban-tag gov">Governance</span></div>
-              <div class="kanban-card-value empty">Данные не введены</div>
-              <div class="kanban-card-actions"><span class="kanban-card-btn">✏ Заполнить</span></div>
-            </div>
-          </div>
-
-          <!-- Col: Draft -->
-          <div class="kanban-col col-draft">
-            <div class="kanban-col-head">Черновик <span class="kanban-count">2</span></div>
-            <div class="kanban-card">
-              <div class="kanban-card-name">Текучесть кадров</div>
-              <div class="kanban-card-std">GRI 401-1</div>
-              <div class="kanban-card-tags"><span class="kanban-tag soc">Social</span></div>
-              <div class="kanban-card-value">12.4%</div>
-              <div class="kanban-card-evidence missing">📎 Нет доказательств</div>
-              <div class="kanban-card-actions"><span class="kanban-card-btn">Отправить на ревью →</span></div>
-            </div>
-            <div class="kanban-card">
-              <div class="kanban-card-name">Энергопотребление</div>
-              <div class="kanban-card-std">GRI 302-1</div>
-              <div class="kanban-card-tags"><span class="kanban-tag env">Environmental</span></div>
-              <div class="kanban-card-value">45 000 МДж</div>
-              <div class="kanban-card-evidence missing">⚠ Источник не добавлен</div>
-            </div>
-          </div>
-
-          <!-- Col: In Review -->
-          <div class="kanban-col col-review">
-            <div class="kanban-col-head">На ревью <span class="kanban-count">3</span></div>
-            <div class="kanban-card" style="border-color:#e74c3c; border-width: 1px 1px 1px 3px;">
-              <div class="kanban-card-name">Водопотребление</div>
-              <div class="kanban-card-std">GRI 303-1 · <span style="color:#e74c3c;font-weight:700">12 дней!</span></div>
-              <div class="kanban-card-tags"><span class="kanban-tag soc">Social</span></div>
-              <div class="kanban-card-value">45 000 м³</div>
-              <div class="kanban-card-evidence ok">📎 2 документа</div>
-            </div>
-            <div class="kanban-card">
-              <div class="kanban-card-name">Прямые выбросы CO₂</div>
-              <div class="kanban-card-std">GRI 305-1 · 2 дня</div>
-              <div class="kanban-card-tags"><span class="kanban-tag env">Environmental</span></div>
-              <div class="kanban-card-value">1 240 т CO₂</div>
-              <div class="kanban-card-evidence ok">📎 3 документа</div>
-            </div>
-            <div class="kanban-card">
-              <div class="kanban-card-name">Состав Совета директоров</div>
-              <div class="kanban-card-std">GRI 102-22 · 1 день</div>
-              <div class="kanban-card-tags"><span class="kanban-tag gov">Governance</span></div>
-              <div class="kanban-card-value">7 чел.</div>
-              <div class="kanban-card-evidence ok">📎 1 документ</div>
-            </div>
-          </div>
-
-          <!-- Col: Published -->
-          <div class="kanban-col col-published">
-            <div class="kanban-col-head">Опубликовано <span class="kanban-count">8</span></div>
-            <div class="kanban-card">
-              <div class="kanban-card-name">Численность сотрудников</div>
-              <div class="kanban-card-std">GRI 102-7</div>
-              <div class="kanban-card-tags"><span class="kanban-tag soc">Social</span></div>
-              <div class="kanban-card-value">3 200 чел.</div>
-              <div class="kanban-card-evidence ok">✓ Подтверждено</div>
-            </div>
-            <div class="kanban-card">
-              <div class="kanban-card-name">Отходы производства</div>
-              <div class="kanban-card-std">SASB EM-MM</div>
-              <div class="kanban-card-tags"><span class="kanban-tag env">Environmental</span></div>
-              <div class="kanban-card-value">230 т</div>
-              <div class="kanban-card-evidence ok">✓ Подтверждено</div>
-            </div>
-            <div class="kanban-card" style="opacity:.6">
-              <div class="kanban-card-name" style="color:#888;">+ ещё 6 метрик</div>
-            </div>
-          </div>
-        </div>
-      </div>
       <div class="annotation2">
-        💡 v2: Kanban-доска по статусам (Нет данных → Черновик → На ревью → Опубликовано). Переключатель Таблица/Доска. Фильтр-чипы по E/S/G. Просроченные ревью выделены красной рамкой.
+        💡 Redesigned: Status-first table (🔴🟡🔵🟢). Problem rows highlighted (red=missing, yellow=outlier/draft, blue=review). Inline action buttons. Sorted by urgency.
       </div>
     </div>
   </div>
@@ -1200,6 +1366,56 @@
             <div style="color:#888;font-size:11px;font-style:italic;">не указано</div>
             <div><span style="background:#fef2f2;color:#dc2626;border-radius:20px;padding:3px 10px;font-size:10px;font-weight:700;">❌ Нет данных</span></div>
             <div><input class="f-input" placeholder="—" style="font-size:11px;padding:4px 8px;width:70px;"></div>
+          </div>
+        </div>
+
+        <!-- ═══ EXPORT READINESS BLOCK ═══ -->
+        <div style="background:white;border:1px solid #e8e5e0;border-radius:12px;padding:24px;margin-top:20px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+            <div style="font-size:16px;font-weight:800;color:#1a1a1a;">📤 Export Report</div>
+            <div style="display:flex;gap:8px;">
+              <button class="btn2 btn2-outline">Preview PDF</button>
+              <button class="btn2 btn2-green" style="font-size:13px;padding:10px 20px;">Generate report →</button>
+            </div>
+          </div>
+
+          <!-- Readiness checks -->
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:16px;">
+            <div style="background:#ecfdf5;border:1px solid #bbf7d0;border-radius:10px;padding:14px;text-align:center;">
+              <div style="font-size:24px;font-weight:800;color:#2d8a56;">95%</div>
+              <div style="font-size:11px;font-weight:600;color:#166534;margin-top:4px;">Data complete</div>
+            </div>
+            <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:14px;text-align:center;">
+              <div style="font-size:24px;font-weight:800;color:#d97706;">3</div>
+              <div style="font-size:11px;font-weight:600;color:#92400e;margin-top:4px;">Warnings</div>
+            </div>
+            <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:14px;text-align:center;">
+              <div style="font-size:24px;font-weight:800;color:#e74c3c;">1</div>
+              <div style="font-size:11px;font-weight:600;color:#991b1b;margin-top:4px;">Blocking issue</div>
+            </div>
+          </div>
+
+          <!-- Issue list -->
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:12px;">
+              <span>🔴</span>
+              <span style="flex:1;color:#991b1b;font-weight:600;">Missing Scope 3 data — required for GRI compliance</span>
+              <span style="font-size:10px;font-weight:700;color:#e74c3c;cursor:pointer;">→ Fix now</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;font-size:12px;">
+              <span>🟡</span>
+              <span style="flex:1;color:#92400e;">Energy data outlier — value differs 40% from previous period</span>
+              <span style="font-size:10px;font-weight:700;color:#d97706;cursor:pointer;">→ Review</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;font-size:12px;">
+              <span>🟡</span>
+              <span style="flex:1;color:#92400e;">2 metrics still pending review</span>
+              <span style="font-size:10px;font-weight:700;color:#d97706;cursor:pointer;">→ Review</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#ecfdf5;border:1px solid #bbf7d0;border-radius:6px;font-size:12px;">
+              <span>✅</span>
+              <span style="flex:1;color:#166534;">GRI Content Index — 72% mapped (15 of 21 disclosures)</span>
+            </div>
           </div>
         </div>
 
