@@ -98,6 +98,108 @@ Violation → EVIDENCE_FILE_TOO_LARGE (422) or EVIDENCE_FILE_TYPE_NOT_ALLOWED (4
 
 ---
 
+## Audit Log — Evidence Actions
+
+All evidence operations MUST be logged in `audit_log`:
+
+| Action | entity_type | changes (JSON) |
+|--------|------------|----------------|
+| `create` | Evidence | `{title, type, source_type}` |
+| `update` | Evidence | `{field: {old, new}}` |
+| `delete` | Evidence | `{title, type, had_bindings: N}` |
+| `link` | DataPointEvidence | `{data_point_id, evidence_id, linked_by}` |
+| `unlink` | DataPointEvidence | `{data_point_id, evidence_id}` |
+| `link` | RequirementItemEvidence | `{requirement_item_id, evidence_id, linked_by}` |
+| `unlink` | RequirementItemEvidence | `{requirement_item_id, evidence_id}` |
+
+**Implementation:**
+- Log AFTER successful database commit (not before)
+- Include `user_id`, `ip_address`, `user_agent` from request context
+- Audit entries are **immutable** (no UPDATE/DELETE on audit_log)
+
+---
+
+## Webhook / Event Delivery Rules
+
+### Events published for Evidence:
+
+| Event Type | Trigger | Payload |
+|-----------|---------|---------|
+| `evidence.created` | POST /evidences | `EvidenceCreatedPayload` (full evidence object) |
+| `evidence.linked` | POST /data-points/:id/evidences OR /requirement-items/:id/evidences | `EvidenceLinkedPayload` (evidenceId, linkTargetType, linkTargetId) |
+
+### Delivery guarantees:
+
+```
+1. Publish AFTER database transaction commit
+   → never publish if transaction rolls back
+   → ensures data consistency between DB and external consumers
+
+2. Idempotent delivery key
+   → each event includes a unique idempotency_key (UUID v4)
+   → consumers MUST deduplicate by idempotency_key
+   → prevents double-processing on webhook retry
+
+3. Retry policy
+   → 3 attempts with exponential backoff (1s, 5s, 25s)
+   → if all retries fail → log to dead_letter queue
+   → admin can manually replay from dead_letter
+
+4. Event envelope includes:
+   {
+     "id": "evt_abc123",                    // unique event ID
+     "type": "evidence.created",            // event type
+     "idempotencyKey": "uuid-v4-here",      // for deduplication
+     "timestamp": "2026-03-22T14:32:00Z",   // ISO 8601
+     "organizationId": 1,                   // tenant context
+     "payload": { ... }                     // typed payload
+   }
+
+5. Signature
+   → HMAC-SHA256 of raw body with webhook endpoint secret
+   → sent in X-Webhook-Signature header
+   → consumer MUST verify before processing
+```
+
+### Implementation pattern (pseudocode):
+
+```typescript
+async function createEvidence(req: Request): Promise<Evidence> {
+  return await db.$transaction(async (tx) => {
+    // 1. Create evidence in DB
+    const evidence = await tx.evidences.create({ ... });
+
+    // 2. Create subtype (file or link)
+    if (req.body.type === 'file') {
+      await tx.evidenceFiles.create({ evidenceId: evidence.id, ... });
+    } else {
+      await tx.evidenceLinks.create({ evidenceId: evidence.id, ... });
+    }
+
+    // 3. Audit log (inside transaction)
+    await tx.auditLog.create({
+      action: 'create',
+      entityType: 'Evidence',
+      entityId: evidence.id,
+      changes: { title: evidence.title, type: evidence.type },
+      userId: req.user.id,
+    });
+
+    return evidence;
+  });
+
+  // 4. Publish event AFTER commit
+  await eventBus.publish({
+    type: 'evidence.created',
+    idempotencyKey: uuid(),
+    organizationId: evidence.organizationId,
+    payload: { evidence },
+  });
+}
+```
+
+---
+
 ## Data Model Chain
 
 ```
