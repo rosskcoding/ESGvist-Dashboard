@@ -467,6 +467,25 @@ create table data_points (
 
 Если хотя бы один параметр отличается — создаётся отдельный DataPoint.
 
+**Identity Rule for Reuse (правило идентичности):**
+
+DataPoint считается пригодным для переиспользования (reuse), если совпадают **все** следующие параметры:
+
+| Параметр | Поле | Описание |
+|----------|------|----------|
+| Сквозной элемент | `shared_element_id` | Тот же понятийный элемент |
+| Организация | `organization_id` | Та же организация |
+| Период | `reporting_period_id` | Тот же отчётный период |
+| Единица измерения | `unit_code` | Та же единица (tCO2e, MWh и т.д.) |
+| Boundary | `boundary_id` | Тот же организационный boundary |
+| Методология | `methodology_id` | Та же методология расчёта |
+| Измерения | полное совпадение `data_point_dimensions` | Все dimension_type + dimension_value совпадают |
+
+Если **любой** из параметров отличается — это **другой DataPoint**, и система должна создать новую запись. Это правило критично для:
+- Корректного UX при reuse (пользователь видит только точные совпадения)
+- Правильной работы merge (не объединять данные с разными boundaries)
+- Предотвращения «грязных» данных (два стандарта с разной гранулярностью не могут шарить один DataPoint)
+
 **Workflow статусов:**
 
 ```
@@ -791,6 +810,17 @@ create table derived_data_points (
 );
 ```
 
+**Правила: Input vs Calculated Data (ввод vs расчётные данные):**
+
+| Правило | Описание |
+|---------|----------|
+| Read-only | Расчётные DataPoint (`derived_data_points`) **недоступны для редактирования** пользователем |
+| Автопересчёт | При изменении любого source DataPoint, участвующего в формуле, расчётный DataPoint **пересчитывается автоматически** |
+| Manual override | Ручное переопределение расчётного значения возможно только через `binding_type = 'manual_override'` в `requirement_item_data_points`. Требует явного действия ESG-менеджера |
+| UI-индикация | Интерфейс **обязан** визуально различать input-данные и calculated-данные (иконка, цвет, tooltip с формулой) |
+| Audit trail | При автопересчёте записывается запись в `data_point_versions` с `change_reason = 'auto_recalculation'` |
+| Override warning | При установке `manual_override` система предупреждает: «Расчётное значение будет заменено. При изменении исходных данных автопересчёт не будет применён» |
+
 ---
 
 ### 3.10. Индексы
@@ -929,18 +959,47 @@ ORDER BY se.concept_domain, se.code;
 
 ## 5. Completeness Engine
 
-### 5.1. Логика определения статуса
+Completeness Engine — выделенный сервис/модуль, отвечающий за автоматический расчёт статусов покрытия требований и disclosure на основе фактических данных.
 
-Для каждого RequirementItem:
+### 5.1. Триггеры пересчёта
+
+Completeness Engine запускается при следующих событиях:
+
+| Событие | Описание |
+|---------|----------|
+| `data_point_change` | Создание, обновление, удаление или смена статуса DataPoint |
+| `binding_change` | Создание или удаление записи в `requirement_item_data_points` |
+| `standard_added` | Добавление нового стандарта к проекту (`reporting_project_standards`) |
+| `rules_changed` | Изменение `validation_rule`, `granularity_rule`, `is_required` в `requirement_items` |
+
+### 5.2. Логика определения статуса RequirementItem
+
+Для каждого RequirementItem в контексте проекта:
 
 ```
 IF exists binding in requirement_item_data_points
    AND data_point.status = 'approved':
-    IF all dimension_rules satisfied:
-        status = 'complete'
+    IF all required fields filled (numeric_value / text_value / etc.):
+        IF all dimension_rules satisfied:
+            IF all narrative requirements met (if item_type = 'narrative'):
+                IF all attachment requirements met (if item_type = 'document'):
+                    IF all validation_rules passed:
+                        status = 'complete'
+                    ELSE:
+                        status = 'partial'
+                        status_reason = "Validation rule failed: {rule_details}"
+                ELSE:
+                    status = 'partial'
+                    status_reason = "Required document not attached"
+            ELSE:
+                status = 'partial'
+                status_reason = "Narrative description required"
+        ELSE:
+            status = 'partial'
+            status_reason = "Missing breakdown by {dimension_type}"
     ELSE:
         status = 'partial'
-        status_reason = "Missing breakdown by gas_type"
+        status_reason = "Required field {field_name} is empty"
 ELSE IF exists binding AND data_point.status IN ('draft', 'submitted', 'in_review'):
     status = 'partial'
     status_reason = "Data not yet approved"
@@ -949,7 +1008,9 @@ ELSE:
     status_reason = "No data submitted"
 ```
 
-Для каждого DisclosureRequirement:
+### 5.3. Логика определения статуса DisclosureRequirement
+
+Для каждого DisclosureRequirement (агрегат по входящим RequirementItems):
 
 ```
 IF all required items = 'complete':
@@ -963,7 +1024,7 @@ ELSE:
     completion_percent = 0
 ```
 
-### 5.2. Completeness по стандарту
+### 5.4. Completeness по стандарту
 
 ```
 overall_score = count(complete mandatory disclosures) / count(total mandatory disclosures)
@@ -971,7 +1032,29 @@ overall_score = count(complete mandatory disclosures) / count(total mandatory di
 
 - Немандаторные disclosures не влияют на overall_score
 - `not_applicable` исключается из расчёта (с обоснованием в `status_reason`)
-- Completeness **пересчитывается** при каждом изменении DataPoint
+
+### 5.5. Выходные данные
+
+| Выход | Таблица | Описание |
+|-------|---------|----------|
+| `requirement_item_status` | `requirement_item_statuses` | Статус атомарного требования: missing / partial / complete / not_applicable |
+| `disclosure_requirement_status` | `disclosure_requirement_statuses` | Агрегированный статус disclosure + `completion_percent` |
+| `completion_percent` | `disclosure_requirement_statuses.completion_percent` | Процент заполненности disclosure (0..100) |
+
+### 5.6. Правила пересчёта
+
+- Пересчёт выполняется **асинхронно** после каждого триггерного события
+- При `data_point_change` пересчитываются только затронутые `requirement_item_statuses` и их parent `disclosure_requirement_statuses`
+- При `standard_added` пересчитываются все статусы нового стандарта + обновляются reuse-статусы
+- При `rules_changed` пересчитываются все проекты, использующие изменённый `requirement_item`
+- Каскадный пересчёт: RequirementItem → DisclosureRequirement → Standard overall_score
+
+### 5.7. Требования к производительности
+
+- Пересчёт одного RequirementItem: < 100ms
+- Пересчёт всех статусов проекта (full recalculation): < 5s для 500 requirement items
+- При массовых операциях (batch approve, standard added) пересчёт выполняется одним batch, а не поэлементно
+- Результаты кэшируются в таблицах статусов, UI читает из кэша
 
 ---
 

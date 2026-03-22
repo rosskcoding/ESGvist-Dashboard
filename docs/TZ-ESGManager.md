@@ -219,6 +219,68 @@ ESG-менеджер должен иметь возможность:
    - помечает дельты и новые как `missing`;
    - пересчитывает completeness.
 
+### 3.9. Data Ownership Model
+
+Каждая метрика (shared_element в контексте проекта) должна иметь чёткую модель владения данными:
+
+| Роль | Поле в `metric_assignments` | Описание |
+|------|---------------------------|----------|
+| Primary owner | `collector_id` | Основной ответственный за сбор данных |
+| Backup owner | `backup_collector_id` | Резервный ответственный (подхватывает при недоступности primary) |
+| Escalation rule | `escalation_after_days` | Через сколько дней просрочки запускается эскалация |
+
+**Расширение таблицы `metric_assignments`:**
+
+```sql
+ALTER TABLE metric_assignments
+    ADD COLUMN backup_collector_id    bigint REFERENCES users(id) ON DELETE SET NULL,
+    ADD COLUMN escalation_after_days  integer NOT NULL DEFAULT 7;
+```
+
+**Правила:**
+- `backup_collector_id` опционален, но рекомендован для critical metrics
+- `backup_collector_id` не может совпадать с `collector_id` и `reviewer_id`
+- При эскалации backup_collector получает уведомление с полным контекстом задачи
+- ESG-менеджер видит в матрице назначений: primary owner, backup owner, escalation status
+- Если primary owner не заполнил данные за `escalation_after_days` дней после дедлайна — backup owner получает задачу
+
+### 3.10. SLA и логика эскалации
+
+Система должна поддерживать SLA (Service Level Agreement) для процесса сбора данных с автоматической эскалацией.
+
+**Пороги SLA breach:**
+
+| Уровень | Условие | Действие |
+|---------|---------|----------|
+| Warning | Дедлайн через 3 дня, данные не отправлены | Уведомление collector (in-app + email) |
+| Breach Level 1 | Дедлайн просрочен на 3 дня | Уведомление backup_collector + ESG-менеджер |
+| Breach Level 2 | Дедлайн просрочен на 7 дней | Уведомление admin + пометка critical в dashboard |
+
+**Цепочка эскалации:**
+
+```
+collector → backup_collector → ESG-менеджер → admin
+```
+
+**Автоматические уведомления:**
+- За 3 дня до дедлайна: reminder collector
+- В день дедлайна: urgent reminder collector
+- +3 дня: эскалация на backup_collector и ESG-менеджер
+- +7 дней: эскалация на admin, метрика помечается как critical
+
+**Dashboard-индикатор SLA:**
+- Зелёный: в пределах SLA
+- Жёлтый: warning (< 3 дней до дедлайна)
+- Оранжевый: breach level 1 (просрочено 1-6 дней)
+- Красный: breach level 2 (просрочено 7+ дней)
+
+ESG-менеджер должен видеть на Dashboard:
+- Количество метрик в каждом SLA-статусе
+- Список метрик с breach (с возможностью drill-down)
+- Историю эскалаций
+
+**Связь с БД:** `metric_assignments.deadline`, `metric_assignments.escalation_after_days`, `notifications`
+
 ---
 
 ## 4. Пользовательские сценарии
