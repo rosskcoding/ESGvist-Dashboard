@@ -1,0 +1,3498 @@
+openapi: 3.1.0
+info:
+  title: ESGvist API
+  version: 1.2.0
+  summary: API contracts for ESG data collection, merge, review, and reporting
+  description: 'API for ESGvist — a standard-centric ESG reporting platform with shared
+    data reuse,
+
+    delta requirements, workflow, review, and completeness calculation.
+
+    '
+servers:
+- url: https://api.esgvist.example.com/v1
+  description: Production
+- url: https://sandbox.esgvist.example.com/v1
+  description: Sandbox
+tags:
+- name: Auth
+- name: Standards
+- name: Shared Elements
+- name: Projects
+- name: Assignments
+- name: Data Points
+- name: Review
+- name: Merge
+- name: Completeness
+- name: Reports
+- name: Admin
+security:
+- bearerAuth: []
+paths:
+  /auth/me:
+    get:
+      tags:
+      - Auth
+      summary: Get current user
+      operationId: getCurrentUser
+      responses:
+        '200':
+          description: Current authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+      parameters:
+      - $ref: '#/components/parameters/RequestIdHeader'
+  /standards:
+    get:
+      tags:
+      - Standards
+      summary: List standards
+      operationId: listStandards
+      parameters:
+      - $ref: '#/components/parameters/IsActive'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      responses:
+        '200':
+          description: Standards list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardListResponse'
+    post:
+      tags:
+      - Standards
+      summary: Create standard
+      operationId: createStandard
+      security:
+      - bearerAuth: []
+      responses:
+        '201':
+          description: Standard created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Standard'
+        '400': &id001
+          $ref: '#/components/responses/BadRequest'
+        '401': &id002
+          $ref: '#/components/responses/Unauthorized'
+        '403': &id003
+          $ref: '#/components/responses/Forbidden'
+        '404': &id004
+          $ref: '#/components/responses/NotFound'
+        '409': &id005
+          $ref: '#/components/responses/Conflict'
+        '422': &id006
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500': &id007
+          $ref: '#/components/responses/InternalError'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStandardRequest'
+      x-permissions:
+        roles:
+        - admin
+        objectRules:
+        - user.organizationId == request.organizationId || same-tenant-admin
+      parameters:
+      - $ref: '#/components/parameters/RequestIdHeader'
+  /standards/{standardId}:
+    get:
+      tags:
+      - Standards
+      summary: Get standard
+      operationId: getStandard
+      parameters:
+      - $ref: '#/components/parameters/StandardId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      responses:
+        '200':
+          description: Standard
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Standard'
+    patch:
+      tags:
+      - Standards
+      summary: Update standard
+      operationId: updateStandard
+      parameters:
+      - $ref: '#/components/parameters/StandardId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStandardRequest'
+      responses:
+        '200':
+          description: Updated standard
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Standard'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        objectRules:
+        - same-tenant-admin
+  /standards/{standardId}/sections:
+    get:
+      tags:
+      - Standards
+      summary: List sections of a standard
+      operationId: listStandardSections
+      parameters:
+      - $ref: '#/components/parameters/StandardId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      responses:
+        '200':
+          description: Sections tree
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardSectionTreeResponse'
+    post:
+      tags:
+      - Standards
+      summary: Create section
+      operationId: createStandardSection
+      parameters:
+      - $ref: '#/components/parameters/StandardId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStandardSectionRequest'
+      responses:
+        '201':
+          description: Section created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandardSection'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        objectRules:
+        - same-tenant-admin
+  /disclosure-requirements:
+    get:
+      tags:
+      - Standards
+      summary: List disclosure requirements
+      operationId: listDisclosureRequirements
+      parameters:
+      - $ref: '#/components/parameters/StandardIdQuery'
+      - name: sectionId
+        in: query
+        schema:
+          type: integer
+          format: int64
+      - name: mandatoryLevel
+        in: query
+        schema:
+          $ref: '#/components/schemas/MandatoryLevel'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      responses:
+        '200':
+          description: Disclosure requirements
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DisclosureRequirementListResponse'
+    post:
+      tags:
+      - Standards
+      summary: Create disclosure requirement
+      operationId: createDisclosureRequirement
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDisclosureRequirementRequest'
+      responses:
+        '201':
+          description: Disclosure requirement created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DisclosureRequirement'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        objectRules:
+        - same-tenant-admin
+      parameters:
+      - $ref: '#/components/parameters/RequestIdHeader'
+  /disclosure-requirements/{disclosureRequirementId}:
+    get:
+      tags:
+      - Standards
+      summary: Get disclosure requirement
+      operationId: getDisclosureRequirement
+      parameters:
+      - $ref: '#/components/parameters/DisclosureRequirementId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      responses:
+        '200':
+          description: Disclosure requirement
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DisclosureRequirement'
+    patch:
+      tags:
+      - Standards
+      summary: Update disclosure requirement
+      operationId: updateDisclosureRequirement
+      parameters:
+      - $ref: '#/components/parameters/DisclosureRequirementId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDisclosureRequirementRequest'
+      responses:
+        '200':
+          description: Updated disclosure requirement
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DisclosureRequirement'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        objectRules:
+        - same-tenant-admin
+  /disclosure-requirements/{disclosureRequirementId}/items:
+    get:
+      tags:
+      - Standards
+      summary: List requirement items for a disclosure requirement
+      operationId: listRequirementItems
+      parameters:
+      - $ref: '#/components/parameters/DisclosureRequirementId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      responses:
+        '200':
+          description: Requirement items
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequirementItemListResponse'
+    post:
+      tags:
+      - Standards
+      summary: Create requirement item
+      operationId: createRequirementItem
+      parameters:
+      - $ref: '#/components/parameters/DisclosureRequirementId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRequirementItemRequest'
+      responses:
+        '201':
+          description: Requirement item created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequirementItem'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        objectRules:
+        - same-tenant-admin
+  /requirement-items/{requirementItemId}:
+    get:
+      tags:
+      - Standards
+      summary: Get requirement item
+      operationId: getRequirementItem
+      parameters:
+      - $ref: '#/components/parameters/RequirementItemId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      responses:
+        '200':
+          description: Requirement item
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequirementItem'
+    patch:
+      tags:
+      - Standards
+      summary: Update requirement item
+      operationId: updateRequirementItem
+      parameters:
+      - $ref: '#/components/parameters/RequirementItemId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRequirementItemRequest'
+      responses:
+        '200':
+          description: Updated requirement item
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequirementItem'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        objectRules:
+        - same-tenant-admin
+  /requirement-items/{requirementItemId}/dependencies:
+    post:
+      tags:
+      - Standards
+      summary: Create dependency for requirement item
+      operationId: createRequirementItemDependency
+      parameters:
+      - $ref: '#/components/parameters/RequirementItemId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRequirementItemDependencyRequest'
+      responses:
+        '201':
+          description: Dependency created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequirementItemDependency'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        objectRules:
+        - same-tenant-admin
+  /shared-elements:
+    get:
+      tags:
+      - Shared Elements
+      summary: List shared elements
+      operationId: listSharedElements
+      parameters:
+      - name: conceptDomain
+        in: query
+        schema:
+          type: string
+      - name: q
+        in: query
+        schema:
+          type: string
+      - $ref: '#/components/parameters/RequestIdHeader'
+      responses:
+        '200':
+          description: Shared elements
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharedElementListResponse'
+    post:
+      tags:
+      - Shared Elements
+      summary: Create shared element
+      operationId: createSharedElement
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSharedElementRequest'
+      responses:
+        '201':
+          description: Shared element created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharedElement'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        objectRules:
+        - same-tenant-admin
+      parameters:
+      - $ref: '#/components/parameters/RequestIdHeader'
+  /shared-elements/{sharedElementId}:
+    get:
+      tags:
+      - Shared Elements
+      summary: Get shared element
+      operationId: getSharedElement
+      parameters:
+      - $ref: '#/components/parameters/SharedElementId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      responses:
+        '200':
+          description: Shared element
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharedElement'
+    patch:
+      tags:
+      - Shared Elements
+      summary: Update shared element
+      operationId: updateSharedElement
+      parameters:
+      - $ref: '#/components/parameters/SharedElementId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSharedElementRequest'
+      responses:
+        '200':
+          description: Updated shared element
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharedElement'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        objectRules:
+        - same-tenant-admin
+  /shared-elements/{sharedElementId}/dimensions:
+    put:
+      tags:
+      - Shared Elements
+      summary: Replace dimension configuration for shared element
+      operationId: replaceSharedElementDimensions
+      parameters:
+      - $ref: '#/components/parameters/SharedElementId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplaceSharedElementDimensionsRequest'
+      responses:
+        '200':
+          description: Updated dimensions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharedElementDimensionsResponse'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        objectRules:
+        - same-tenant-admin
+  /requirement-items/{requirementItemId}/mappings:
+    get:
+      tags:
+      - Shared Elements
+      summary: List mappings for requirement item
+      operationId: listRequirementItemMappings
+      parameters:
+      - $ref: '#/components/parameters/RequirementItemId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      responses:
+        '200':
+          description: Mappings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequirementItemMappingListResponse'
+    post:
+      tags:
+      - Shared Elements
+      summary: Create mapping from requirement item to shared element
+      operationId: createRequirementItemMapping
+      parameters:
+      - $ref: '#/components/parameters/RequirementItemId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRequirementItemMappingRequest'
+      responses:
+        '201':
+          description: Mapping created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequirementItemMapping'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        objectRules:
+        - same-tenant-admin
+  /projects:
+    get:
+      tags:
+      - Projects
+      summary: List reporting projects
+      operationId: listProjects
+      parameters:
+      - name: status
+        in: query
+        schema:
+          $ref: '#/components/schemas/ProjectStatus'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      responses:
+        '200':
+          description: Reporting projects
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectListResponse'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        - esg_manager
+        - collector
+        - reviewer
+        - auditor
+        objectRules:
+        - tenant isolation applies
+        - collector/reviewer limited to assigned projects
+    post:
+      tags:
+      - Projects
+      summary: Create reporting project
+      operationId: createProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProjectRequest'
+      responses:
+        '201':
+          description: Project created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        - esg_manager
+        objectRules:
+        - user.organizationId == request.organizationId || same-tenant
+      parameters:
+      - $ref: '#/components/parameters/RequestIdHeader'
+  /projects/{projectId}:
+    get:
+      tags:
+      - Projects
+      summary: Get reporting project
+      operationId: getProject
+      parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      responses:
+        '200':
+          description: Project
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        - esg_manager
+        - collector
+        - reviewer
+        - auditor
+        objectRules:
+        - user.organizationId == project.organizationId
+        - collector/reviewer limited by assignment visibility
+    patch:
+      tags:
+      - Projects
+      summary: Update reporting project
+      operationId: updateProject
+      parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProjectRequest'
+      responses:
+        '200':
+          description: Updated project
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        - esg_manager
+        objectRules:
+        - user.organizationId == project.organizationId
+  /projects/{projectId}/standards:
+    put:
+      tags:
+      - Projects
+      summary: Replace project standards
+      operationId: replaceProjectStandards
+      parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplaceProjectStandardsRequest'
+      responses:
+        '200':
+          description: Updated project standards
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectStandardListResponse'
+          headers:
+            X-Request-Id:
+              description: Request ID for tracing logs and support cases.
+              schema:
+                type: string
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        - esg_manager
+        objectRules:
+        - user.organizationId == project.organizationId
+      x-error-codes:
+      - STANDARD_ALREADY_ADDED
+      - BASE_STANDARD_REQUIRED
+      - MERGE_CONFIGURATION_INVALID
+  /projects/{projectId}/assignments:
+    get:
+      tags:
+      - Assignments
+      summary: List metric assignments
+      operationId: listAssignments
+      parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - name: collectorId
+        in: query
+        schema:
+          type: integer
+          format: int64
+      - name: reviewerId
+        in: query
+        schema:
+          type: integer
+          format: int64
+      - name: status
+        in: query
+        schema:
+          $ref: '#/components/schemas/AssignmentStatus'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      responses:
+        '200':
+          description: Assignments
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentListResponse'
+    post:
+      tags:
+      - Assignments
+      summary: Create metric assignment
+      operationId: createAssignment
+      parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAssignmentRequest'
+      responses:
+        '201':
+          description: Assignment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Assignment'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        - esg_manager
+        objectRules:
+        - user.organizationId == project.organizationId
+  /assignments/{assignmentId}:
+    patch:
+      tags:
+      - Assignments
+      summary: Update metric assignment
+      operationId: updateAssignment
+      parameters:
+      - $ref: '#/components/parameters/AssignmentId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAssignmentRequest'
+      responses:
+        '200':
+          description: Updated assignment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Assignment'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        - esg_manager
+        objectRules:
+        - user.organizationId == assignment.organizationId
+  /projects/{projectId}/data-points:
+    get:
+      tags:
+      - Data Points
+      summary: List data points for project
+      operationId: listProjectDataPoints
+      parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - name: status
+        in: query
+        schema:
+          $ref: '#/components/schemas/DataPointStatus'
+      - name: collectorView
+        in: query
+        schema:
+          type: boolean
+      - name: sharedElementId
+        in: query
+        schema:
+          type: integer
+          format: int64
+      - $ref: '#/components/parameters/RequestIdHeader'
+      responses:
+        '200':
+          description: Data points
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataPointListResponse'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        - esg_manager
+        - collector
+        - reviewer
+        - auditor
+        objectRules:
+        - user.organizationId == project.organizationId
+        - collector -> own/assigned only
+        - reviewer -> assigned review scope only
+    post:
+      tags:
+      - Data Points
+      summary: Create data point
+      operationId: createDataPoint
+      parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDataPointRequest'
+      responses:
+        '201':
+          description: Data point created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataPoint'
+          headers:
+            X-Request-Id:
+              description: Request ID for tracing logs and support cases.
+              schema:
+                type: string
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        - esg_manager
+        - collector
+        objectRules:
+        - user.organizationId == project.organizationId
+        - collector must own assignment for sharedElementId when role=collector
+        - project.status in ['draft','in_progress']
+  /data-points/{dataPointId}:
+    get:
+      tags:
+      - Data Points
+      summary: Get data point
+      operationId: getDataPoint
+      parameters:
+      - $ref: '#/components/parameters/DataPointId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      responses:
+        '200':
+          description: Data point
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataPoint'
+    patch:
+      tags:
+      - Data Points
+      summary: Update data point
+      operationId: updateDataPoint
+      parameters:
+      - $ref: '#/components/parameters/DataPointId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDataPointRequest'
+      responses:
+        '200':
+          description: Updated data point
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataPoint'
+          headers:
+            X-Request-Id:
+              description: Request ID for tracing logs and support cases.
+              schema:
+                type: string
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        - esg_manager
+        - collector
+        objectRules:
+        - user.organizationId == dataPoint.organizationId
+        - role=collector -> owns assignment and dataPoint.status in ['draft','rejected','needs_revision']
+        - role=esg_manager -> override allowed with audit log
+        - project.status != 'published'
+  /data-points/{dataPointId}/reuse-candidates:
+    get:
+      tags:
+      - Data Points
+      summary: Find reuse candidates for a data point draft
+      operationId: findReuseCandidates
+      parameters:
+      - $ref: '#/components/parameters/DataPointId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      responses:
+        '200':
+          description: Reuse candidates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReuseCandidateListResponse'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        - esg_manager
+        - collector
+        objectRules:
+        - user.organizationId == dataPoint.organizationId
+        - role=collector -> owns assignment and dataPoint.status == 'draft'
+  /data-points/{dataPointId}/submit:
+    post:
+      tags:
+      - Data Points
+      summary: Submit data point for review
+      operationId: submitDataPoint
+      parameters:
+      - $ref: '#/components/parameters/DataPointId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      responses:
+        '200':
+          description: Data point submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataPoint'
+          headers:
+            X-Request-Id:
+              description: Request ID for tracing logs and support cases.
+              schema:
+                type: string
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        - esg_manager
+        - collector
+        objectRules:
+        - user.organizationId == dataPoint.organizationId
+        - role=collector -> owns assignment
+        - dataPoint.status in ['draft','rejected','needs_revision']
+      x-error-codes:
+      - VALIDATION_ERROR
+      - DATA_POINT_LOCKED
+      - REUSE_IDENTITY_MISMATCH
+  /data-points/{dataPointId}/attachments:
+    post:
+      tags:
+      - Data Points
+      summary: Upload attachment metadata for a data point
+      operationId: createDataPointAttachment
+      parameters:
+      - $ref: '#/components/parameters/DataPointId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAttachmentRequest'
+      responses:
+        '201':
+          description: Attachment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Attachment'
+          headers:
+            X-Request-Id:
+              description: Request ID for tracing logs and support cases.
+              schema:
+                type: string
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        - esg_manager
+        - collector
+        objectRules:
+        - user.organizationId == dataPoint.organizationId
+        - role=collector -> owns editable dataPoint
+        - project.status != 'published'
+  /review/queue:
+    get:
+      tags:
+      - Review
+      summary: Get review queue
+      operationId: getReviewQueue
+      parameters:
+      - name: reviewerId
+        in: query
+        schema:
+          type: integer
+          format: int64
+      - name: status
+        in: query
+        schema:
+          type: array
+          items:
+            $ref: '#/components/schemas/DataPointStatus'
+          style: form
+          explode: false
+      - $ref: '#/components/parameters/RequestIdHeader'
+      responses:
+        '200':
+          description: Review queue
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewQueueResponse'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        - esg_manager
+        - reviewer
+        objectRules:
+        - user.organizationId == queue.organizationId
+        - role=reviewer -> queue limited to assigned scope
+  /review/data-points/{dataPointId}/approve:
+    post:
+      tags:
+      - Review
+      summary: Approve data point
+      operationId: approveDataPoint
+      parameters:
+      - $ref: '#/components/parameters/DataPointId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApproveDataPointRequest'
+      responses:
+        '200':
+          description: Data point approved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataPoint'
+          headers:
+            X-Request-Id:
+              description: Request ID for tracing logs and support cases.
+              schema:
+                type: string
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        - reviewer
+        objectRules:
+        - user.organizationId == dataPoint.organizationId
+        - role=reviewer -> assigned as reviewer
+        - dataPoint.status in ['submitted','in_review']
+        - required evidence and validation checks must pass
+        - role=admin -> override only with audit log
+      x-error-codes:
+      - EVIDENCE_REQUIRED
+      - INVALID_WORKFLOW_TRANSITION
+      - DATA_POINT_LOCKED
+  /review/data-points/{dataPointId}/reject:
+    post:
+      tags:
+      - Review
+      summary: Reject data point
+      operationId: rejectDataPoint
+      parameters:
+      - $ref: '#/components/parameters/DataPointId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectDataPointRequest'
+      responses:
+        '200':
+          description: Data point rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataPoint'
+          headers:
+            X-Request-Id:
+              description: Request ID for tracing logs and support cases.
+              schema:
+                type: string
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        - reviewer
+        objectRules:
+        - user.organizationId == dataPoint.organizationId
+        - role=reviewer -> assigned as reviewer
+        - dataPoint.status in ['submitted','in_review']
+        - comment is required
+        - role=admin -> override only with audit log
+      x-error-codes:
+      - REVIEW_COMMENT_REQUIRED
+      - INVALID_WORKFLOW_TRANSITION
+  /review/data-points/{dataPointId}/request-revision:
+    post:
+      tags:
+      - Review
+      summary: Request revision for data point
+      operationId: requestRevisionDataPoint
+      parameters:
+      - $ref: '#/components/parameters/DataPointId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestRevisionDataPointRequest'
+      responses:
+        '200':
+          description: Revision requested
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataPoint'
+          headers:
+            X-Request-Id:
+              description: Request ID for tracing logs and support cases.
+              schema:
+                type: string
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        - reviewer
+        objectRules:
+        - user.organizationId == dataPoint.organizationId
+        - role=reviewer -> assigned as reviewer
+        - dataPoint.status in ['submitted','in_review']
+        - comment is required
+        - role=admin -> override only with audit log
+  /comments:
+    post:
+      tags:
+      - Review
+      summary: Create comment
+      operationId: createComment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCommentRequest'
+      responses:
+        '201':
+          description: Comment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        - esg_manager
+        - collector
+        - reviewer
+        objectRules:
+        - user.organizationId == resource.organizationId
+        - collector -> own scope only
+        - reviewer -> assigned scope only
+      parameters:
+      - $ref: '#/components/parameters/RequestIdHeader'
+  /projects/{projectId}/merge:
+    get:
+      tags:
+      - Merge
+      summary: Get merge view for project
+      operationId: getProjectMergeView
+      parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - name: conceptDomain
+        in: query
+        schema:
+          type: string
+      - $ref: '#/components/parameters/RequestIdHeader'
+      responses:
+        '200':
+          description: Merge view
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MergeViewResponse'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        - esg_manager
+        - reviewer
+        - auditor
+        objectRules:
+        - user.organizationId == project.organizationId
+        - collector role is not allowed
+  /projects/{projectId}/impact-preview/standards:
+    post:
+      tags:
+      - Merge
+      summary: Preview impact of adding a standard to project
+      operationId: previewProjectStandardImpact
+      parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreviewProjectStandardImpactRequest'
+      responses:
+        '200':
+          description: Standard impact preview
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectStandardImpactPreview'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        - esg_manager
+        objectRules:
+        - user.organizationId == project.organizationId
+  /projects/{projectId}/completeness:
+    get:
+      tags:
+      - Completeness
+      summary: Get completeness summary for project
+      operationId: getProjectCompleteness
+      parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - name: level
+        in: query
+        schema:
+          type: string
+          enum:
+          - project
+          - standard
+          - disclosure
+          - requirement_item
+          default: project
+      - $ref: '#/components/parameters/RequestIdHeader'
+      responses:
+        '200':
+          description: Completeness summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompletenessSummaryResponse'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        - esg_manager
+        - collector
+        - reviewer
+        - auditor
+        objectRules:
+        - user.organizationId == project.organizationId
+        - collector -> own assigned scope only
+        - reviewer -> assigned review scope only
+  /projects/{projectId}/completeness/recalculate:
+    post:
+      tags:
+      - Completeness
+      summary: Recalculate completeness for project
+      operationId: recalculateProjectCompleteness
+      parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      responses:
+        '202':
+          description: Recalculation accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AsyncJobResponse'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        - esg_manager
+        objectRules:
+        - user.organizationId == project.organizationId
+  /projects/{projectId}/readiness-check:
+    get:
+      tags:
+      - Reports
+      summary: Get readiness check for project
+      operationId: getProjectReadinessCheck
+      parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      responses:
+        '200':
+          description: Readiness check
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessCheckResponse'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        - esg_manager
+        - reviewer
+        - auditor
+        objectRules:
+        - user.organizationId == project.organizationId
+  /projects/{projectId}/exports:
+    post:
+      tags:
+      - Reports
+      summary: Create export
+      operationId: createProjectExport
+      parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/RequestIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateExportRequest'
+      responses:
+        '202':
+          description: Export job created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AsyncJobResponse'
+          headers:
+            X-Request-Id:
+              description: Request ID for tracing logs and support cases.
+              schema:
+                type: string
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        - esg_manager
+        objectRules:
+        - user.organizationId == project.organizationId
+        - blocking issues must be zero for final export
+      x-error-codes:
+      - EXPORT_BLOCKED_BY_MISSING_REQUIREMENTS
+  /admin/users:
+    get:
+      tags:
+      - Admin
+      summary: List users
+      operationId: listUsers
+      responses:
+        '200':
+          description: Users
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserListResponse'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        objectRules:
+        - same-tenant-admin
+      parameters:
+      - $ref: '#/components/parameters/RequestIdHeader'
+    post:
+      tags:
+      - Admin
+      summary: Create user
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '409': *id005
+        '422': *id006
+        '500': *id007
+      x-permissions:
+        roles:
+        - admin
+        objectRules:
+        - same-tenant-admin
+      parameters:
+      - $ref: '#/components/parameters/RequestIdHeader'
+  /audit-log:
+    get:
+      tags:
+      - Admin
+      summary: List audit log entries
+      operationId: listAuditLogEntries
+      parameters:
+      - $ref: '#/components/parameters/RequestIdHeader'
+      - name: entityType
+        in: query
+        schema:
+          type: string
+      - name: entityId
+        in: query
+        schema:
+          type: integer
+          format: int64
+      - name: userId
+        in: query
+        schema:
+          type: integer
+          format: int64
+      x-permissions:
+        roles:
+        - admin
+        - auditor
+        objectRules:
+        - user.organizationId == auditLog.organizationId
+      responses:
+        '200':
+          description: Audit log entries
+          headers:
+            X-Request-Id:
+              description: Request ID for tracing logs and support cases.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /notifications:
+    get:
+      tags:
+      - Admin
+      summary: List current user notifications
+      operationId: listNotifications
+      parameters:
+      - $ref: '#/components/parameters/RequestIdHeader'
+      - name: isRead
+        in: query
+        schema:
+          type: boolean
+      x-permissions:
+        roles:
+        - admin
+        - esg_manager
+        - collector
+        - reviewer
+        - auditor
+        objectRules:
+        - user.id == notification.userId
+        - user.organizationId == notification.organizationId
+      responses:
+        '200':
+          description: Notifications
+          headers:
+            X-Request-Id:
+              description: Request ID for tracing logs and support cases.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /notifications/mark-read:
+    post:
+      tags:
+      - Admin
+      summary: Mark notifications as read
+      operationId: markNotificationsRead
+      parameters:
+      - $ref: '#/components/parameters/RequestIdHeader'
+      x-permissions:
+        roles:
+        - admin
+        - esg_manager
+        - collector
+        - reviewer
+        - auditor
+        objectRules:
+        - user.id owns all notification ids in request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarkNotificationsReadRequest'
+      responses:
+        '200':
+          description: Notifications marked as read
+          headers:
+            X-Request-Id:
+              description: Request ID for tracing logs and support cases.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    StandardId:
+      name: standardId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    StandardIdQuery:
+      name: standardId
+      in: query
+      schema:
+        type: integer
+        format: int64
+    DisclosureRequirementId:
+      name: disclosureRequirementId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    RequirementItemId:
+      name: requirementItemId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    SharedElementId:
+      name: sharedElementId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    AssignmentId:
+      name: assignmentId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    DataPointId:
+      name: dataPointId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    IsActive:
+      name: isActive
+      in: query
+      schema:
+        type: boolean
+    RequestIdHeader:
+      name: X-Request-Id
+      in: header
+      required: false
+      schema:
+        type: string
+      description: Optional client-provided request ID for traceability. If omitted,
+        server generates one.
+  schemas:
+    Standard:
+      type: object
+      required:
+      - id
+      - code
+      - name
+      - isActive
+      properties:
+        id:
+          type: integer
+          format: int64
+        code:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        jurisdiction:
+          type: string
+        effectiveFrom:
+          type: string
+          format: date
+        effectiveTo:
+          type: string
+          format: date
+        isActive:
+          type: boolean
+    CreateStandardRequest:
+      type: object
+      required:
+      - code
+      - name
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        jurisdiction:
+          type: string
+        effectiveFrom:
+          type: string
+          format: date
+        effectiveTo:
+          type: string
+          format: date
+    UpdateStandardRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        version:
+          type: string
+        jurisdiction:
+          type: string
+        effectiveFrom:
+          type: string
+          format: date
+        effectiveTo:
+          type: string
+          format: date
+        isActive:
+          type: boolean
+    StandardSection:
+      type: object
+      required:
+      - id
+      - standardId
+      - title
+      properties:
+        id:
+          type: integer
+          format: int64
+        standardId:
+          type: integer
+          format: int64
+        parentSectionId:
+          type: integer
+          format: int64
+          nullable: true
+        code:
+          type: string
+          nullable: true
+        title:
+          type: string
+        sortOrder:
+          type: integer
+    CreateStandardSectionRequest:
+      type: object
+      required:
+      - title
+      properties:
+        parentSectionId:
+          type: integer
+          format: int64
+          nullable: true
+        code:
+          type: string
+        title:
+          type: string
+        sortOrder:
+          type: integer
+    StandardSectionTreeResponse:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/StandardSectionNode'
+    StandardSectionNode:
+      allOf:
+      - $ref: '#/components/schemas/StandardSection'
+      - type: object
+        properties:
+          children:
+            type: array
+            items:
+              $ref: '#/components/schemas/StandardSectionNode'
+    MandatoryLevel:
+      type: string
+      enum:
+      - mandatory
+      - conditional
+      - optional
+    RequirementType:
+      type: string
+      enum:
+      - quantitative
+      - qualitative
+      - mixed
+    DisclosureRequirement:
+      type: object
+      required:
+      - id
+      - standardId
+      - code
+      - title
+      - requirementType
+      - mandatoryLevel
+      properties:
+        id:
+          type: integer
+          format: int64
+        standardId:
+          type: integer
+          format: int64
+        sectionId:
+          type: integer
+          format: int64
+          nullable: true
+        code:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        requirementType:
+          $ref: '#/components/schemas/RequirementType'
+        mandatoryLevel:
+          $ref: '#/components/schemas/MandatoryLevel'
+        applicabilityRule:
+          type: object
+          additionalProperties: true
+        sortOrder:
+          type: integer
+    CreateDisclosureRequirementRequest:
+      type: object
+      required:
+      - standardId
+      - code
+      - title
+      - requirementType
+      - mandatoryLevel
+      properties:
+        standardId:
+          type: integer
+          format: int64
+        sectionId:
+          type: integer
+          format: int64
+        code:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        requirementType:
+          $ref: '#/components/schemas/RequirementType'
+        mandatoryLevel:
+          $ref: '#/components/schemas/MandatoryLevel'
+        applicabilityRule:
+          type: object
+          additionalProperties: true
+        sortOrder:
+          type: integer
+    UpdateDisclosureRequirementRequest:
+      type: object
+      properties:
+        sectionId:
+          type: integer
+          format: int64
+        title:
+          type: string
+        description:
+          type: string
+        requirementType:
+          $ref: '#/components/schemas/RequirementType'
+        mandatoryLevel:
+          $ref: '#/components/schemas/MandatoryLevel'
+        applicabilityRule:
+          type: object
+          additionalProperties: true
+        sortOrder:
+          type: integer
+    RequirementItemItemType:
+      type: string
+      enum:
+      - metric
+      - attribute
+      - dimension
+      - narrative
+      - document
+    RequirementItemValueType:
+      type: string
+      enum:
+      - number
+      - text
+      - boolean
+      - date
+      - enum
+      - json
+    RequirementItem:
+      type: object
+      required:
+      - id
+      - disclosureRequirementId
+      - name
+      - itemType
+      - valueType
+      - isRequired
+      properties:
+        id:
+          type: integer
+          format: int64
+        disclosureRequirementId:
+          type: integer
+          format: int64
+        parentItemId:
+          type: integer
+          format: int64
+          nullable: true
+        itemCode:
+          type: string
+          nullable: true
+        name:
+          type: string
+        description:
+          type: string
+        itemType:
+          $ref: '#/components/schemas/RequirementItemItemType'
+        valueType:
+          $ref: '#/components/schemas/RequirementItemValueType'
+        unitCode:
+          type: string
+          nullable: true
+        isRequired:
+          type: boolean
+        cardinalityMin:
+          type: integer
+        cardinalityMax:
+          type: integer
+          nullable: true
+        granularityRule:
+          type: object
+          additionalProperties: true
+        validationRule:
+          type: object
+          additionalProperties: true
+        sortOrder:
+          type: integer
+    CreateRequirementItemRequest:
+      type: object
+      required:
+      - name
+      - itemType
+      - valueType
+      properties:
+        parentItemId:
+          type: integer
+          format: int64
+        itemCode:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        itemType:
+          $ref: '#/components/schemas/RequirementItemItemType'
+        valueType:
+          $ref: '#/components/schemas/RequirementItemValueType'
+        unitCode:
+          type: string
+        isRequired:
+          type: boolean
+          default: true
+        cardinalityMin:
+          type: integer
+          default: 0
+        cardinalityMax:
+          type: integer
+          nullable: true
+        granularityRule:
+          type: object
+          additionalProperties: true
+        validationRule:
+          type: object
+          additionalProperties: true
+        sortOrder:
+          type: integer
+    UpdateRequirementItemRequest:
+      type: object
+      properties:
+        parentItemId:
+          type: integer
+          format: int64
+        itemCode:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        unitCode:
+          type: string
+        isRequired:
+          type: boolean
+        cardinalityMin:
+          type: integer
+        cardinalityMax:
+          type: integer
+          nullable: true
+        granularityRule:
+          type: object
+          additionalProperties: true
+        validationRule:
+          type: object
+          additionalProperties: true
+        sortOrder:
+          type: integer
+    RequirementItemDependencyType:
+      type: string
+      enum:
+      - requires
+      - excludes
+      - conditional_on
+    RequirementItemDependency:
+      type: object
+      required:
+      - id
+      - requirementItemId
+      - dependsOnItemId
+      - dependencyType
+      properties:
+        id:
+          type: integer
+          format: int64
+        requirementItemId:
+          type: integer
+          format: int64
+        dependsOnItemId:
+          type: integer
+          format: int64
+        dependencyType:
+          $ref: '#/components/schemas/RequirementItemDependencyType'
+        conditionExpression:
+          type: object
+          additionalProperties: true
+    CreateRequirementItemDependencyRequest:
+      type: object
+      required:
+      - dependsOnItemId
+      - dependencyType
+      properties:
+        dependsOnItemId:
+          type: integer
+          format: int64
+        dependencyType:
+          $ref: '#/components/schemas/RequirementItemDependencyType'
+        conditionExpression:
+          type: object
+          additionalProperties: true
+    SharedElement:
+      type: object
+      required:
+      - id
+      - code
+      - name
+      - conceptDomain
+      - defaultValueType
+      properties:
+        id:
+          type: integer
+          format: int64
+        code:
+          type: string
+        name:
+          type: string
+        conceptDomain:
+          type: string
+        description:
+          type: string
+        defaultValueType:
+          $ref: '#/components/schemas/RequirementItemValueType'
+        defaultUnitCode:
+          type: string
+          nullable: true
+    CreateSharedElementRequest:
+      type: object
+      required:
+      - code
+      - name
+      - conceptDomain
+      - defaultValueType
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        conceptDomain:
+          type: string
+        description:
+          type: string
+        defaultValueType:
+          $ref: '#/components/schemas/RequirementItemValueType'
+        defaultUnitCode:
+          type: string
+    UpdateSharedElementRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        conceptDomain:
+          type: string
+        description:
+          type: string
+        defaultValueType:
+          $ref: '#/components/schemas/RequirementItemValueType'
+        defaultUnitCode:
+          type: string
+    SharedElementDimension:
+      type: object
+      required:
+      - dimensionType
+      - isRequired
+      properties:
+        dimensionType:
+          type: string
+        isRequired:
+          type: boolean
+    ReplaceSharedElementDimensionsRequest:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SharedElementDimension'
+    SharedElementDimensionsResponse:
+      type: object
+      required:
+      - sharedElementId
+      - items
+      properties:
+        sharedElementId:
+          type: integer
+          format: int64
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SharedElementDimension'
+    RequirementItemMappingType:
+      type: string
+      enum:
+      - full
+      - partial
+      - derived
+    RequirementItemMapping:
+      type: object
+      required:
+      - id
+      - requirementItemId
+      - sharedElementId
+      - mappingType
+      properties:
+        id:
+          type: integer
+          format: int64
+        requirementItemId:
+          type: integer
+          format: int64
+        sharedElementId:
+          type: integer
+          format: int64
+        mappingType:
+          $ref: '#/components/schemas/RequirementItemMappingType'
+        notes:
+          type: string
+          nullable: true
+    CreateRequirementItemMappingRequest:
+      type: object
+      required:
+      - sharedElementId
+      - mappingType
+      properties:
+        sharedElementId:
+          type: integer
+          format: int64
+        mappingType:
+          $ref: '#/components/schemas/RequirementItemMappingType'
+        notes:
+          type: string
+    ReportingPeriodRef:
+      type: object
+      required:
+      - id
+      - code
+      - periodStart
+      - periodEnd
+      properties:
+        id:
+          type: integer
+          format: int64
+        code:
+          type: string
+        periodStart:
+          type: string
+          format: date
+        periodEnd:
+          type: string
+          format: date
+    ProjectStatus:
+      type: string
+      enum:
+      - draft
+      - in_progress
+      - review
+      - published
+    Project:
+      type: object
+      required:
+      - id
+      - name
+      - status
+      - reportingPeriod
+      properties:
+        id:
+          type: integer
+          format: int64
+        organizationId:
+          type: integer
+          format: int64
+        reportingPeriod:
+          $ref: '#/components/schemas/ReportingPeriodRef'
+        name:
+          type: string
+        status:
+          $ref: '#/components/schemas/ProjectStatus'
+        deadline:
+          type: string
+          format: date
+          nullable: true
+        standards:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectStandard'
+    CreateProjectRequest:
+      type: object
+      required:
+      - reportingPeriodId
+      - name
+      properties:
+        reportingPeriodId:
+          type: integer
+          format: int64
+        name:
+          type: string
+        deadline:
+          type: string
+          format: date
+        standards:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReplaceProjectStandardItem'
+    UpdateProjectRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        status:
+          $ref: '#/components/schemas/ProjectStatus'
+        deadline:
+          type: string
+          format: date
+    ProjectStandard:
+      type: object
+      required:
+      - standardId
+      - code
+      - name
+      - isBaseStandard
+      properties:
+        standardId:
+          type: integer
+          format: int64
+        code:
+          type: string
+        name:
+          type: string
+        isBaseStandard:
+          type: boolean
+        sortOrder:
+          type: integer
+    ReplaceProjectStandardItem:
+      type: object
+      required:
+      - standardId
+      properties:
+        standardId:
+          type: integer
+          format: int64
+        isBaseStandard:
+          type: boolean
+          default: false
+        sortOrder:
+          type: integer
+          default: 0
+    ReplaceProjectStandardsRequest:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ReplaceProjectStandardItem'
+    AssignmentStatus:
+      type: string
+      enum:
+      - pending
+      - in_progress
+      - submitted
+      - approved
+    Assignment:
+      type: object
+      required:
+      - id
+      - reportingProjectId
+      - sharedElementId
+      - status
+      properties:
+        id:
+          type: integer
+          format: int64
+        reportingProjectId:
+          type: integer
+          format: int64
+        sharedElementId:
+          type: integer
+          format: int64
+        collectorId:
+          type: integer
+          format: int64
+          nullable: true
+        reviewerId:
+          type: integer
+          format: int64
+          nullable: true
+        deadline:
+          type: string
+          format: date
+          nullable: true
+        status:
+          $ref: '#/components/schemas/AssignmentStatus'
+    CreateAssignmentRequest:
+      type: object
+      required:
+      - sharedElementId
+      properties:
+        sharedElementId:
+          type: integer
+          format: int64
+        collectorId:
+          type: integer
+          format: int64
+          nullable: true
+        reviewerId:
+          type: integer
+          format: int64
+          nullable: true
+        deadline:
+          type: string
+          format: date
+    UpdateAssignmentRequest:
+      type: object
+      properties:
+        collectorId:
+          type: integer
+          format: int64
+          nullable: true
+        reviewerId:
+          type: integer
+          format: int64
+          nullable: true
+        deadline:
+          type: string
+          format: date
+          nullable: true
+        status:
+          $ref: '#/components/schemas/AssignmentStatus'
+    DataPointStatus:
+      type: string
+      enum:
+      - draft
+      - submitted
+      - in_review
+      - approved
+      - rejected
+      - needs_revision
+    DataPointDimension:
+      type: object
+      required:
+      - dimensionType
+      - dimensionValue
+      properties:
+        dimensionType:
+          type: string
+        dimensionValue:
+          type: string
+    BoundaryRef:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        boundaryType:
+          type: string
+        description:
+          type: string
+    MethodologyRef:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        code:
+          type: string
+        name:
+          type: string
+    Attachment:
+      type: object
+      required:
+      - id
+      - fileName
+      - fileUri
+      properties:
+        id:
+          type: integer
+          format: int64
+        fileName:
+          type: string
+        fileUri:
+          type: string
+        mimeType:
+          type: string
+        fileSize:
+          type: integer
+        description:
+          type: string
+    DataPoint:
+      type: object
+      required:
+      - id
+      - sharedElementId
+      - valueType
+      - status
+      properties:
+        id:
+          type: integer
+          format: int64
+        organizationId:
+          type: integer
+          format: int64
+        reportingPeriodId:
+          type: integer
+          format: int64
+        sharedElementId:
+          type: integer
+          format: int64
+        valueType:
+          $ref: '#/components/schemas/RequirementItemValueType'
+        numericValue:
+          type: number
+          nullable: true
+        textValue:
+          type: string
+          nullable: true
+        booleanValue:
+          type: boolean
+          nullable: true
+        dateValue:
+          type: string
+          format: date
+          nullable: true
+        jsonValue:
+          type: object
+          additionalProperties: true
+          nullable: true
+        unitCode:
+          type: string
+          nullable: true
+        methodology:
+          $ref: '#/components/schemas/MethodologyRef'
+        boundary:
+          $ref: '#/components/schemas/BoundaryRef'
+        dimensions:
+          type: array
+          items:
+            $ref: '#/components/schemas/DataPointDimension'
+        status:
+          $ref: '#/components/schemas/DataPointStatus'
+        reviewComment:
+          type: string
+          nullable: true
+        reusedIn:
+          type: array
+          items:
+            $ref: '#/components/schemas/DisclosureRef'
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attachment'
+    CreateDataPointRequest:
+      type: object
+      required:
+      - sharedElementId
+      - valueType
+      properties:
+        sharedElementId:
+          type: integer
+          format: int64
+        valueType:
+          $ref: '#/components/schemas/RequirementItemValueType'
+        numericValue:
+          type: number
+        textValue:
+          type: string
+        booleanValue:
+          type: boolean
+        dateValue:
+          type: string
+          format: date
+        jsonValue:
+          type: object
+          additionalProperties: true
+        unitCode:
+          type: string
+        methodologyId:
+          type: integer
+          format: int64
+        boundaryId:
+          type: integer
+          format: int64
+        dimensions:
+          type: array
+          items:
+            $ref: '#/components/schemas/DataPointDimension'
+        sourceRecord:
+          type: object
+          additionalProperties: true
+    UpdateDataPointRequest:
+      type: object
+      properties:
+        numericValue:
+          type: number
+        textValue:
+          type: string
+        booleanValue:
+          type: boolean
+        dateValue:
+          type: string
+          format: date
+        jsonValue:
+          type: object
+          additionalProperties: true
+        unitCode:
+          type: string
+        methodologyId:
+          type: integer
+          format: int64
+        boundaryId:
+          type: integer
+          format: int64
+        dimensions:
+          type: array
+          items:
+            $ref: '#/components/schemas/DataPointDimension'
+    CreateAttachmentRequest:
+      type: object
+      required:
+      - fileName
+      - fileUri
+      properties:
+        fileName:
+          type: string
+        fileUri:
+          type: string
+        mimeType:
+          type: string
+        fileSize:
+          type: integer
+        description:
+          type: string
+    DisclosureRef:
+      type: object
+      required:
+      - id
+      - code
+      - title
+      properties:
+        id:
+          type: integer
+          format: int64
+        code:
+          type: string
+        title:
+          type: string
+    ReuseCandidate:
+      type: object
+      required:
+      - dataPointId
+      - sharedElementId
+      - identityMatch
+      properties:
+        dataPointId:
+          type: integer
+          format: int64
+        sharedElementId:
+          type: integer
+          format: int64
+        identityMatch:
+          type: boolean
+        matchedOn:
+          type: array
+          items:
+            type: string
+        reusedIn:
+          type: array
+          items:
+            $ref: '#/components/schemas/DisclosureRef'
+    ApproveDataPointRequest:
+      type: object
+      properties:
+        comment:
+          type: string
+    RejectDataPointRequest:
+      type: object
+      required:
+      - comment
+      properties:
+        comment:
+          type: string
+    RequestRevisionDataPointRequest:
+      type: object
+      required:
+      - comment
+      properties:
+        comment:
+          type: string
+    CommentType:
+      type: string
+      enum:
+      - question
+      - issue
+      - suggestion
+      - resolution
+      - general
+    Comment:
+      type: object
+      required:
+      - id
+      - userId
+      - body
+      - commentType
+      - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        dataPointId:
+          type: integer
+          format: int64
+          nullable: true
+        requirementItemId:
+          type: integer
+          format: int64
+          nullable: true
+        parentCommentId:
+          type: integer
+          format: int64
+          nullable: true
+        userId:
+          type: integer
+          format: int64
+        commentType:
+          $ref: '#/components/schemas/CommentType'
+        body:
+          type: string
+        isResolved:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    CreateCommentRequest:
+      type: object
+      required:
+      - body
+      - commentType
+      properties:
+        dataPointId:
+          type: integer
+          format: int64
+        requirementItemId:
+          type: integer
+          format: int64
+        parentCommentId:
+          type: integer
+          format: int64
+        commentType:
+          $ref: '#/components/schemas/CommentType'
+        body:
+          type: string
+    CompletenessStatus:
+      type: string
+      enum:
+      - missing
+      - partial
+      - complete
+      - not_applicable
+    RequirementItemStatus:
+      type: object
+      required:
+      - requirementItemId
+      - status
+      properties:
+        requirementItemId:
+          type: integer
+          format: int64
+        status:
+          $ref: '#/components/schemas/CompletenessStatus'
+        statusReason:
+          type: string
+          nullable: true
+        validationResult:
+          type: object
+          additionalProperties: true
+          nullable: true
+    DisclosureRequirementStatus:
+      type: object
+      required:
+      - disclosureRequirementId
+      - status
+      properties:
+        disclosureRequirementId:
+          type: integer
+          format: int64
+        status:
+          $ref: '#/components/schemas/CompletenessStatus'
+        completionPercent:
+          type: number
+          nullable: true
+        missingSummary:
+          type: object
+          additionalProperties: true
+          nullable: true
+    MergeViewRow:
+      type: object
+      required:
+      - sharedElementId
+      - code
+      - name
+      - requiredByStandards
+      properties:
+        sharedElementId:
+          type: integer
+          format: int64
+        code:
+          type: string
+        name:
+          type: string
+        conceptDomain:
+          type: string
+        requiredByStandards:
+          type: array
+          items:
+            type: string
+        reused:
+          type: boolean
+        hasDeltas:
+          type: boolean
+        dataStatus:
+          $ref: '#/components/schemas/DataPointStatus'
+        completenessStatus:
+          $ref: '#/components/schemas/CompletenessStatus'
+    ProjectStandardImpactPreview:
+      type: object
+      required:
+      - standardCode
+      - alreadyCoveredCount
+      - deltaCount
+      - newCount
+      properties:
+        standardCode:
+          type: string
+        alreadyCoveredCount:
+          type: integer
+        deltaCount:
+          type: integer
+        newCount:
+          type: integer
+        estimatedCoveragePercent:
+          type: number
+        summary:
+          type: string
+    PreviewProjectStandardImpactRequest:
+      type: object
+      required:
+      - standardId
+      properties:
+        standardId:
+          type: integer
+          format: int64
+    ReadinessCheckResponse:
+      type: object
+      required:
+      - completionPercent
+      - blockingIssues
+      - warnings
+      properties:
+        completionPercent:
+          type: number
+        blockingIssues:
+          type: integer
+        warnings:
+          type: integer
+        missingMandatoryDisclosures:
+          type: array
+          items:
+            $ref: '#/components/schemas/DisclosureRef'
+    CreateExportRequest:
+      type: object
+      required:
+      - format
+      properties:
+        format:
+          type: string
+          enum:
+          - gri_index
+          - pdf
+          - excel
+          - xbrl
+        includeEvidence:
+          type: boolean
+          default: false
+    AsyncJobResponse:
+      type: object
+      required:
+      - jobId
+      - status
+      properties:
+        jobId:
+          type: string
+        status:
+          type: string
+          enum:
+          - queued
+          - running
+          - completed
+          - failed
+    ReviewQueueItem:
+      type: object
+      required:
+      - dataPoint
+      - assignment
+      properties:
+        dataPoint:
+          $ref: '#/components/schemas/DataPoint'
+        assignment:
+          $ref: '#/components/schemas/Assignment'
+        outlierFlag:
+          type: boolean
+        overdueFlag:
+          type: boolean
+    UserRole:
+      type: string
+      enum:
+      - admin
+      - esg_manager
+      - collector
+      - reviewer
+      - auditor
+    User:
+      type: object
+      required:
+      - id
+      - email
+      - firstName
+      - lastName
+      - role
+      - isActive
+      properties:
+        id:
+          type: integer
+          format: int64
+        organizationId:
+          type: integer
+          format: int64
+        email:
+          type: string
+          format: email
+        firstName:
+          type: string
+        lastName:
+          type: string
+        middleName:
+          type: string
+          nullable: true
+        position:
+          type: string
+          nullable: true
+        role:
+          $ref: '#/components/schemas/UserRole'
+        isActive:
+          type: boolean
+    CreateUserRequest:
+      type: object
+      required:
+      - email
+      - firstName
+      - lastName
+      - role
+      properties:
+        email:
+          type: string
+          format: email
+        firstName:
+          type: string
+        lastName:
+          type: string
+        middleName:
+          type: string
+        position:
+          type: string
+        role:
+          $ref: '#/components/schemas/UserRole'
+    StandardListResponse:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Standard'
+    DisclosureRequirementListResponse:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DisclosureRequirement'
+    RequirementItemListResponse:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RequirementItem'
+    SharedElementListResponse:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SharedElement'
+    RequirementItemMappingListResponse:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RequirementItemMapping'
+    ProjectListResponse:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Project'
+    ProjectStandardListResponse:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectStandard'
+    AssignmentListResponse:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Assignment'
+    DataPointListResponse:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DataPoint'
+    ReuseCandidateListResponse:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReuseCandidate'
+    ReviewQueueResponse:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReviewQueueItem'
+    MergeViewResponse:
+      type: object
+      required:
+      - items
+      properties:
+        summary:
+          type: object
+          additionalProperties: true
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MergeViewRow'
+    CompletenessSummaryResponse:
+      type: object
+      properties:
+        projectStatus:
+          $ref: '#/components/schemas/ProjectStatus'
+        byStandard:
+          type: array
+          items:
+            type: object
+            properties:
+              standardCode:
+                type: string
+              completionPercent:
+                type: number
+        disclosures:
+          type: array
+          items:
+            $ref: '#/components/schemas/DisclosureRequirementStatus'
+        requirementItems:
+          type: array
+          items:
+            $ref: '#/components/schemas/RequirementItemStatus'
+    UserListResponse:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+    ErrorDetail:
+      type: object
+      properties:
+        field:
+          type: string
+          nullable: true
+        reason:
+          type: string
+    ErrorObject:
+      type: object
+      required:
+      - code
+      - message
+      - requestId
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/ErrorDetail'
+        requestId:
+          type: string
+    ErrorResponse:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorObject'
+    AuditLogEntry:
+      type: object
+      required:
+      - id
+      - action
+      - entityType
+      - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        organizationId:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+          nullable: true
+        action:
+          type: string
+        entityType:
+          type: string
+        entityId:
+          type: integer
+          format: int64
+          nullable: true
+        changes:
+          type: object
+          additionalProperties: true
+          nullable: true
+        ipAddress:
+          type: string
+          nullable: true
+        userAgent:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    AuditLogListResponse:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditLogEntry'
+    Notification:
+      type: object
+      required:
+      - id
+      - type
+      - title
+      - isRead
+      - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+        type:
+          type: string
+        title:
+          type: string
+        message:
+          type: string
+          nullable: true
+        entityType:
+          type: string
+          nullable: true
+        entityId:
+          type: integer
+          format: int64
+          nullable: true
+        isRead:
+          type: boolean
+        sentEmail:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    NotificationListResponse:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+    MarkNotificationsReadRequest:
+      type: object
+      required:
+      - ids
+      properties:
+        ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+          minItems: 1
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+      headers:
+        X-Request-Id:
+          description: Request ID for tracing logs and support cases.
+          schema:
+            type: string
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+      headers:
+        X-Request-Id:
+          description: Request ID for tracing logs and support cases.
+          schema:
+            type: string
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+      headers:
+        X-Request-Id:
+          description: Request ID for tracing logs and support cases.
+          schema:
+            type: string
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+      headers:
+        X-Request-Id:
+          description: Request ID for tracing logs and support cases.
+          schema:
+            type: string
+    Conflict:
+      description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+      headers:
+        X-Request-Id:
+          description: Request ID for tracing logs and support cases.
+          schema:
+            type: string
+    UnprocessableEntity:
+      description: Business validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+      headers:
+        X-Request-Id:
+          description: Request ID for tracing logs and support cases.
+          schema:
+            type: string
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+      headers:
+        X-Request-Id:
+          description: Request ID for tracing logs and support cases.
+          schema:
+            type: string
