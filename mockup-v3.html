@@ -1,0 +1,1863 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ESGvist — Mockup v3</title>
+<style>
+/* ═══════════════════════════════════════════════
+   ESGvist v3 — CSS Design System
+   ═══════════════════════════════════════════════ */
+
+/* ── Reset ── */
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#f5f5f0; color:#1a1a1a; }
+a { text-decoration:none; color:inherit; }
+input, select, textarea { font-family:inherit; }
+button { font-family:inherit; cursor:pointer; border:none; }
+
+/* ── Global Sticky Bar ── */
+.global-bar { background:#1a1a1a; padding:6px 24px; display:flex; align-items:center; gap:12px; position:sticky; top:0; z-index:9999; }
+.global-bar-logo { font-size:14px; font-weight:900; color:#fff; letter-spacing:-.5px; }
+.global-bar-logo em { color:#4ade80; font-style:normal; }
+.global-bar-sep { color:#444; }
+.global-bar-version { font-size:11px; color:#aaa; }
+.global-bar-link { margin-left:auto; font-size:11px; color:#4ade80; font-weight:600; padding:4px 12px; border:1px solid #4ade80; border-radius:6px; }
+.global-bar-link:hover { background:#4ade80; color:#1a1a1a; }
+
+/* ── Screen Wrapper ── */
+.screens { display:flex; flex-direction:column; gap:40px; padding:20px; }
+.screen-label { font-size:10px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:#aaa; margin-bottom:8px; padding:0 4px; }
+.screen-label span { color:#888; font-weight:500; text-transform:none; letter-spacing:0; }
+.screen { border:1px solid #e0ddd8; border-radius:16px; overflow:hidden; background:#fff; box-shadow:0 2px 20px rgba(0,0,0,.04); }
+
+/* ── Context Topbar ── */
+.v3-topbar { display:flex; align-items:center; height:52px; padding:0 20px; background:#fff; border-bottom:1px solid #e8e5e0; }
+.v3-topbar-logo { font-size:16px; font-weight:900; letter-spacing:-.5px; }
+.v3-topbar-logo em { color:#2d8a56; font-style:normal; }
+.v3-topbar-period { display:flex; align-items:center; gap:6px; margin-left:20px; font-size:12px; color:#555; background:#f5f5f0; padding:5px 12px; border-radius:7px; border:1px solid #e8e5e0; }
+.v3-topbar-period b { color:#1a1a1a; }
+.v3-topbar-center { margin:0 auto; display:flex; align-items:center; gap:10px; }
+.v3-topbar-progress { width:160px; height:7px; background:#e8e5e0; border-radius:4px; overflow:hidden; }
+.v3-topbar-progress-fill { height:100%; background:#2d8a56; border-radius:4px; }
+.v3-topbar-percent { font-size:13px; font-weight:800; color:#2d8a56; }
+.v3-topbar-right { display:flex; align-items:center; gap:14px; }
+.v3-topbar-deadline { font-size:12px; color:#555; }
+.v3-topbar-deadline b { color:#1a1a1a; }
+.v3-topbar-avatar { width:32px; height:32px; border-radius:8px; background:#2d8a56; color:#fff; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; }
+
+/* ── Notification Bell ── */
+.notif-bell { position:relative; cursor:pointer; font-size:18px; }
+.notif-bell-badge { position:absolute; top:-4px; right:-6px; background:#e74c3c; color:#fff; font-size:9px; font-weight:800; border-radius:8px; padding:1px 5px; min-width:16px; text-align:center; }
+
+/* ── Layout Grid ── */
+.v3-layout { display:grid; grid-template-columns:210px 1fr; min-height:640px; }
+
+/* ── Sidebar ── */
+.v3-sidebar { background:#fafaf7; border-right:1px solid #e8e5e0; padding:16px 0; display:flex; flex-direction:column; }
+.v3-sidebar-section { padding:0 16px; margin-bottom:6px; }
+.v3-sidebar-section-title { font-size:9px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:#ccc; margin-bottom:8px; }
+.v3-sidebar-item { padding:9px 16px 9px 20px; font-size:13px; font-weight:500; color:#555; cursor:pointer; border-left:3px solid transparent; display:flex; align-items:center; gap:8px; transition:all .1s; }
+.v3-sidebar-item:hover { background:#f0ede8; color:#1a1a1a; }
+.v3-sidebar-item.active { background:#ecfdf5; border-left-color:#2d8a56; color:#2d8a56; font-weight:700; }
+.v3-sidebar-badge { background:#e74c3c; color:#fff; font-size:9px; font-weight:800; border-radius:8px; padding:1px 6px; margin-left:auto; }
+.v3-sidebar-divider { height:1px; background:#e8e5e0; margin:10px 16px; }
+
+/* ── Main Content ── */
+.v3-content { padding:24px; background:#f5f5f0; overflow-y:auto; }
+
+/* ── Buttons ── */
+.btn { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:8px; font-size:12px; font-weight:700; transition:all .1s; }
+.btn-primary { background:#2d8a56; color:#fff; }
+.btn-primary:hover { background:#246d45; }
+.btn-outline { background:#fff; color:#555; border:1px solid #e0ddd8; }
+.btn-outline:hover { border-color:#2d8a56; color:#2d8a56; }
+.btn-danger { background:#e74c3c; color:#fff; }
+.btn-ghost { background:transparent; color:#888; }
+.btn-ghost:hover { color:#1a1a1a; }
+.btn-sm { padding:5px 10px; font-size:11px; }
+.btn-lg { padding:12px 24px; font-size:14px; }
+
+/* ── Cards ── */
+.card { background:#fff; border:1px solid #e8e5e0; border-radius:12px; padding:20px; }
+.card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+.card-title { font-size:13px; font-weight:800; color:#1a1a1a; }
+.card-subtitle { font-size:11px; color:#888; margin-top:2px; }
+
+/* ── Page Header ── */
+.page-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+.page-title { font-size:20px; font-weight:800; color:#1a1a1a; letter-spacing:-.3px; }
+.page-subtitle { font-size:12px; color:#888; margin-top:3px; }
+
+/* ── Tables ── */
+.data-table { border:1px solid #e8e5e0; border-radius:12px; overflow:hidden; }
+.data-table-head { display:grid; background:#f7f6f3; border-bottom:1px solid #e8e5e0; padding:8px 16px; font-size:10px; font-weight:700; color:#888; text-transform:uppercase; letter-spacing:.04em; align-items:center; }
+.data-table-row { display:grid; padding:10px 16px; border-bottom:1px solid #f0ede8; align-items:center; font-size:12px; cursor:pointer; transition:background .1s; }
+.data-table-row:hover { background:#fafaf7; }
+.data-table-row:last-child { border-bottom:none; }
+.data-table-row--missing { background:#fef2f2; }
+.data-table-row--progress { background:#fffbeb; }
+.data-table-row--review { background:#eff6ff; }
+
+/* ── Status Badges ── */
+.status-dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
+.status-dot--missing { background:#e74c3c; }
+.status-dot--draft { background:#a3a3a3; }
+.status-dot--progress { background:#d97706; }
+.status-dot--review { background:#3b82f6; }
+.status-dot--approved { background:#2d8a56; }
+.status-dot--rejected { background:#dc2626; }
+.status-badge { padding:3px 10px; border-radius:20px; font-size:10px; font-weight:700; display:inline-flex; align-items:center; gap:4px; }
+.status-badge--missing { background:#fef2f2; color:#dc2626; }
+.status-badge--draft { background:#f5f5f0; color:#888; }
+.status-badge--progress { background:#fffbeb; color:#92400e; }
+.status-badge--review { background:#eff6ff; color:#1e40af; }
+.status-badge--approved { background:#ecfdf5; color:#166534; }
+.status-badge--rejected { background:#fef2f2; color:#991b1b; }
+.status-badge--needs-revision { background:#fff7ed; color:#9a3412; }
+
+/* ── Reuse Badge ── */
+.reuse-badge { display:inline-flex; align-items:center; gap:3px; padding:2px 8px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:4px; font-size:10px; font-weight:600; color:#166534; }
+
+/* ── SLA Indicator ── */
+.sla { padding:3px 8px; border-radius:4px; font-size:10px; font-weight:700; }
+.sla--green { background:#ecfdf5; color:#166534; }
+.sla--yellow { background:#fef9c3; color:#854d0e; }
+.sla--orange { background:#fff7ed; color:#9a3412; }
+.sla--red { background:#fef2f2; color:#991b1b; }
+
+/* ── Filter Pills ── */
+.filter-row { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; align-items:center; }
+.filter-pill { display:flex; align-items:center; gap:6px; padding:7px 14px; background:#fff; border:1px solid #e8e5e0; border-radius:8px; font-size:12px; font-weight:600; color:#555; cursor:pointer; }
+.filter-pill:hover { border-color:#2d8a56; }
+.filter-pill.active { background:#fef2f2; border-color:#e74c3c; color:#991b1b; font-weight:700; }
+.filter-pill .count { font-size:14px; font-weight:800; }
+
+/* ── Stat Blocks ── */
+.stat-strip { display:flex; gap:10px; margin-bottom:16px; }
+.stat-block { flex:1; text-align:center; padding:14px; border-radius:10px; cursor:pointer; transition:transform .1s; }
+.stat-block:hover { transform:scale(1.02); }
+.stat-block-value { font-size:28px; font-weight:800; }
+.stat-block-label { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.5px; margin-top:3px; }
+.stat-block--neutral { background:#f5f5f0; }
+.stat-block--accent { background:#fef2f2; border:2px solid #e74c3c; }
+.stat-block--green { background:#ecfdf5; }
+.stat-block--yellow { background:#fff7ed; }
+
+/* ── Progress Bar ── */
+.progress { height:6px; background:#e8e5e0; border-radius:3px; overflow:hidden; }
+.progress-fill { height:100%; border-radius:3px; }
+.progress-fill--green { background:#2d8a56; }
+.progress-fill--yellow { background:#d97706; }
+.progress-fill--red { background:#e74c3c; }
+
+/* ── Issue Cards ── */
+.issue-card { display:flex; align-items:center; gap:10px; padding:10px 14px; background:#fff; border-radius:8px; cursor:pointer; margin-bottom:6px; }
+.issue-card--critical { border:1px solid #fecaca; border-left:3px solid #e74c3c; }
+.issue-card--critical:hover { background:#fef2f2; }
+.issue-card--warning { border:1px solid #fed7aa; border-left:3px solid #d97706; }
+.issue-card--warning:hover { background:#fffbeb; }
+.issue-card-body { flex:1; }
+.issue-card-title { font-size:12px; font-weight:700; color:#1a1a1a; }
+.issue-card-meta { font-size:10px; color:#888; margin-top:2px; }
+.issue-card-action { font-size:10px; font-weight:700; padding:4px 10px; border-radius:5px; color:#fff; white-space:nowrap; }
+
+/* ── Category Cards Grid ── */
+.category-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; margin-bottom:16px; }
+.category-card { background:#fff; border-radius:12px; padding:18px; cursor:pointer; transition:all .15s; }
+.category-card:hover { box-shadow:0 2px 12px rgba(0,0,0,.06); }
+.category-card--problem { border:2px solid #e74c3c; box-shadow:0 2px 12px rgba(231,76,60,.1); }
+.category-card--warning { border:1px solid #fed7aa; }
+.category-card--ok { border:1px solid #e8e5e0; }
+.category-card--done { background:#fafaf7; border:1px solid #e8e5e0; opacity:.5; }
+
+/* ── Task Items ── */
+.task-item { display:flex; align-items:center; gap:12px; padding:12px 16px; border-radius:8px; margin-bottom:8px; cursor:pointer; }
+.task-item--overdue { background:#fef2f2; border:1px solid #fecaca; border-left:3px solid #e74c3c; }
+.task-item--overdue:hover { background:#fee2e2; }
+.task-item--normal { background:#fff; border:1px solid #e8e5e0; border-left:3px solid #3b82f6; }
+.task-item--normal:hover { background:#f8fafc; }
+.task-item-icon { font-size:16px; }
+.task-item-body { flex:1; }
+.task-item-title { font-size:13px; font-weight:700; }
+.task-item-meta { font-size:10px; color:#888; margin-top:2px; }
+.task-item-action { font-size:11px; font-weight:700; padding:6px 14px; border-radius:6px; color:#fff; white-space:nowrap; }
+
+/* ── Split Panel (Review) ── */
+.split-panel { display:grid; grid-template-columns:320px 1fr; gap:0; border:1px solid #e8e5e0; border-radius:12px; overflow:hidden; min-height:500px; }
+.split-list { background:#fff; border-right:1px solid #e8e5e0; overflow-y:auto; }
+.split-list-head { padding:12px 16px; font-size:11px; font-weight:700; color:#888; border-bottom:1px solid #e8e5e0; background:#f7f6f3; }
+.split-list-item { padding:12px 16px; border-bottom:1px solid #f0ede8; cursor:pointer; transition:background .1s; }
+.split-list-item:hover { background:#fafaf7; }
+.split-list-item.active { background:#ecfdf5; border-left:3px solid #2d8a56; }
+.split-list-item--overdue { border-left:3px solid #e74c3c; }
+.split-detail { padding:20px; background:#fafaf7; overflow-y:auto; }
+.split-detail-title { font-size:16px; font-weight:800; margin-bottom:8px; }
+.split-detail-meta { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+.split-detail-section { margin-bottom:20px; }
+.split-detail-section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#888; margin-bottom:8px; }
+
+/* ── Merge Matrix ── */
+.merge-matrix { border:1px solid #e8e5e0; border-radius:12px; overflow:hidden; }
+.merge-matrix-head { display:grid; background:#f7f6f3; border-bottom:1px solid #e8e5e0; padding:10px 16px; font-size:11px; font-weight:700; color:#888; text-transform:uppercase; align-items:center; }
+.merge-matrix-row { display:grid; padding:10px 16px; border-bottom:1px solid #f0ede8; align-items:center; font-size:12px; }
+.merge-cell { text-align:center; font-weight:700; }
+.merge-cell--yes { color:#2d8a56; }
+.merge-cell--no { color:#e74c3c; }
+.merge-cell--delta { color:#d97706; }
+.merge-cell--na { color:#ccc; }
+
+/* ── Wizard Stepper ── */
+.wizard-stepper { display:flex; align-items:center; gap:0; margin-bottom:24px; }
+.wizard-step { display:flex; align-items:center; gap:8px; padding:10px 16px; font-size:12px; font-weight:600; color:#aaa; position:relative; }
+.wizard-step-num { width:28px; height:28px; border-radius:50%; background:#e8e5e0; color:#888; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; }
+.wizard-step.active { color:#1a1a1a; }
+.wizard-step.active .wizard-step-num { background:#2d8a56; color:#fff; }
+.wizard-step.done { color:#2d8a56; }
+.wizard-step.done .wizard-step-num { background:#2d8a56; color:#fff; }
+.wizard-arrow { color:#ccc; font-size:16px; margin:0 4px; }
+
+/* ── Form Elements ── */
+.form-group { margin-bottom:16px; }
+.form-label { display:block; font-size:11px; font-weight:700; color:#555; margin-bottom:5px; text-transform:uppercase; letter-spacing:.3px; }
+.form-input { width:100%; padding:8px 12px; border:1px solid #e0ddd8; border-radius:8px; font-size:13px; background:#fff; }
+.form-input:focus { outline:none; border-color:#2d8a56; box-shadow:0 0 0 3px rgba(45,138,86,.1); }
+.form-select { width:100%; padding:8px 12px; border:1px solid #e0ddd8; border-radius:8px; font-size:13px; background:#fff; appearance:none; }
+.form-textarea { width:100%; padding:10px 12px; border:1px solid #e0ddd8; border-radius:8px; font-size:13px; min-height:80px; resize:vertical; }
+.form-hint { font-size:10px; color:#aaa; margin-top:3px; }
+.form-row { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+
+/* ── Comment Thread ── */
+.comment { padding:10px 14px; background:#fff; border:1px solid #e8e5e0; border-radius:8px; margin-bottom:8px; }
+.comment-header { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.comment-author { font-size:12px; font-weight:700; }
+.comment-time { font-size:10px; color:#aaa; }
+.comment-type { font-size:9px; font-weight:700; padding:2px 6px; border-radius:4px; text-transform:uppercase; }
+.comment-type--question { background:#eff6ff; color:#1e40af; }
+.comment-type--issue { background:#fef2f2; color:#991b1b; }
+.comment-type--suggestion { background:#fff7ed; color:#9a3412; }
+.comment-type--resolution { background:#ecfdf5; color:#166534; }
+.comment-body { font-size:12px; color:#555; line-height:1.5; }
+.comment-reply { margin-left:24px; }
+
+/* ── Modal ── */
+.modal-overlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,.4); display:none; align-items:center; justify-content:center; z-index:10000; }
+.modal { background:#fff; border-radius:16px; padding:28px; max-width:520px; width:90%; box-shadow:0 20px 60px rgba(0,0,0,.15); }
+.modal-title { font-size:18px; font-weight:800; margin-bottom:12px; }
+.modal-body { font-size:13px; color:#555; line-height:1.6; margin-bottom:20px; }
+.modal-actions { display:flex; gap:10px; justify-content:flex-end; }
+
+/* ── Annotation ── */
+.annotation { padding:10px 16px; background:#fffbeb; border-top:1px solid #fde68a; font-size:11px; color:#92400e; }
+
+/* ── Login Page ── */
+.login-layout { display:grid; grid-template-columns:1fr 1fr; min-height:640px; }
+.login-brand { background:linear-gradient(135deg,#1a3a2a,#2d8a56); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:40px; color:#fff; }
+.login-brand-logo { font-size:36px; font-weight:900; letter-spacing:-1px; margin-bottom:12px; }
+.login-brand-logo em { color:#4ade80; font-style:normal; }
+.login-brand-tagline { font-size:14px; color:rgba(255,255,255,.7); text-align:center; }
+.login-form { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:40px; background:#fff; }
+.login-form-inner { width:100%; max-width:340px; }
+.login-form-title { font-size:22px; font-weight:800; margin-bottom:24px; }
+
+/* ── Misc ── */
+.text-muted { color:#888; }
+.text-sm { font-size:11px; }
+.text-xs { font-size:10px; }
+.fw-800 { font-weight:800; }
+.mt-8 { margin-top:8px; }
+.mt-16 { margin-top:16px; }
+.mb-8 { margin-bottom:8px; }
+.mb-16 { margin-bottom:16px; }
+.gap-8 { gap:8px; }
+.flex { display:flex; }
+.flex-1 { flex:1; }
+.items-center { align-items:center; }
+.justify-between { justify-content:space-between; }
+.grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
+.section-title { font-size:11px; font-weight:800; letter-spacing:.5px; text-transform:uppercase; margin-bottom:10px; }
+.section-title--red { color:#e74c3c; }
+.section-title--green { color:#2d8a56; }
+.section-title--muted { color:#aaa; }
+.tag { padding:2px 7px; border-radius:4px; font-size:10px; font-weight:700; }
+.tag-env { background:#f0fdf4; color:#2d8a56; }
+.tag-soc { background:#eff6ff; color:#3b82f6; }
+.tag-gov { background:#f5f3ff; color:#7c3aed; }
+</style>
+</head>
+<body>
+
+<!-- ═══ GLOBAL STICKY BAR ═══ -->
+<div class="global-bar">
+  <div class="global-bar-logo"><em>ESG</em>vist</div>
+  <span class="global-bar-sep">·</span>
+  <span class="global-bar-version">Mockup v3</span>
+  <a href="sitemap.html" class="global-bar-link">🗺 Sitemap</a>
+</div>
+
+<div class="screens">
+
+<!-- ════════════════════════════════════════════════════════════
+     SCREEN: LOGIN
+     ════════════════════════════════════════════════════════════ -->
+<div id="s-login">
+  <div class="screen-label">AUTH · <span>Login — standalone, no sidebar</span></div>
+  <div class="screen">
+    <div class="login-layout">
+      <div class="login-brand">
+        <div class="login-brand-logo"><em>ESG</em>vist</div>
+        <div class="login-brand-tagline">Standard-centric ESG reporting platform<br>with shared data reuse and multi-standard merge</div>
+      </div>
+      <div class="login-form">
+        <div class="login-form-inner">
+          <div class="login-form-title">Sign in</div>
+          <div class="form-group">
+            <label class="form-label">Email</label>
+            <input class="form-input" type="email" placeholder="user@kazenergo.kz" value="ivanov@kazenergo.kz">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input class="form-input" type="password" placeholder="••••••••" value="••••••••">
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+            <label style="font-size:12px;color:#555;display:flex;align-items:center;gap:6px;"><input type="checkbox" checked> Remember me</label>
+            <a href="#" style="font-size:12px;color:#2d8a56;font-weight:600;">Forgot password?</a>
+          </div>
+          <button class="btn btn-primary btn-lg" style="width:100%;justify-content:center;">Sign in →</button>
+          <div style="text-align:center;margin-top:16px;">
+            <span style="font-size:12px;color:#aaa;">or</span>
+          </div>
+          <button class="btn btn-outline" style="width:100%;justify-content:center;margin-top:12px;">🔑 Sign in with SSO</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     SCREEN: OVERVIEW
+     ════════════════════════════════════════════════════════════ -->
+<div id="s-overview">
+  <div class="screen-label">OVERVIEW · <span>Dashboard — progress, issues, categories, tasks</span></div>
+  <div class="screen">
+    <div class="v3-topbar">
+      <div class="v3-topbar-logo"><em>ESG</em>vist</div>
+      <div class="v3-topbar-period">📅 <b>Q2 2025</b></div>
+      <div class="v3-topbar-center">
+        <div class="v3-topbar-progress"><div class="v3-topbar-progress-fill" style="width:68%"></div></div>
+        <span class="v3-topbar-percent">68%</span>
+      </div>
+      <div class="v3-topbar-right">
+        <span class="v3-topbar-deadline">⏰ Deadline: <b>June 30</b></span>
+        <button class="btn btn-outline btn-sm">📤 Export</button>
+        <div class="notif-bell">🔔<span class="notif-bell-badge">3</span></div>
+        <div class="v3-topbar-avatar">KE</div>
+      </div>
+    </div>
+    <div class="v3-layout">
+      <nav class="v3-sidebar">
+        <div class="v3-sidebar-section">
+          <div class="v3-sidebar-section-title">Navigation</div>
+        </div>
+        <a class="v3-sidebar-item active">📊 Overview</a>
+        <a class="v3-sidebar-item" href="#s-collection">📁 Collection</a>
+        <a class="v3-sidebar-item" href="#s-validation">✅ Validation <span class="v3-sidebar-badge">3</span></a>
+        <a class="v3-sidebar-item" href="#s-tasks">📋 Tasks</a>
+        <a class="v3-sidebar-item" href="#s-evidence">📎 Evidence</a>
+        <a class="v3-sidebar-item" href="#s-export">📤 Export</a>
+        <div class="v3-sidebar-divider"></div>
+        <a class="v3-sidebar-item" href="#s-merge">🔀 Merge View</a>
+        <div class="v3-sidebar-divider"></div>
+        <div class="v3-sidebar-section">
+          <div class="v3-sidebar-section-title">Settings</div>
+        </div>
+        <a class="v3-sidebar-item" href="#s-settings-standards">📐 Standards</a>
+        <a class="v3-sidebar-item" href="#s-settings-users">👥 Users</a>
+        <a class="v3-sidebar-item" href="#s-settings-assignments">📌 Assignments</a>
+        <a class="v3-sidebar-item" href="#s-settings-periods">📅 Periods</a>
+        <a class="v3-sidebar-item" href="#s-settings-company">🏢 Company</a>
+        <a class="v3-sidebar-item" href="#s-audit">📝 Audit Log</a>
+      </nav>
+      <main class="v3-content">
+        <!-- Header -->
+        <div class="page-header">
+          <div>
+            <div class="page-title">Q2 2025 · GRI Standards</div>
+            <div class="page-subtitle">KazEnergo JSC · 18 metrics total</div>
+          </div>
+          <button class="btn btn-primary btn-lg" style="box-shadow:0 2px 8px rgba(45,138,86,.3);">👉 Continue collection →</button>
+        </div>
+
+        <!-- Stat Strip -->
+        <div class="stat-strip">
+          <div class="stat-block stat-block--green">
+            <div class="stat-block-value" style="color:#2d8a56;">12</div>
+            <div class="stat-block-label" style="color:#888;">Submitted</div>
+          </div>
+          <div class="stat-block stat-block--accent">
+            <div class="stat-block-value" style="color:#e74c3c;">6</div>
+            <div class="stat-block-label" style="color:#e74c3c;">Missing · <u>Fix now</u></div>
+          </div>
+          <div class="stat-block stat-block--neutral">
+            <div class="stat-block-value" style="color:#e74c3c;">5</div>
+            <div class="stat-block-label" style="color:#888;">Overdue</div>
+          </div>
+          <div class="stat-block stat-block--neutral">
+            <div class="stat-block-value" style="color:#d97706;">3</div>
+            <div class="stat-block-label" style="color:#888;">Issues</div>
+          </div>
+        </div>
+
+        <!-- Issues -->
+        <div class="card" style="background:#fff5f5;border-color:#fecaca;margin-bottom:16px;">
+          <div class="card-header">
+            <span style="font-size:13px;font-weight:800;color:#991b1b;">⚠️ Issues (3)</span>
+            <button class="btn btn-danger btn-sm">Fix all critical →</button>
+          </div>
+          <div class="section-title section-title--red">🔴 Critical (2)</div>
+          <div class="issue-card issue-card--critical">
+            <div class="issue-card-body">
+              <div class="issue-card-title">Missing Scope 3 data — GRI 305-3</div>
+              <div class="issue-card-meta">No data submitted · Deadline: Mar 20 · Иванов И.</div>
+            </div>
+            <span class="issue-card-action" style="background:#e74c3c;">Fix now →</span>
+          </div>
+          <div class="issue-card issue-card--critical">
+            <div class="issue-card-body">
+              <div class="issue-card-title">Workforce data outdated — GRI 401-1</div>
+              <div class="issue-card-meta">Last updated 6+ months ago · Evidence expired</div>
+            </div>
+            <span class="issue-card-action" style="background:#e74c3c;">Update →</span>
+          </div>
+          <div class="section-title section-title--red" style="color:#d97706;margin-top:12px;">🟡 Needs review (1)</div>
+          <div class="issue-card issue-card--warning">
+            <div class="issue-card-body">
+              <div class="issue-card-title">Energy data inconsistent — GRI 302-1</div>
+              <div class="issue-card-meta">Value differs &gt;40% from prev. period</div>
+            </div>
+            <span class="issue-card-action" style="background:#d97706;">Review →</span>
+          </div>
+        </div>
+
+        <!-- Category Cards -->
+        <div class="section-title section-title--red">⚠ Needs attention</div>
+        <div style="background:#fef8f8;border:1px solid #fecaca;border-radius:14px;padding:14px;margin-bottom:16px;">
+          <div class="category-grid">
+            <div class="category-card category-card--problem">
+              <div class="flex items-center justify-between mb-8">
+                <span class="card-title">👥 Workforce</span>
+                <span style="font-size:14px;font-weight:800;color:#e74c3c;">33%</span>
+              </div>
+              <div class="progress mb-8"><div class="progress-fill progress-fill--red" style="width:33%"></div></div>
+              <div class="mb-8"><span class="tag" style="background:#fef2f2;color:#e74c3c;">🔴 2 missing</span></div>
+              <div class="flex items-center justify-between"><span class="text-xs text-muted">1/3 metrics</span><span style="font-size:11px;font-weight:700;color:#e74c3c;">Fix now →</span></div>
+            </div>
+            <div class="category-card category-card--warning">
+              <div class="flex items-center justify-between mb-8">
+                <span class="card-title">🛡️ Health & Safety</span>
+                <span style="font-size:14px;font-weight:800;color:#d97706;">50%</span>
+              </div>
+              <div class="progress mb-8"><div class="progress-fill progress-fill--yellow" style="width:50%"></div></div>
+              <div class="mb-8"><span class="tag" style="background:#fff7ed;color:#d97706;">🟡 1 in progress</span> <span class="tag" style="background:#fef2f2;color:#e74c3c;">🔴 1 missing</span></div>
+              <div class="flex items-center justify-between"><span class="text-xs text-muted">1/2 metrics</span><span style="font-size:11px;font-weight:700;color:#d97706;">Fix issue →</span></div>
+            </div>
+            <div class="category-card category-card--warning">
+              <div class="flex items-center justify-between mb-8">
+                <span class="card-title">⚡ Energy</span>
+                <span style="font-size:14px;font-weight:800;color:#d97706;">60%</span>
+              </div>
+              <div class="progress mb-8"><div class="progress-fill progress-fill--yellow" style="width:60%"></div></div>
+              <div class="mb-8"><span class="tag" style="background:#fff7ed;color:#d97706;">🟡 2 in progress</span></div>
+              <div class="flex items-center justify-between"><span class="text-xs text-muted">3/5 metrics</span><span style="font-size:11px;font-weight:700;color:#2d8a56;">View details →</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-title section-title--muted">✓ Good / Complete</div>
+        <div class="category-grid" style="opacity:.7;">
+          <div class="category-card category-card--ok">
+            <div class="flex items-center justify-between mb-8">
+              <span class="card-title">🏭 Emissions</span>
+              <span style="font-size:14px;font-weight:800;color:#2d8a56;">80%</span>
+            </div>
+            <div class="progress mb-8"><div class="progress-fill progress-fill--green" style="width:80%"></div></div>
+            <div class="mb-8"><span class="tag tag-env">🟡 1 in progress</span></div>
+            <div class="flex items-center justify-between"><span class="text-xs text-muted">4/5 metrics</span><span style="font-size:11px;font-weight:700;color:#2d8a56;">View details →</span></div>
+          </div>
+          <div class="category-card category-card--ok">
+            <div class="flex items-center justify-between mb-8">
+              <span class="card-title">⚖️ Governance</span>
+              <span style="font-size:14px;font-weight:800;color:#d97706;">50%</span>
+            </div>
+            <div class="progress mb-8"><div class="progress-fill progress-fill--yellow" style="width:50%"></div></div>
+            <div class="mb-8"><span class="tag tag-gov">🟡 1 in progress</span></div>
+            <div class="flex items-center justify-between"><span class="text-xs text-muted">1/2 metrics</span><span style="font-size:11px;font-weight:700;color:#2d8a56;">View details →</span></div>
+          </div>
+          <div class="category-card category-card--done">
+            <div class="flex items-center justify-between">
+              <span style="font-size:12px;font-weight:600;color:#888;">✅ Completed (1) · 💧 Water 2/2</span>
+              <span class="text-xs text-muted">▾</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tasks -->
+        <div class="card mb-16">
+          <div class="card-header">
+            <span class="text-xs fw-800 text-muted" style="letter-spacing:.5px;text-transform:uppercase;">🔥 Priority Tasks</span>
+            <span class="text-xs text-muted" style="cursor:pointer;">All tasks (7) →</span>
+          </div>
+          <div class="task-item task-item--overdue">
+            <span class="task-item-icon">🔥</span>
+            <div class="task-item-body">
+              <div class="task-item-title" style="color:#991b1b;">Fill Scope 3 emissions data</div>
+              <div class="task-item-meta">GRI 305-3 · <span style="color:#e74c3c;font-weight:700;">⚠ OVERDUE: Mar 20</span></div>
+            </div>
+            <span class="task-item-action" style="background:#e74c3c;">Complete now →</span>
+          </div>
+          <div class="task-item task-item--overdue">
+            <span class="task-item-icon">🔥</span>
+            <div class="task-item-body">
+              <div class="task-item-title" style="color:#991b1b;">Attach evidence for Energy</div>
+              <div class="task-item-meta">GRI 302-1 · <span style="color:#e74c3c;font-weight:700;">⚠ OVERDUE</span> · No evidence</div>
+            </div>
+            <span class="task-item-action" style="background:#e74c3c;">Complete now →</span>
+          </div>
+          <div class="task-item task-item--normal">
+            <span class="task-item-icon">📋</span>
+            <div class="task-item-body">
+              <div class="task-item-title">Review 3 pending metrics (&gt;7 days)</div>
+              <div class="task-item-meta">Water, Waste, Occupational safety</div>
+            </div>
+            <span class="task-item-action" style="background:#3b82f6;">Review →</span>
+          </div>
+        </div>
+
+        <!-- Activity (collapsed) -->
+        <div style="background:#fafaf7;border:1px solid #e8e5e0;border-radius:8px;padding:10px 16px;display:flex;align-items:center;gap:12px;opacity:.5;">
+          <span class="text-xs fw-800 text-muted" style="letter-spacing:.5px;text-transform:uppercase;">Activity</span>
+          <span class="text-xs text-muted"><b style="color:#888;">Иванов И.</b> submitted Water · 2h ago</span>
+          <span class="text-xs text-muted"><b style="color:#888;">Петрова М.</b> sent CO₂ · 5h</span>
+          <span style="margin-left:auto;" class="text-xs text-muted">Full log ▾</span>
+        </div>
+      </main>
+    </div>
+    <div class="annotation">💡 v3: Unified layout. Context topbar with progress + deadline + notifications. Full sidebar nav. Issues grouped by priority. Cards sorted by problems. SLA indicators.</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     SCREEN: COLLECTION
+     ════════════════════════════════════════════════════════════ -->
+<div id="s-collection">
+  <div class="screen-label">COLLECTION · <span>Data table — status-first, reuse badges, filters</span></div>
+  <div class="screen">
+    <div class="v3-topbar">
+      <div class="v3-topbar-logo"><em>ESG</em>vist</div>
+      <div class="v3-topbar-period">📅 <b>Q2 2025</b></div>
+      <div class="v3-topbar-center"><div class="v3-topbar-progress"><div class="v3-topbar-progress-fill" style="width:68%"></div></div><span class="v3-topbar-percent">68%</span></div>
+      <div class="v3-topbar-right">
+        <span class="v3-topbar-deadline">⏰ Deadline: <b>June 30</b></span>
+        <button class="btn btn-outline btn-sm">📤 Export</button>
+        <div class="notif-bell">🔔<span class="notif-bell-badge">3</span></div>
+        <div class="v3-topbar-avatar">KE</div>
+      </div>
+    </div>
+    <div class="v3-layout">
+      <nav class="v3-sidebar">
+        <div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Navigation</div></div>
+        <a class="v3-sidebar-item" href="#s-overview">📊 Overview</a>
+        <a class="v3-sidebar-item active">📁 Collection</a>
+        <a class="v3-sidebar-item" href="#s-validation">✅ Validation <span class="v3-sidebar-badge">3</span></a>
+        <a class="v3-sidebar-item" href="#s-tasks">📋 Tasks</a>
+        <a class="v3-sidebar-item" href="#s-evidence">📎 Evidence</a>
+        <a class="v3-sidebar-item" href="#s-export">📤 Export</a>
+        <div class="v3-sidebar-divider"></div>
+        <a class="v3-sidebar-item" href="#s-merge">🔀 Merge View</a>
+        <div class="v3-sidebar-divider"></div>
+        <div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Settings</div></div>
+        <a class="v3-sidebar-item" href="#s-settings-standards">📐 Standards</a>
+        <a class="v3-sidebar-item" href="#s-settings-users">👥 Users</a>
+        <a class="v3-sidebar-item" href="#s-settings-assignments">📌 Assignments</a>
+        <a class="v3-sidebar-item" href="#s-settings-periods">📅 Periods</a>
+        <a class="v3-sidebar-item" href="#s-settings-company">🏢 Company</a>
+        <a class="v3-sidebar-item" href="#s-audit">📝 Audit Log</a>
+      </nav>
+      <main class="v3-content">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Data Collection — <span style="color:#888;font-weight:600;">Q2 2025</span></div>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:6px;">
+              <div class="v3-topbar-progress" style="width:120px;"><div class="v3-topbar-progress-fill" style="width:68%"></div></div>
+              <span style="font-size:12px;font-weight:800;color:#2d8a56;">68%</span>
+              <span class="text-xs text-muted">complete · <b style="color:#e74c3c;">6 remaining</b> · Deadline: <b style="color:#1a1a1a;">June 30</b></span>
+            </div>
+          </div>
+          <button class="btn btn-primary" style="box-shadow:0 2px 8px rgba(45,138,86,.3);">👉 Continue collection →</button>
+        </div>
+
+        <!-- Filter row (summary + filters combined) -->
+        <div class="filter-row">
+          <div class="filter-pill active" style="border-color:#e74c3c;background:#fef2f2;color:#991b1b;font-weight:800;">🔴 <span class="count">6</span> missing</div>
+          <div class="filter-pill">🟡 <span class="count">3</span> in progress</div>
+          <div class="filter-pill">🔵 <span class="count">3</span> in review</div>
+          <div class="filter-pill">🟢 <span class="count">6</span> submitted</div>
+          <input class="form-input" placeholder="🔍 Search metrics..." style="width:220px;margin-left:auto;padding:7px 12px;font-size:12px;">
+        </div>
+
+        <!-- Data table -->
+        <div class="data-table">
+          <div class="data-table-head" style="grid-template-columns:40px 2fr 1fr 1fr 1fr 100px 120px;">
+            <div style="text-align:center;font-size:14px;color:#aaa;">●</div><div>Metric</div><div>Standard</div><div>Assigned</div><div>Value</div><div>Deadline</div><div>Action</div>
+          </div>
+          <!-- Missing rows -->
+          <div class="data-table-row data-table-row--missing" style="grid-template-columns:40px 2fr 1fr 1fr 1fr 100px 120px;">
+            <div style="text-align:center;"><span class="status-dot status-dot--missing"></span></div>
+            <div><div style="font-weight:600;">Scope 3 emissions</div><div class="text-xs text-muted">GRI 305-3 · Emissions</div></div>
+            <div><span class="reuse-badge">🔗 3 standards</span></div>
+            <div class="text-xs" style="color:#555;">Иванов И.А.</div>
+            <div class="text-xs text-muted">—</div>
+            <div><span class="sla sla--red">Mar 20 ⚠</span></div>
+            <div><span class="btn btn-danger btn-sm">Add data</span></div>
+          </div>
+          <div class="data-table-row data-table-row--missing" style="grid-template-columns:40px 2fr 1fr 1fr 1fr 100px 120px;">
+            <div style="text-align:center;"><span class="status-dot status-dot--missing"></span></div>
+            <div><div style="font-weight:600;">Employee turnover</div><div class="text-xs text-muted">GRI 401-1 · Workforce</div></div>
+            <div><span class="tag tag-soc">GRI</span></div>
+            <div class="text-xs" style="color:#555;">Петрова М.В.</div>
+            <div class="text-xs text-muted">—</div>
+            <div><span class="sla sla--orange">Apr 15</span></div>
+            <div><span class="btn btn-danger btn-sm">Add data</span></div>
+          </div>
+          <!-- In progress -->
+          <div class="data-table-row data-table-row--progress" style="grid-template-columns:40px 2fr 1fr 1fr 1fr 100px 120px;">
+            <div style="text-align:center;"><span class="status-dot status-dot--progress"></span></div>
+            <div><div style="font-weight:600;">Energy consumption</div><div class="text-xs text-muted">GRI 302-1 · Energy</div></div>
+            <div><span class="reuse-badge">🔗 2 standards</span></div>
+            <div class="text-xs" style="color:#555;">Иванов И.А.</div>
+            <div class="text-xs">42,500 MWh <span class="tag" style="background:#d97706;color:#fff;cursor:help;" title="Outlier: >40% deviation from previous period">⚠ Outlier</span></div>
+            <div><span class="sla sla--yellow">May 1</span></div>
+            <div><span class="btn btn-sm" style="background:#d97706;color:#fff;">Fix issue</span></div>
+          </div>
+          <!-- In review -->
+          <div class="data-table-row data-table-row--review" style="grid-template-columns:40px 2fr 1fr 1fr 1fr 100px 120px;">
+            <div style="text-align:center;"><span class="status-dot status-dot--review"></span></div>
+            <div><div style="font-weight:600;">Direct CO₂ emissions (Scope 1)</div><div class="text-xs text-muted">GRI 305-1 · Emissions</div></div>
+            <div><span class="reuse-badge">🔗 3 standards</span></div>
+            <div class="text-xs" style="color:#555;">Иванов И.А.</div>
+            <div class="text-xs">1,240 t CO₂e</div>
+            <div><span class="sla sla--green">Jun 15</span></div>
+            <div><span class="btn btn-sm" style="background:#fff;color:#3b82f6;border:1px solid #3b82f6;">Review data</span></div>
+          </div>
+          <!-- Submitted -->
+          <div class="data-table-row" style="grid-template-columns:40px 2fr 1fr 1fr 1fr 100px 120px;">
+            <div style="text-align:center;"><span class="status-dot status-dot--approved"></span></div>
+            <div><div style="font-weight:600;">Water consumption</div><div class="text-xs text-muted">GRI 303-1 · Water</div></div>
+            <div><span class="tag tag-env">GRI</span></div>
+            <div class="text-xs" style="color:#555;">Иванов И.А.</div>
+            <div class="text-xs">18,200 m³</div>
+            <div><span class="sla sla--green">Jun 15</span></div>
+            <div><span class="text-xs text-muted" style="cursor:pointer;">View →</span></div>
+          </div>
+          <div class="data-table-row" style="grid-template-columns:40px 2fr 1fr 1fr 1fr 100px 120px;">
+            <div style="text-align:center;"><span class="status-dot status-dot--approved"></span></div>
+            <div><div style="font-weight:600;">Anti-corruption policy</div><div class="text-xs text-muted">GRI 205-1 · Governance</div></div>
+            <div><span class="tag tag-gov">GRI</span></div>
+            <div class="text-xs" style="color:#555;">Петрова М.В.</div>
+            <div class="text-xs" style="color:#2d8a56;">✓ Published</div>
+            <div><span class="sla sla--green">Jun 15</span></div>
+            <div><span class="text-xs text-muted" style="cursor:pointer;">View →</span></div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="annotation">💡 v3: Status-first table. Reuse badges ("3 standards"). SLA color indicators. Outlier badge with tooltip. Filter pills as summary.</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     SCREEN: VALIDATION (Review)
+     ════════════════════════════════════════════════════════════ -->
+<div id="s-validation">
+  <div class="screen-label">VALIDATION · <span>Review — split panel, approve/reject, comments</span></div>
+  <div class="screen">
+    <div class="v3-topbar">
+      <div class="v3-topbar-logo"><em>ESG</em>vist</div>
+      <div class="v3-topbar-period">📅 <b>Q2 2025</b></div>
+      <div class="v3-topbar-center"><div class="v3-topbar-progress"><div class="v3-topbar-progress-fill" style="width:68%"></div></div><span class="v3-topbar-percent">68%</span></div>
+      <div class="v3-topbar-right">
+        <span class="v3-topbar-deadline">⏰ Deadline: <b>June 30</b></span>
+        <button class="btn btn-outline btn-sm">📤 Export</button>
+        <div class="notif-bell">🔔<span class="notif-bell-badge">3</span></div>
+        <div class="v3-topbar-avatar">KE</div>
+      </div>
+    </div>
+    <div class="v3-layout">
+      <nav class="v3-sidebar">
+        <div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Navigation</div></div>
+        <a class="v3-sidebar-item" href="#s-overview">📊 Overview</a>
+        <a class="v3-sidebar-item" href="#s-collection">📁 Collection</a>
+        <a class="v3-sidebar-item active">✅ Validation <span class="v3-sidebar-badge">3</span></a>
+        <a class="v3-sidebar-item" href="#s-tasks">📋 Tasks</a>
+        <a class="v3-sidebar-item" href="#s-evidence">📎 Evidence</a>
+        <a class="v3-sidebar-item" href="#s-export">📤 Export</a>
+        <div class="v3-sidebar-divider"></div>
+        <a class="v3-sidebar-item" href="#s-merge">🔀 Merge View</a>
+        <div class="v3-sidebar-divider"></div>
+        <div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Settings</div></div>
+        <a class="v3-sidebar-item" href="#s-settings-standards">📐 Standards</a>
+        <a class="v3-sidebar-item" href="#s-settings-users">👥 Users</a>
+        <a class="v3-sidebar-item" href="#s-settings-assignments">📌 Assignments</a>
+        <a class="v3-sidebar-item" href="#s-settings-periods">📅 Periods</a>
+        <a class="v3-sidebar-item" href="#s-settings-company">🏢 Company</a>
+        <a class="v3-sidebar-item" href="#s-audit">📝 Audit Log</a>
+      </nav>
+      <main class="v3-content">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Validation</div>
+            <div class="page-subtitle">5 metrics pending review · <span style="color:#e74c3c;font-weight:600;">2 overdue</span></div>
+          </div>
+          <button class="btn btn-primary">✓ Approve all ready (3)</button>
+        </div>
+
+        <div class="filter-row">
+          <div class="filter-pill active" style="border-color:#e74c3c;background:#fef2f2;color:#991b1b;">🔴 <span class="count">2</span> overdue</div>
+          <div class="filter-pill">🔵 <span class="count">3</span> pending</div>
+          <input class="form-input" placeholder="🔍 Search..." style="width:200px;margin-left:auto;padding:7px 12px;font-size:12px;">
+        </div>
+
+        <div class="split-panel">
+          <div class="split-list">
+            <div class="split-list-head">Pending review <b style="color:#1a1a1a;">5</b></div>
+            <div class="split-list-item split-list-item--overdue">
+              <div style="font-size:12px;font-weight:600;">Water consumption</div>
+              <div class="text-xs text-muted" style="margin-top:2px;"><span class="sla sla--red">12 days!</span> · GRI 303-1 · Иванов И.</div>
+            </div>
+            <div class="split-list-item split-list-item--overdue">
+              <div style="font-size:12px;font-weight:600;">Hazardous waste</div>
+              <div class="text-xs text-muted" style="margin-top:2px;"><span class="sla sla--red">9 days!</span> · GRI 306-2 · Петрова М.</div>
+            </div>
+            <div class="split-list-item active">
+              <div style="font-size:12px;font-weight:600;">Direct CO₂ emissions</div>
+              <div class="text-xs text-muted" style="margin-top:2px;"><span class="sla sla--green">2 days</span> · GRI 305-1 · Иванов И.</div>
+            </div>
+            <div class="split-list-item">
+              <div style="font-size:12px;font-weight:600;">Board composition</div>
+              <div class="text-xs text-muted" style="margin-top:2px;"><span class="sla sla--green">1 day</span> · GRI 102-22 · Сидоров К.</div>
+            </div>
+            <div class="split-list-item">
+              <div style="font-size:12px;font-weight:600;">Water use</div>
+              <div class="text-xs text-muted" style="margin-top:2px;"><span class="sla sla--green">1 day</span> · GRI 303-3 · Петрова М.</div>
+            </div>
+          </div>
+          <div class="split-detail">
+            <div class="split-detail-title">Direct CO₂ emissions</div>
+            <div class="split-detail-meta">
+              <span class="tag tag-env">GRI 305-1</span>
+              <span class="tag tag-env">Environmental</span>
+              <span class="reuse-badge">🔗 Used in 3 standards</span>
+              <span class="text-xs text-muted">Editor: Иванов И. · Mar 13, 2026</span>
+            </div>
+
+            <div class="split-detail-section">
+              <div class="split-detail-section-title">Current Value</div>
+              <div class="card">
+                <div style="font-size:28px;font-weight:800;color:#1a1a1a;">1,240 <span style="font-size:14px;color:#888;">t CO₂e</span></div>
+                <div class="text-xs text-muted mt-8">Previous year: 1,380 t (−10.1%)</div>
+              </div>
+            </div>
+
+            <div class="split-detail-section">
+              <div class="split-detail-section-title">Reuse Transparency</div>
+              <div class="card" style="background:#f0fdf4;border-color:#bbf7d0;">
+                <div class="text-xs fw-800" style="color:#166534;margin-bottom:6px;">This value is used in:</div>
+                <div class="text-xs" style="color:#166534;">• GRI 305-1 — Direct GHG emissions (Scope 1)</div>
+                <div class="text-xs" style="color:#166534;">• IFRS S2.29(a) — Scope 1 GHG emissions</div>
+                <div class="text-xs" style="color:#166534;">• SASB EM-EP-110a.1 — Scope 1 emissions</div>
+                <div class="text-xs mt-8" style="color:#92400e;">⚠ Approving will affect all 3 standards</div>
+              </div>
+            </div>
+
+            <div class="split-detail-section">
+              <div class="split-detail-section-title">Evidence (3)</div>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <div class="flex items-center gap-8" style="font-size:12px;"><span>📄</span> emissions_report_2025.pdf <span class="text-xs text-muted" style="margin-left:auto;">✓ Uploaded</span></div>
+                <div class="flex items-center gap-8" style="font-size:12px;"><span>📊</span> carbon_calculation_sheet.xlsx <span class="text-xs text-muted" style="margin-left:auto;">✓ Uploaded</span></div>
+                <div class="flex items-center gap-8" style="font-size:12px;"><span>🖼</span> audit_certificate_scan.jpg <span class="text-xs text-muted" style="margin-left:auto;">✓ Uploaded</span></div>
+              </div>
+            </div>
+
+            <div class="split-detail-section">
+              <div class="split-detail-section-title">Comments</div>
+              <div class="comment">
+                <div class="comment-header">
+                  <span class="comment-author">Иванов И.</span>
+                  <span class="comment-time">Mar 13</span>
+                  <span class="comment-type comment-type--resolution">resolution</span>
+                </div>
+                <div class="comment-body">Calculation based on GHG Protocol Scope 1. 10% reduction due to boiler #3 gas conversion. All documents attached.</div>
+              </div>
+            </div>
+
+            <div style="display:flex;gap:10px;margin-top:16px;">
+              <button class="btn btn-primary" style="padding:10px 24px;">✓ Approve & publish</button>
+              <button class="btn btn-outline" style="padding:10px 24px;">↩ Request revision</button>
+              <button class="btn btn-ghost" style="margin-left:auto;">💬 Comment</button>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="annotation">💡 v3: Reuse transparency panel. Impact of approval ("affects 3 standards"). Threaded comments with type badges. SLA indicators on list items.</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     SCREEN: TASKS
+     ════════════════════════════════════════════════════════════ -->
+<div id="s-tasks">
+  <div class="screen-label">TASKS · <span>Personal tasks — SLA tracking, escalation</span></div>
+  <div class="screen">
+    <div class="v3-topbar">
+      <div class="v3-topbar-logo"><em>ESG</em>vist</div>
+      <div class="v3-topbar-period">📅 <b>Q2 2025</b></div>
+      <div class="v3-topbar-center"><div class="v3-topbar-progress"><div class="v3-topbar-progress-fill" style="width:68%"></div></div><span class="v3-topbar-percent">68%</span></div>
+      <div class="v3-topbar-right">
+        <span class="v3-topbar-deadline">⏰ Deadline: <b>June 30</b></span>
+        <button class="btn btn-outline btn-sm">📤 Export</button>
+        <div class="notif-bell">🔔<span class="notif-bell-badge">3</span></div>
+        <div class="v3-topbar-avatar">KE</div>
+      </div>
+    </div>
+    <div class="v3-layout">
+      <nav class="v3-sidebar">
+        <div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Navigation</div></div>
+        <a class="v3-sidebar-item" href="#s-overview">📊 Overview</a>
+        <a class="v3-sidebar-item" href="#s-collection">📁 Collection</a>
+        <a class="v3-sidebar-item" href="#s-validation">✅ Validation <span class="v3-sidebar-badge">3</span></a>
+        <a class="v3-sidebar-item active">📋 Tasks</a>
+        <a class="v3-sidebar-item" href="#s-evidence">📎 Evidence</a>
+        <a class="v3-sidebar-item" href="#s-export">📤 Export</a>
+        <div class="v3-sidebar-divider"></div>
+        <a class="v3-sidebar-item" href="#s-merge">🔀 Merge View</a>
+        <div class="v3-sidebar-divider"></div>
+        <div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Settings</div></div>
+        <a class="v3-sidebar-item" href="#s-settings-standards">📐 Standards</a>
+        <a class="v3-sidebar-item" href="#s-settings-users">👥 Users</a>
+        <a class="v3-sidebar-item" href="#s-settings-assignments">📌 Assignments</a>
+        <a class="v3-sidebar-item" href="#s-settings-periods">📅 Periods</a>
+        <a class="v3-sidebar-item" href="#s-settings-company">🏢 Company</a>
+        <a class="v3-sidebar-item" href="#s-audit">📝 Audit Log</a>
+      </nav>
+      <main class="v3-content">
+        <div class="page-header">
+          <div>
+            <div class="page-title">My Tasks</div>
+            <div class="page-subtitle">7 tasks · 2 overdue · 1 due today</div>
+          </div>
+        </div>
+
+        <div class="stat-strip">
+          <div class="stat-block stat-block--accent" style="flex:none;padding:10px 20px;">
+            <div class="stat-block-value" style="color:#e74c3c;font-size:20px;">2</div>
+            <div class="stat-block-label" style="color:#e74c3c;">Overdue</div>
+          </div>
+          <div class="stat-block stat-block--yellow" style="flex:none;padding:10px 20px;">
+            <div class="stat-block-value" style="color:#d97706;font-size:20px;">1</div>
+            <div class="stat-block-label" style="color:#92400e;">Due today</div>
+          </div>
+          <div class="stat-block stat-block--neutral" style="flex:none;padding:10px 20px;">
+            <div class="stat-block-value" style="color:#555;font-size:20px;">4</div>
+            <div class="stat-block-label" style="color:#888;">Upcoming</div>
+          </div>
+        </div>
+
+        <div class="data-table">
+          <div class="data-table-head" style="grid-template-columns:40px 2fr 1fr 120px 100px 100px 120px;">
+            <div>●</div><div>Task</div><div>Standard</div><div>Deadline</div><div>SLA</div><div>Status</div><div>Action</div>
+          </div>
+          <div class="data-table-row data-table-row--missing" style="grid-template-columns:40px 2fr 1fr 120px 100px 100px 120px;">
+            <div style="text-align:center;"><span class="status-dot status-dot--missing"></span></div>
+            <div><div style="font-weight:700;color:#991b1b;">🔥 Fill Scope 3 emissions</div><div class="text-xs text-muted">GRI 305-3 · Emissions</div></div>
+            <div><span class="reuse-badge">🔗 3 standards</span></div>
+            <div class="text-xs fw-800" style="color:#e74c3c;">Mar 20 ⚠</div>
+            <div><span class="sla sla--red">Breach L2</span></div>
+            <div><span class="status-badge status-badge--missing">Missing</span></div>
+            <div><span class="btn btn-danger btn-sm">Add data →</span></div>
+          </div>
+          <div class="data-table-row data-table-row--missing" style="grid-template-columns:40px 2fr 1fr 120px 100px 100px 120px;">
+            <div style="text-align:center;"><span class="status-dot status-dot--missing"></span></div>
+            <div><div style="font-weight:700;color:#991b1b;">🔥 Attach evidence for Energy</div><div class="text-xs text-muted">GRI 302-1 · Evidence required</div></div>
+            <div><span class="tag tag-env">GRI</span></div>
+            <div class="text-xs fw-800" style="color:#e74c3c;">Apr 1 ⚠</div>
+            <div><span class="sla sla--orange">Breach L1</span></div>
+            <div><span class="status-badge status-badge--draft">Draft</span></div>
+            <div><span class="btn btn-danger btn-sm">Upload →</span></div>
+          </div>
+          <div class="data-table-row data-table-row--progress" style="grid-template-columns:40px 2fr 1fr 120px 100px 100px 120px;">
+            <div style="text-align:center;"><span class="status-dot status-dot--progress"></span></div>
+            <div><div style="font-weight:600;">Complete employee turnover data</div><div class="text-xs text-muted">GRI 401-1 · Workforce</div></div>
+            <div><span class="tag tag-soc">GRI</span></div>
+            <div class="text-xs fw-800" style="color:#d97706;">Today</div>
+            <div><span class="sla sla--yellow">Warning</span></div>
+            <div><span class="status-badge status-badge--progress">In progress</span></div>
+            <div><span class="btn btn-sm" style="background:#d97706;color:#fff;">Continue →</span></div>
+          </div>
+          <div class="data-table-row" style="grid-template-columns:40px 2fr 1fr 120px 100px 100px 120px;">
+            <div style="text-align:center;"><span class="status-dot status-dot--review"></span></div>
+            <div><div style="font-weight:600;">Review 3 pending metrics</div><div class="text-xs text-muted">Water, Waste, Safety · Assigned for review</div></div>
+            <div><span class="tag tag-env">GRI</span></div>
+            <div class="text-xs" style="color:#555;">May 15</div>
+            <div><span class="sla sla--green">On track</span></div>
+            <div><span class="status-badge status-badge--review">Review</span></div>
+            <div><span class="btn btn-sm" style="background:#3b82f6;color:#fff;">Review →</span></div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="annotation">💡 v3 NEW: Personal task list with SLA indicators (Breach L1/L2/Warning/On track). Overdue tasks sorted first. Reuse badges.</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     SCREEN: EVIDENCE
+     ════════════════════════════════════════════════════════════ -->
+<div id="s-evidence">
+  <div class="screen-label">EVIDENCE · <span>File repository — upload, bind, search</span></div>
+  <div class="screen">
+    <div class="v3-topbar">
+      <div class="v3-topbar-logo"><em>ESG</em>vist</div>
+      <div class="v3-topbar-period">📅 <b>Q2 2025</b></div>
+      <div class="v3-topbar-center"><div class="v3-topbar-progress"><div class="v3-topbar-progress-fill" style="width:68%"></div></div><span class="v3-topbar-percent">68%</span></div>
+      <div class="v3-topbar-right"><span class="v3-topbar-deadline">⏰ Deadline: <b>June 30</b></span><button class="btn btn-outline btn-sm">📤 Export</button><div class="notif-bell">🔔<span class="notif-bell-badge">3</span></div><div class="v3-topbar-avatar">KE</div></div>
+    </div>
+    <div class="v3-layout">
+      <nav class="v3-sidebar">
+        <div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Navigation</div></div>
+        <a class="v3-sidebar-item" href="#s-overview">📊 Overview</a><a class="v3-sidebar-item" href="#s-collection">📁 Collection</a><a class="v3-sidebar-item" href="#s-validation">✅ Validation <span class="v3-sidebar-badge">3</span></a><a class="v3-sidebar-item" href="#s-tasks">📋 Tasks</a>
+        <a class="v3-sidebar-item active">📎 Evidence</a>
+        <a class="v3-sidebar-item" href="#s-export">📤 Export</a><div class="v3-sidebar-divider"></div><a class="v3-sidebar-item" href="#s-merge">🔀 Merge View</a><div class="v3-sidebar-divider"></div>
+        <div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Settings</div></div>
+        <a class="v3-sidebar-item" href="#s-settings-standards">📐 Standards</a><a class="v3-sidebar-item" href="#s-settings-users">👥 Users</a><a class="v3-sidebar-item" href="#s-settings-assignments">📌 Assignments</a><a class="v3-sidebar-item" href="#s-settings-periods">📅 Periods</a><a class="v3-sidebar-item" href="#s-settings-company">🏢 Company</a><a class="v3-sidebar-item" href="#s-audit">📝 Audit Log</a>
+      </nav>
+      <main class="v3-content">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Evidence Repository</div>
+            <div class="page-subtitle">47 files · 38 bound · 9 unbound · 12 links</div>
+          </div>
+          <button class="btn btn-primary">+ Upload</button>
+        </div>
+        <div class="filter-row">
+          <div class="filter-pill active" style="background:#1a1a1a;color:#fff;border-color:#1a1a1a;">All (47)</div>
+          <div class="filter-pill">PDF (18)</div>
+          <div class="filter-pill">Excel (14)</div>
+          <div class="filter-pill">Images (7)</div>
+          <div class="filter-pill">🔗 Links (12)</div>
+          <input class="form-input" placeholder="🔍 Search files..." style="width:220px;margin-left:auto;padding:7px 12px;font-size:12px;">
+        </div>
+        <div class="data-table">
+          <div class="data-table-head" style="grid-template-columns:32px 2.5fr 1fr 1fr 100px 80px 60px;">
+            <div></div><div>File</div><div>Binding</div><div>Uploaded by</div><div>Date</div><div>Size</div><div></div>
+          </div>
+          <div class="data-table-row" style="grid-template-columns:32px 2.5fr 1fr 1fr 100px 80px 60px;">
+            <div style="font-size:18px;">📄</div>
+            <div><div style="font-weight:600;">GHG_Audit_Certificate_2025.pdf</div><div class="text-xs text-muted">Third-party verification</div></div>
+            <div><span class="reuse-badge">GRI 305-1</span></div>
+            <div class="text-xs" style="color:#555;">Иванов И.А.</div>
+            <div class="text-xs text-muted">Mar 10</div>
+            <div class="text-xs text-muted">2.4 MB</div>
+            <div class="text-xs" style="color:#2d8a56;font-weight:600;cursor:pointer;">⬇</div>
+          </div>
+          <div class="data-table-row" style="grid-template-columns:32px 2.5fr 1fr 1fr 100px 80px 60px;">
+            <div style="font-size:18px;">📊</div>
+            <div><div style="font-weight:600;">Boiler_Data_2024-2025.xlsx</div><div class="text-xs text-muted">Primary emission source data</div></div>
+            <div><span class="reuse-badge">GRI 305-1</span></div>
+            <div class="text-xs" style="color:#555;">Иванов И.А.</div>
+            <div class="text-xs text-muted">Mar 10</div>
+            <div class="text-xs text-muted">845 KB</div>
+            <div class="text-xs" style="color:#2d8a56;font-weight:600;cursor:pointer;">⬇</div>
+          </div>
+          <div class="data-table-row" style="grid-template-columns:32px 2.5fr 1fr 1fr 100px 80px 60px;background:#fffbeb;">
+            <div style="font-size:18px;">📊</div>
+            <div><div style="font-weight:600;">Procurement_Registry_2025_draft.xlsx</div><div class="text-xs" style="color:#d97706;">⚠ Not bound to any metric</div></div>
+            <div><span class="tag" style="background:#fffbeb;color:#92400e;border:1px dashed #fde68a;">unbound</span></div>
+            <div class="text-xs" style="color:#555;">Иванов И.А.</div>
+            <div class="text-xs text-muted">Mar 12</div>
+            <div class="text-xs text-muted">560 KB</div>
+            <div class="text-xs" style="color:#d97706;font-weight:600;cursor:pointer;">🔗</div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="annotation">💡 v3: Evidence with binding status. Unbound files highlighted. Reuse badge showing linked metric.</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     SCREEN: EXPORT
+     ════════════════════════════════════════════════════════════ -->
+<div id="s-export">
+  <div class="screen-label">EXPORT · <span>GRI Content Index, readiness check, report generation</span></div>
+  <div class="screen">
+    <div class="v3-topbar">
+      <div class="v3-topbar-logo"><em>ESG</em>vist</div>
+      <div class="v3-topbar-period">📅 <b>Q2 2025</b></div>
+      <div class="v3-topbar-center"><div class="v3-topbar-progress"><div class="v3-topbar-progress-fill" style="width:68%"></div></div><span class="v3-topbar-percent">68%</span></div>
+      <div class="v3-topbar-right"><span class="v3-topbar-deadline">⏰ Deadline: <b>June 30</b></span><button class="btn btn-outline btn-sm">📤 Export</button><div class="notif-bell">🔔<span class="notif-bell-badge">3</span></div><div class="v3-topbar-avatar">KE</div></div>
+    </div>
+    <div class="v3-layout">
+      <nav class="v3-sidebar">
+        <div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Navigation</div></div>
+        <a class="v3-sidebar-item" href="#s-overview">📊 Overview</a><a class="v3-sidebar-item" href="#s-collection">📁 Collection</a><a class="v3-sidebar-item" href="#s-validation">✅ Validation <span class="v3-sidebar-badge">3</span></a><a class="v3-sidebar-item" href="#s-tasks">📋 Tasks</a><a class="v3-sidebar-item" href="#s-evidence">📎 Evidence</a>
+        <a class="v3-sidebar-item active">📤 Export</a>
+        <div class="v3-sidebar-divider"></div><a class="v3-sidebar-item" href="#s-merge">🔀 Merge View</a><div class="v3-sidebar-divider"></div>
+        <div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Settings</div></div>
+        <a class="v3-sidebar-item" href="#s-settings-standards">📐 Standards</a><a class="v3-sidebar-item" href="#s-settings-users">👥 Users</a><a class="v3-sidebar-item" href="#s-settings-assignments">📌 Assignments</a><a class="v3-sidebar-item" href="#s-settings-periods">📅 Periods</a><a class="v3-sidebar-item" href="#s-settings-company">🏢 Company</a><a class="v3-sidebar-item" href="#s-audit">📝 Audit Log</a>
+      </nav>
+      <main class="v3-content">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Export & Report</div>
+            <div class="page-subtitle">GRI Content Index · Readiness check · Generate reports</div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-outline">📄 Preview PDF</button>
+            <button class="btn btn-primary">🚀 Publish report</button>
+          </div>
+        </div>
+
+        <!-- Readiness Check -->
+        <div class="card mb-16">
+          <div class="card-header">
+            <span class="card-title">📤 Export Readiness</span>
+            <button class="btn btn-primary">Generate report →</button>
+          </div>
+          <div class="grid-3" style="margin-bottom:16px;">
+            <div style="background:#ecfdf5;border:1px solid #bbf7d0;border-radius:10px;padding:14px;text-align:center;">
+              <div style="font-size:24px;font-weight:800;color:#2d8a56;">95%</div>
+              <div class="text-xs fw-800" style="color:#166534;margin-top:4px;">Data complete</div>
+            </div>
+            <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:14px;text-align:center;">
+              <div style="font-size:24px;font-weight:800;color:#d97706;">3</div>
+              <div class="text-xs fw-800" style="color:#92400e;margin-top:4px;">Warnings</div>
+            </div>
+            <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:14px;text-align:center;">
+              <div style="font-size:24px;font-weight:800;color:#e74c3c;">1</div>
+              <div class="text-xs fw-800" style="color:#991b1b;margin-top:4px;">Blocking issue</div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <div class="issue-card issue-card--critical">
+              <span>🔴</span>
+              <div class="flex-1"><span style="font-weight:600;color:#991b1b;font-size:12px;">Missing Scope 3 data — required for GRI compliance</span></div>
+              <span class="text-xs fw-800" style="color:#e74c3c;cursor:pointer;">→ Fix now</span>
+            </div>
+            <div class="issue-card issue-card--warning">
+              <span>🟡</span>
+              <div class="flex-1"><span style="font-size:12px;color:#92400e;">Energy data outlier — value differs 40% from previous period</span></div>
+              <span class="text-xs fw-800" style="color:#d97706;cursor:pointer;">→ Review</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#ecfdf5;border:1px solid #bbf7d0;border-radius:6px;font-size:12px;">
+              <span>✅</span>
+              <span class="flex-1" style="color:#166534;">GRI Content Index — 72% mapped (15 of 21 disclosures)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tabs -->
+        <div style="display:flex;gap:4px;border-bottom:2px solid #e8e5e0;margin-bottom:16px;">
+          <div style="padding:8px 16px;font-size:12px;font-weight:700;color:#2d8a56;border-bottom:2px solid #2d8a56;margin-bottom:-2px;cursor:pointer;">GRI Content Index</div>
+          <div style="padding:8px 16px;font-size:12px;font-weight:600;color:#888;cursor:pointer;">Summary Report</div>
+          <div style="padding:8px 16px;font-size:12px;font-weight:600;color:#888;cursor:pointer;">ESG Scorecard</div>
+          <div style="margin-left:auto;display:flex;gap:8px;padding-bottom:8px;">
+            <button class="btn btn-outline btn-sm">📄 PDF</button>
+            <button class="btn btn-outline btn-sm">📊 Excel</button>
+          </div>
+        </div>
+
+        <!-- GRI Content Index -->
+        <div class="data-table">
+          <div class="data-table-head" style="grid-template-columns:100px 2fr 1fr 120px 80px;">
+            <div>Standard</div><div>Disclosure</div><div>Location</div><div>Status</div><div>Page</div>
+          </div>
+          <div style="padding:10px 16px;background:#f0fdf4;border-bottom:1px solid #e8e5e0;font-size:11px;font-weight:700;color:#2d8a56;">🌱 GRI 300: Environmental</div>
+          <div class="data-table-row" style="grid-template-columns:100px 2fr 1fr 120px 80px;">
+            <div style="font-weight:700;">GRI 302-1</div>
+            <div>Energy consumption within organization</div>
+            <div class="text-xs text-muted">Section 4.1, p. 28</div>
+            <div><span class="status-badge status-badge--approved">✓ Disclosed</span></div>
+            <div><input class="form-input" value="28-30" style="font-size:11px;padding:4px 8px;width:60px;"></div>
+          </div>
+          <div class="data-table-row" style="grid-template-columns:100px 2fr 1fr 120px 80px;">
+            <div style="font-weight:700;">GRI 305-1</div>
+            <div>Direct GHG emissions (Scope 1)</div>
+            <div class="text-xs text-muted">Section 4.3, p. 34</div>
+            <div><span class="status-badge status-badge--approved">✓ Disclosed</span></div>
+            <div><input class="form-input" value="34-36" style="font-size:11px;padding:4px 8px;width:60px;"></div>
+          </div>
+          <div class="data-table-row data-table-row--missing" style="grid-template-columns:100px 2fr 1fr 120px 80px;">
+            <div style="font-weight:700;">GRI 305-3</div>
+            <div>Scope 3 emissions</div>
+            <div class="text-xs text-muted" style="font-style:italic;">not specified</div>
+            <div><span class="status-badge status-badge--missing">❌ Missing</span></div>
+            <div><input class="form-input" placeholder="—" style="font-size:11px;padding:4px 8px;width:60px;"></div>
+          </div>
+          <div style="padding:10px 16px;background:#eff6ff;border-bottom:1px solid #e8e5e0;font-size:11px;font-weight:700;color:#1e40af;">👥 GRI 400: Social</div>
+          <div class="data-table-row" style="grid-template-columns:100px 2fr 1fr 120px 80px;">
+            <div style="font-weight:700;">GRI 403-1</div>
+            <div>Occupational health & safety management</div>
+            <div class="text-xs text-muted">Section 5.1, p. 42</div>
+            <div><span class="status-badge status-badge--approved">✓ Disclosed</span></div>
+            <div><input class="form-input" value="42-44" style="font-size:11px;padding:4px 8px;width:60px;"></div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="annotation">💡 v3: Readiness check before export (blocking issues + warnings). GRI Content Index with status badges. Export format tabs.</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     SCREEN: MERGE VIEW
+     ════════════════════════════════════════════════════════════ -->
+<div id="s-merge">
+  <div class="screen-label">MERGE VIEW · <span>Matrix — element × standard, coverage, deltas</span></div>
+  <div class="screen">
+    <div class="v3-topbar">
+      <div class="v3-topbar-logo"><em>ESG</em>vist</div>
+      <div class="v3-topbar-period">📅 <b>Q2 2025</b></div>
+      <div class="v3-topbar-center"><div class="v3-topbar-progress"><div class="v3-topbar-progress-fill" style="width:68%"></div></div><span class="v3-topbar-percent">68%</span></div>
+      <div class="v3-topbar-right"><span class="v3-topbar-deadline">⏰ Deadline: <b>June 30</b></span><button class="btn btn-outline btn-sm">📤 Export</button><div class="notif-bell">🔔<span class="notif-bell-badge">3</span></div><div class="v3-topbar-avatar">KE</div></div>
+    </div>
+    <div class="v3-layout">
+      <nav class="v3-sidebar">
+        <div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Navigation</div></div>
+        <a class="v3-sidebar-item" href="#s-overview">📊 Overview</a><a class="v3-sidebar-item" href="#s-collection">📁 Collection</a><a class="v3-sidebar-item" href="#s-validation">✅ Validation <span class="v3-sidebar-badge">3</span></a><a class="v3-sidebar-item" href="#s-tasks">📋 Tasks</a><a class="v3-sidebar-item" href="#s-evidence">📎 Evidence</a><a class="v3-sidebar-item" href="#s-export">📤 Export</a>
+        <div class="v3-sidebar-divider"></div>
+        <a class="v3-sidebar-item active">🔀 Merge View</a>
+        <div class="v3-sidebar-divider"></div>
+        <div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Settings</div></div>
+        <a class="v3-sidebar-item" href="#s-settings-standards">📐 Standards</a><a class="v3-sidebar-item" href="#s-settings-users">👥 Users</a><a class="v3-sidebar-item" href="#s-settings-assignments">📌 Assignments</a><a class="v3-sidebar-item" href="#s-settings-periods">📅 Periods</a><a class="v3-sidebar-item" href="#s-settings-company">🏢 Company</a><a class="v3-sidebar-item" href="#s-audit">📝 Audit Log</a>
+      </nav>
+      <main class="v3-content">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Merge View</div>
+            <div class="page-subtitle">3 standards · Shared elements × requirements coverage</div>
+          </div>
+          <button class="btn btn-outline">+ Add standard</button>
+        </div>
+
+        <!-- Coverage Summary -->
+        <div class="stat-strip">
+          <div class="stat-block stat-block--green" style="flex:none;padding:10px 20px;">
+            <div style="font-size:16px;font-weight:800;color:#2d8a56;">GRI 72%</div>
+            <div class="text-xs text-muted">13/18 disclosures</div>
+          </div>
+          <div class="stat-block stat-block--yellow" style="flex:none;padding:10px 20px;">
+            <div style="font-size:16px;font-weight:800;color:#d97706;">IFRS 45%</div>
+            <div class="text-xs text-muted">8/18 items</div>
+          </div>
+          <div class="stat-block stat-block--neutral" style="flex:none;padding:10px 20px;">
+            <div style="font-size:16px;font-weight:800;color:#555;">SASB 60%</div>
+            <div class="text-xs text-muted">9/15 items</div>
+          </div>
+          <div style="margin-left:auto;display:flex;gap:8px;font-size:11px;color:#888;align-items:center;">
+            Common: <b style="color:#1a1a1a;">8</b> · GRI-only: <b>4</b> · IFRS-only: <b>3</b> · Deltas: <b style="color:#d97706;">5</b>
+          </div>
+        </div>
+
+        <div class="filter-row">
+          <div class="filter-pill active" style="background:#1a1a1a;color:#fff;border-color:#1a1a1a;">All</div>
+          <div class="filter-pill">🌱 Environmental</div>
+          <div class="filter-pill">👥 Social</div>
+          <div class="filter-pill">⚖️ Governance</div>
+          <div class="filter-pill" style="border-color:#e74c3c;color:#e74c3c;">Missing only</div>
+        </div>
+
+        <!-- Merge Matrix -->
+        <div class="merge-matrix">
+          <div class="merge-matrix-head" style="grid-template-columns:2fr 100px 100px 100px 120px;">
+            <div>Shared Element</div><div style="text-align:center;">GRI</div><div style="text-align:center;">IFRS S2</div><div style="text-align:center;">SASB</div><div style="text-align:center;">Status</div>
+          </div>
+          <div style="padding:8px 16px;background:#f0fdf4;border-bottom:1px solid #e8e5e0;font-size:11px;font-weight:700;color:#2d8a56;">🌱 Emissions</div>
+          <div class="merge-matrix-row" style="grid-template-columns:2fr 100px 100px 100px 120px;">
+            <div><div style="font-weight:600;">Scope 1 total</div><div class="text-xs text-muted">GHG_SCOPE_1_TOTAL · t CO₂e</div></div>
+            <div class="merge-cell merge-cell--yes">✔</div>
+            <div class="merge-cell merge-cell--yes">✔</div>
+            <div class="merge-cell merge-cell--yes">✔</div>
+            <div style="text-align:center;"><span class="status-badge status-badge--approved">Complete</span></div>
+          </div>
+          <div class="merge-matrix-row" style="grid-template-columns:2fr 100px 100px 100px 120px;">
+            <div><div style="font-weight:600;">Scope 2 total</div><div class="text-xs text-muted">GHG_SCOPE_2_TOTAL · t CO₂e</div></div>
+            <div class="merge-cell merge-cell--yes">✔</div>
+            <div class="merge-cell merge-cell--yes">✔</div>
+            <div class="merge-cell merge-cell--na">—</div>
+            <div style="text-align:center;"><span class="status-badge status-badge--approved">Complete</span></div>
+          </div>
+          <div class="merge-matrix-row data-table-row--missing" style="grid-template-columns:2fr 100px 100px 100px 120px;">
+            <div><div style="font-weight:600;">Scope 3 by category</div><div class="text-xs text-muted">GHG_SCOPE_3_BY_CAT · t CO₂e</div></div>
+            <div class="merge-cell merge-cell--no">❌</div>
+            <div class="merge-cell merge-cell--delta">✔ +Δ</div>
+            <div class="merge-cell merge-cell--na">—</div>
+            <div style="text-align:center;"><span class="status-badge status-badge--missing">Missing</span></div>
+          </div>
+          <div class="merge-matrix-row" style="grid-template-columns:2fr 100px 100px 100px 120px;">
+            <div><div style="font-weight:600;">GHG by gas type</div><div class="text-xs text-muted">GHG_BY_GAS · breakdown</div></div>
+            <div class="merge-cell merge-cell--yes">✔</div>
+            <div class="merge-cell merge-cell--delta">✔ +Δ</div>
+            <div class="merge-cell merge-cell--na">—</div>
+            <div style="text-align:center;"><span class="status-badge status-badge--progress">Partial</span></div>
+          </div>
+          <div style="padding:8px 16px;background:#eff6ff;border-bottom:1px solid #e8e5e0;font-size:11px;font-weight:700;color:#1e40af;">⚡ Energy</div>
+          <div class="merge-matrix-row" style="grid-template-columns:2fr 100px 100px 100px 120px;">
+            <div><div style="font-weight:600;">Energy consumption</div><div class="text-xs text-muted">ENERGY_CONSUMPTION · MWh</div></div>
+            <div class="merge-cell merge-cell--yes">✔</div>
+            <div class="merge-cell merge-cell--na">—</div>
+            <div class="merge-cell merge-cell--yes">✔</div>
+            <div style="text-align:center;"><span class="status-badge status-badge--progress">Partial</span></div>
+          </div>
+          <div style="padding:8px 16px;background:#f5f3ff;border-bottom:1px solid #e8e5e0;font-size:11px;font-weight:700;color:#7c3aed;">⚖️ Governance</div>
+          <div class="merge-matrix-row data-table-row--missing" style="grid-template-columns:2fr 100px 100px 100px 120px;">
+            <div><div style="font-weight:600;">Board diversity %</div><div class="text-xs text-muted">BOARD_DIVERSITY_PCT · %</div></div>
+            <div class="merge-cell merge-cell--yes">✔</div>
+            <div class="merge-cell merge-cell--na">—</div>
+            <div class="merge-cell merge-cell--yes">✔</div>
+            <div style="text-align:center;"><span class="status-badge status-badge--missing">Missing</span></div>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;display:flex;gap:16px;font-size:11px;color:#888;">
+          <span><b class="merge-cell--yes">✔</b> Required, data exists</span>
+          <span><b class="merge-cell--no">❌</b> Required, no data</span>
+          <span><b class="merge-cell--delta">+Δ</b> Has deltas</span>
+          <span><b class="merge-cell--na">—</b> Not required</span>
+        </div>
+      </main>
+    </div>
+    <div class="annotation">💡 v3 NEW: Merge View matrix. Element × Standard. Coverage per standard. ✔/❌/+Δ/— indicators. Grouped by domain.</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     SCREEN: WIZARD (Quantitative)
+     ════════════════════════════════════════════════════════════ -->
+<div id="s-wizard-qn">
+  <div class="screen-label">WIZARD · <span>Quantitative data entry — step 2 of 4 (enter data)</span></div>
+  <div class="screen">
+    <div class="v3-topbar">
+      <div class="v3-topbar-logo"><em>ESG</em>vist</div>
+      <div class="v3-topbar-period">📅 <b>Q2 2025</b></div>
+      <div class="v3-topbar-center"><div class="v3-topbar-progress"><div class="v3-topbar-progress-fill" style="width:68%"></div></div><span class="v3-topbar-percent">68%</span></div>
+      <div class="v3-topbar-right"><span class="v3-topbar-deadline">⏰ Deadline: <b>June 30</b></span><button class="btn btn-outline btn-sm">📤 Export</button><div class="notif-bell">🔔<span class="notif-bell-badge">3</span></div><div class="v3-topbar-avatar">KE</div></div>
+    </div>
+    <div class="v3-layout">
+      <nav class="v3-sidebar">
+        <div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Navigation</div></div>
+        <a class="v3-sidebar-item" href="#s-overview">📊 Overview</a>
+        <a class="v3-sidebar-item" href="#s-collection" style="background:#ecfdf5;border-left-color:#2d8a56;color:#2d8a56;font-weight:700;">📁 Collection</a>
+        <a class="v3-sidebar-item" href="#s-validation">✅ Validation <span class="v3-sidebar-badge">3</span></a><a class="v3-sidebar-item" href="#s-tasks">📋 Tasks</a><a class="v3-sidebar-item" href="#s-evidence">📎 Evidence</a><a class="v3-sidebar-item" href="#s-export">📤 Export</a>
+        <div class="v3-sidebar-divider"></div><a class="v3-sidebar-item" href="#s-merge">🔀 Merge View</a><div class="v3-sidebar-divider"></div>
+        <div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Settings</div></div>
+        <a class="v3-sidebar-item" href="#s-settings-standards">📐 Standards</a><a class="v3-sidebar-item" href="#s-settings-users">👥 Users</a><a class="v3-sidebar-item" href="#s-settings-assignments">📌 Assignments</a><a class="v3-sidebar-item" href="#s-settings-periods">📅 Periods</a><a class="v3-sidebar-item" href="#s-settings-company">🏢 Company</a><a class="v3-sidebar-item" href="#s-audit">📝 Audit Log</a>
+      </nav>
+      <main class="v3-content">
+        <!-- Wizard Stepper -->
+        <div class="wizard-stepper">
+          <div class="wizard-step done"><div class="wizard-step-num">✓</div> Select metric</div>
+          <span class="wizard-arrow">→</span>
+          <div class="wizard-step active"><div class="wizard-step-num">2</div> Enter data</div>
+          <span class="wizard-arrow">→</span>
+          <div class="wizard-step"><div class="wizard-step-num">3</div> Verify</div>
+          <span class="wizard-arrow">→</span>
+          <div class="wizard-step"><div class="wizard-step-num">4</div> Submit</div>
+        </div>
+
+        <div class="card">
+          <div style="margin-bottom:16px;">
+            <div style="font-size:16px;font-weight:800;">Direct CO₂ emissions (Scope 1)</div>
+            <div class="text-xs text-muted mt-8">GRI 305-1 · Environmental · Quantitative</div>
+            <div style="margin-top:8px;"><span class="reuse-badge">🔗 Used in 3 standards: GRI 305-1, IFRS S2.29, SASB EM-EP-110a.1</span></div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Value *</label>
+              <input class="form-input" type="number" value="1240" placeholder="Enter value">
+              <div class="form-hint">Previous period: 1,380 t CO₂e (−10.1%)</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Unit *</label>
+              <select class="form-select">
+                <option selected>t CO₂e</option>
+                <option>kg CO₂e</option>
+                <option>Mt CO₂e</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Methodology</label>
+              <select class="form-select">
+                <option selected>GHG Protocol — Scope 1</option>
+                <option>Location-based</option>
+                <option>Market-based</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Boundary</label>
+              <select class="form-select">
+                <option selected>Operational control</option>
+                <option>Financial control</option>
+                <option>Equity share</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Dimensions</label>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;">
+              <label style="font-size:12px;display:flex;align-items:center;gap:4px;"><input type="checkbox" checked> Scope 1</label>
+              <label style="font-size:12px;display:flex;align-items:center;gap:4px;"><input type="checkbox"> Scope 2</label>
+              <label style="font-size:12px;display:flex;align-items:center;gap:4px;"><input type="checkbox"> By gas type</label>
+              <label style="font-size:12px;display:flex;align-items:center;gap:4px;"><input type="checkbox"> By facility</label>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Evidence</label>
+            <div style="border:2px dashed #e0ddd8;border-radius:10px;padding:20px;text-align:center;color:#aaa;font-size:12px;">
+              📎 Drag & drop files or <span style="color:#2d8a56;font-weight:600;cursor:pointer;">browse</span>
+              <div class="text-xs mt-8">PDF, Excel, images · Max 10 MB</div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Comment (optional)</label>
+            <textarea class="form-textarea" placeholder="Add notes about this data point...">Calculation based on GHG Protocol Scope 1. 10% reduction due to boiler #3 gas conversion.</textarea>
+          </div>
+
+          <!-- IFRS Delta -->
+          <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:14px;margin-bottom:16px;">
+            <div class="text-xs fw-800" style="color:#92400e;margin-bottom:6px;">+Δ IFRS S2 additional requirement</div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" style="color:#92400e;">Financial impact assessment</label>
+              <textarea class="form-textarea" style="min-height:50px;" placeholder="Describe financial impact of climate-related emissions..."></textarea>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:10px;">
+            <button class="btn btn-outline" style="flex:1;justify-content:center;">💾 Save draft</button>
+            <button class="btn btn-primary" style="flex:2;justify-content:center;">Next: Verify →</button>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="annotation">💡 v3: Consolidated wizard (4 steps in 1 screen). Reuse badge inline. IFRS delta section. Methodology + boundary selectors. Draft/Submit buttons.</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     SCREEN: WIZARD (Qualitative)
+     ════════════════════════════════════════════════════════════ -->
+<div id="s-wizard-ql">
+  <div class="screen-label">WIZARD · <span>Qualitative data entry — step 2 of 3 (enter text)</span></div>
+  <div class="screen">
+    <div class="v3-topbar">
+      <div class="v3-topbar-logo"><em>ESG</em>vist</div>
+      <div class="v3-topbar-period">📅 <b>Q2 2025</b></div>
+      <div class="v3-topbar-center"><div class="v3-topbar-progress"><div class="v3-topbar-progress-fill" style="width:68%"></div></div><span class="v3-topbar-percent">68%</span></div>
+      <div class="v3-topbar-right"><span class="v3-topbar-deadline">⏰ Deadline: <b>June 30</b></span><button class="btn btn-outline btn-sm">📤 Export</button><div class="notif-bell">🔔<span class="notif-bell-badge">3</span></div><div class="v3-topbar-avatar">KE</div></div>
+    </div>
+    <div class="v3-layout">
+      <nav class="v3-sidebar">
+        <div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Navigation</div></div>
+        <a class="v3-sidebar-item" href="#s-overview">📊 Overview</a><a class="v3-sidebar-item" href="#s-collection" style="background:#ecfdf5;border-left-color:#2d8a56;color:#2d8a56;font-weight:700;">📁 Collection</a><a class="v3-sidebar-item" href="#s-validation">✅ Validation <span class="v3-sidebar-badge">3</span></a><a class="v3-sidebar-item" href="#s-tasks">📋 Tasks</a><a class="v3-sidebar-item" href="#s-evidence">📎 Evidence</a><a class="v3-sidebar-item" href="#s-export">📤 Export</a>
+        <div class="v3-sidebar-divider"></div><a class="v3-sidebar-item" href="#s-merge">🔀 Merge View</a><div class="v3-sidebar-divider"></div>
+        <div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Settings</div></div>
+        <a class="v3-sidebar-item" href="#s-settings-standards">📐 Standards</a><a class="v3-sidebar-item" href="#s-settings-users">👥 Users</a><a class="v3-sidebar-item" href="#s-settings-assignments">📌 Assignments</a><a class="v3-sidebar-item" href="#s-settings-periods">📅 Periods</a><a class="v3-sidebar-item" href="#s-settings-company">🏢 Company</a><a class="v3-sidebar-item" href="#s-audit">📝 Audit Log</a>
+      </nav>
+      <main class="v3-content">
+        <div class="wizard-stepper">
+          <div class="wizard-step done"><div class="wizard-step-num">✓</div> Select metric</div>
+          <span class="wizard-arrow">→</span>
+          <div class="wizard-step active"><div class="wizard-step-num">2</div> Enter text</div>
+          <span class="wizard-arrow">→</span>
+          <div class="wizard-step"><div class="wizard-step-num">3</div> Submit</div>
+        </div>
+        <div class="card">
+          <div style="margin-bottom:16px;">
+            <div style="font-size:16px;font-weight:800;">Anti-corruption policy description</div>
+            <div class="text-xs text-muted mt-8">GRI 205-1 · Governance · Qualitative</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Description *</label>
+            <div style="border:1px solid #e0ddd8;border-radius:8px;overflow:hidden;">
+              <div style="display:flex;gap:4px;padding:6px 10px;background:#f7f6f3;border-bottom:1px solid #e0ddd8;">
+                <button class="btn btn-ghost btn-sm"><b>B</b></button>
+                <button class="btn btn-ghost btn-sm"><i>I</i></button>
+                <button class="btn btn-ghost btn-sm"><u>U</u></button>
+                <span style="width:1px;background:#e0ddd8;margin:0 4px;"></span>
+                <button class="btn btn-ghost btn-sm">• List</button>
+                <button class="btn btn-ghost btn-sm">1. Ordered</button>
+              </div>
+              <div style="padding:12px;min-height:150px;font-size:13px;line-height:1.6;color:#555;">
+                KazEnergo JSC maintains a comprehensive anti-corruption policy approved by the Board of Directors in January 2025. The policy covers all employees, contractors, and business partners...
+              </div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Evidence</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <span style="display:flex;align-items:center;gap:6px;padding:6px 12px;background:#f5f5f0;border:1px solid #e0ddd8;border-radius:8px;font-size:12px;">📄 Anticorruption_Policy_v3.pdf <span style="color:#aaa;cursor:pointer;">×</span></span>
+              <span style="display:flex;align-items:center;gap:6px;padding:6px 12px;background:#f5f5f0;border:1px solid #e0ddd8;border-radius:8px;font-size:12px;">🔗 kazenergo.kz/policy <span style="color:#aaa;cursor:pointer;">×</span></span>
+              <button class="btn btn-ghost btn-sm">+ Add file</button>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:16px;">
+            <button class="btn btn-outline" style="flex:1;justify-content:center;">💾 Save draft</button>
+            <button class="btn btn-primary" style="flex:2;justify-content:center;">→ Submit for review</button>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="annotation">💡 v3: Qualitative wizard (3 steps). Rich text editor. Evidence attachments inline. Draft/Submit.</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     SCREEN: SETTINGS — STANDARDS
+     ════════════════════════════════════════════════════════════ -->
+<div id="s-settings-standards">
+  <div class="screen-label">SETTINGS · <span>Standards — catalog, tree view, versioning</span></div>
+  <div class="screen">
+    <div class="v3-topbar">
+      <div class="v3-topbar-logo"><em>ESG</em>vist</div>
+      <div class="v3-topbar-period">📅 <b>Q2 2025</b></div>
+      <div class="v3-topbar-center"><div class="v3-topbar-progress"><div class="v3-topbar-progress-fill" style="width:68%"></div></div><span class="v3-topbar-percent">68%</span></div>
+      <div class="v3-topbar-right"><span class="v3-topbar-deadline">⏰ Deadline: <b>June 30</b></span><button class="btn btn-outline btn-sm">📤 Export</button><div class="notif-bell">🔔<span class="notif-bell-badge">3</span></div><div class="v3-topbar-avatar">KE</div></div>
+    </div>
+    <div class="v3-layout">
+      <nav class="v3-sidebar">
+        <div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Navigation</div></div>
+        <a class="v3-sidebar-item" href="#s-overview">📊 Overview</a><a class="v3-sidebar-item" href="#s-collection">📁 Collection</a><a class="v3-sidebar-item" href="#s-validation">✅ Validation <span class="v3-sidebar-badge">3</span></a><a class="v3-sidebar-item" href="#s-tasks">📋 Tasks</a><a class="v3-sidebar-item" href="#s-evidence">📎 Evidence</a><a class="v3-sidebar-item" href="#s-export">📤 Export</a>
+        <div class="v3-sidebar-divider"></div><a class="v3-sidebar-item" href="#s-merge">🔀 Merge View</a><div class="v3-sidebar-divider"></div>
+        <div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Settings</div></div>
+        <a class="v3-sidebar-item active">📐 Standards</a>
+        <a class="v3-sidebar-item" href="#s-settings-users">👥 Users</a><a class="v3-sidebar-item" href="#s-settings-assignments">📌 Assignments</a><a class="v3-sidebar-item" href="#s-settings-periods">📅 Periods</a><a class="v3-sidebar-item" href="#s-settings-company">🏢 Company</a><a class="v3-sidebar-item" href="#s-audit">📝 Audit Log</a>
+      </nav>
+      <main class="v3-content">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Standards Management</div>
+            <div class="page-subtitle">3 active standards · Import, version, configure</div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-outline">📥 Import</button>
+            <button class="btn btn-primary">+ Add standard</button>
+          </div>
+        </div>
+        <div class="grid-3 mb-16">
+          <div class="card" style="border-left:4px solid #2d8a56;cursor:pointer;">
+            <div style="font-size:14px;font-weight:800;">GRI Standards</div>
+            <div class="text-xs text-muted mt-8">Version 2021 · Global · Active</div>
+            <div class="text-xs mt-8">35 disclosures · 120 requirement items</div>
+            <div style="margin-top:12px;"><span class="status-badge status-badge--approved">Active</span></div>
+          </div>
+          <div class="card" style="border-left:4px solid #3b82f6;cursor:pointer;">
+            <div style="font-size:14px;font-weight:800;">IFRS S2</div>
+            <div class="text-xs text-muted mt-8">Version 2023 · Global · Active</div>
+            <div class="text-xs mt-8">25 disclosures · 90 requirement items</div>
+            <div style="margin-top:12px;"><span class="status-badge status-badge--approved">Active</span></div>
+          </div>
+          <div class="card" style="border-left:4px solid #d97706;cursor:pointer;">
+            <div style="font-size:14px;font-weight:800;">SASB (Oil & Gas)</div>
+            <div class="text-xs text-muted mt-8">Version 2023 · US · Active</div>
+            <div class="text-xs mt-8">15 disclosures · 50 requirement items</div>
+            <div style="margin-top:12px;"><span class="status-badge status-badge--approved">Active</span></div>
+          </div>
+        </div>
+        <!-- Tree View -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">GRI Standards — Structure</span>
+            <button class="btn btn-outline btn-sm">+ Add section</button>
+          </div>
+          <div style="font-size:12px;">
+            <div style="padding:8px 0;font-weight:700;color:#2d8a56;">📂 GRI 300: Environmental</div>
+            <div style="padding:6px 0 6px 20px;border-left:1px solid #e8e5e0;margin-left:8px;">
+              <div style="padding:4px 0;"><span style="font-weight:600;">GRI 302: Energy</span> <span class="text-xs text-muted">· 3 disclosures</span></div>
+              <div style="padding:4px 0 4px 20px;color:#555;">GRI 302-1: Energy consumption <span class="tag tag-env">5 items</span></div>
+              <div style="padding:4px 0 4px 20px;color:#555;">GRI 302-3: Energy intensity <span class="tag tag-env">2 items</span></div>
+            </div>
+            <div style="padding:6px 0 6px 20px;border-left:1px solid #e8e5e0;margin-left:8px;">
+              <div style="padding:4px 0;"><span style="font-weight:600;">GRI 305: Emissions</span> <span class="text-xs text-muted">· 5 disclosures</span></div>
+              <div style="padding:4px 0 4px 20px;color:#555;">GRI 305-1: Direct emissions (Scope 1) <span class="tag tag-env">4 items</span> <span class="reuse-badge">🔗 3 standards</span></div>
+              <div style="padding:4px 0 4px 20px;color:#555;">GRI 305-2: Indirect emissions (Scope 2) <span class="tag tag-env">3 items</span></div>
+              <div style="padding:4px 0 4px 20px;color:#555;">GRI 305-3: Other indirect (Scope 3) <span class="tag tag-env">6 items</span> <span class="reuse-badge">🔗 2 standards</span></div>
+            </div>
+            <div style="padding:8px 0;font-weight:700;color:#1e40af;">📂 GRI 400: Social</div>
+            <div style="padding:6px 0 6px 20px;border-left:1px solid #e8e5e0;margin-left:8px;">
+              <div style="padding:4px 0;"><span style="font-weight:600;">GRI 401: Employment</span> <span class="text-xs text-muted">· 2 disclosures</span></div>
+              <div style="padding:4px 0;"><span style="font-weight:600;">GRI 403: Health & Safety</span> <span class="text-xs text-muted">· 4 disclosures</span></div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="annotation">💡 v3: Consolidated standards management. Tree view with reuse badges. Standard cards with item counts. Import button.</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     SCREEN: SETTINGS — USERS
+     ════════════════════════════════════════════════════════════ -->
+<div id="s-settings-users">
+  <div class="screen-label">SETTINGS · <span>Users — list, roles, activity</span></div>
+  <div class="screen">
+    <div class="v3-topbar"><div class="v3-topbar-logo"><em>ESG</em>vist</div><div class="v3-topbar-period">📅 <b>Q2 2025</b></div><div class="v3-topbar-center"><div class="v3-topbar-progress"><div class="v3-topbar-progress-fill" style="width:68%"></div></div><span class="v3-topbar-percent">68%</span></div><div class="v3-topbar-right"><span class="v3-topbar-deadline">⏰ Deadline: <b>June 30</b></span><button class="btn btn-outline btn-sm">📤 Export</button><div class="notif-bell">🔔<span class="notif-bell-badge">3</span></div><div class="v3-topbar-avatar">KE</div></div></div>
+    <div class="v3-layout">
+      <nav class="v3-sidebar"><div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Navigation</div></div><a class="v3-sidebar-item" href="#s-overview">📊 Overview</a><a class="v3-sidebar-item" href="#s-collection">📁 Collection</a><a class="v3-sidebar-item" href="#s-validation">✅ Validation <span class="v3-sidebar-badge">3</span></a><a class="v3-sidebar-item" href="#s-tasks">📋 Tasks</a><a class="v3-sidebar-item" href="#s-evidence">📎 Evidence</a><a class="v3-sidebar-item" href="#s-export">📤 Export</a><div class="v3-sidebar-divider"></div><a class="v3-sidebar-item" href="#s-merge">🔀 Merge View</a><div class="v3-sidebar-divider"></div><div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Settings</div></div><a class="v3-sidebar-item" href="#s-settings-standards">📐 Standards</a><a class="v3-sidebar-item active">👥 Users</a><a class="v3-sidebar-item" href="#s-settings-assignments">📌 Assignments</a><a class="v3-sidebar-item" href="#s-settings-periods">📅 Periods</a><a class="v3-sidebar-item" href="#s-settings-company">🏢 Company</a><a class="v3-sidebar-item" href="#s-audit">📝 Audit Log</a></nav>
+      <main class="v3-content">
+        <div class="page-header"><div><div class="page-title">Users</div><div class="page-subtitle">8 users · 5 roles</div></div><button class="btn btn-primary">+ Add user</button></div>
+        <div class="filter-row">
+          <div class="filter-pill active" style="background:#1a1a1a;color:#fff;border-color:#1a1a1a;">All (8)</div>
+          <div class="filter-pill">Admin (1)</div>
+          <div class="filter-pill">ESG Manager (2)</div>
+          <div class="filter-pill">Collector (3)</div>
+          <div class="filter-pill">Reviewer (1)</div>
+          <div class="filter-pill">Auditor (1)</div>
+        </div>
+        <div class="data-table">
+          <div class="data-table-head" style="grid-template-columns:2fr 1fr 100px 100px 100px 80px;">
+            <div>User</div><div>Role</div><div>Metrics</div><div>Last login</div><div>Status</div><div></div>
+          </div>
+          <div class="data-table-row" style="grid-template-columns:2fr 1fr 100px 100px 100px 80px;">
+            <div><div style="font-weight:600;">Тимурова А.С.</div><div class="text-xs text-muted">timurova@kazenergo.kz · Head of ESG</div></div>
+            <div><span class="tag" style="background:#f5f3ff;color:#7c3aed;">Admin</span></div>
+            <div class="text-xs">—</div><div class="text-xs text-muted">Today</div>
+            <div><span class="status-badge status-badge--approved">Active</span></div>
+            <div><span class="text-xs" style="color:#2d8a56;cursor:pointer;">Edit</span></div>
+          </div>
+          <div class="data-table-row" style="grid-template-columns:2fr 1fr 100px 100px 100px 80px;">
+            <div><div style="font-weight:600;">Иванов И.А.</div><div class="text-xs text-muted">ivanov@kazenergo.kz · Environmental Dept.</div></div>
+            <div><span class="tag tag-env">Collector</span></div>
+            <div class="text-xs">8 metrics</div><div class="text-xs text-muted">Yesterday</div>
+            <div><span class="status-badge status-badge--approved">Active</span></div>
+            <div><span class="text-xs" style="color:#2d8a56;cursor:pointer;">Edit</span></div>
+          </div>
+          <div class="data-table-row" style="grid-template-columns:2fr 1fr 100px 100px 100px 80px;">
+            <div><div style="font-weight:600;">Петрова М.В.</div><div class="text-xs text-muted">petrova@kazenergo.kz · Compliance Dir.</div></div>
+            <div><span class="tag tag-soc">ESG Manager</span></div>
+            <div class="text-xs">5 metrics</div><div class="text-xs text-muted">Today</div>
+            <div><span class="status-badge status-badge--approved">Active</span></div>
+            <div><span class="text-xs" style="color:#2d8a56;cursor:pointer;">Edit</span></div>
+          </div>
+          <div class="data-table-row" style="grid-template-columns:2fr 1fr 100px 100px 100px 80px;">
+            <div><div style="font-weight:600;">Сидоров К.А.</div><div class="text-xs text-muted">sidorov@kazenergo.kz · Quality Dept.</div></div>
+            <div><span class="tag" style="background:#eff6ff;color:#3b82f6;">Reviewer</span></div>
+            <div class="text-xs">12 reviews</div><div class="text-xs text-muted">2 days ago</div>
+            <div><span class="status-badge status-badge--approved">Active</span></div>
+            <div><span class="text-xs" style="color:#2d8a56;cursor:pointer;">Edit</span></div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     SCREEN: SETTINGS — USER EDIT
+     ════════════════════════════════════════════════════════════ -->
+<div id="s-settings-user-edit">
+  <div class="screen-label">SETTINGS · <span>User edit — Петрова М.В.</span></div>
+  <div class="screen">
+    <div class="v3-topbar"><div class="v3-topbar-logo"><em>ESG</em>vist</div><div class="v3-topbar-period">📅 <b>Q2 2025</b></div><div class="v3-topbar-center"><div class="v3-topbar-progress"><div class="v3-topbar-progress-fill" style="width:68%"></div></div><span class="v3-topbar-percent">68%</span></div><div class="v3-topbar-right"><span class="v3-topbar-deadline">⏰ Deadline: <b>June 30</b></span><button class="btn btn-outline btn-sm">📤 Export</button><div class="notif-bell">🔔<span class="notif-bell-badge">3</span></div><div class="v3-topbar-avatar">KE</div></div></div>
+    <div class="v3-layout">
+      <nav class="v3-sidebar"><div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Navigation</div></div><a class="v3-sidebar-item" href="#s-overview">📊 Overview</a><a class="v3-sidebar-item" href="#s-collection">📁 Collection</a><a class="v3-sidebar-item" href="#s-validation">✅ Validation <span class="v3-sidebar-badge">3</span></a><a class="v3-sidebar-item" href="#s-tasks">📋 Tasks</a><a class="v3-sidebar-item" href="#s-evidence">📎 Evidence</a><a class="v3-sidebar-item" href="#s-export">📤 Export</a><div class="v3-sidebar-divider"></div><a class="v3-sidebar-item" href="#s-merge">🔀 Merge View</a><div class="v3-sidebar-divider"></div><div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Settings</div></div><a class="v3-sidebar-item" href="#s-settings-standards">📐 Standards</a><a class="v3-sidebar-item active">👥 Users</a><a class="v3-sidebar-item" href="#s-settings-assignments">📌 Assignments</a><a class="v3-sidebar-item" href="#s-settings-periods">📅 Periods</a><a class="v3-sidebar-item" href="#s-settings-company">🏢 Company</a><a class="v3-sidebar-item" href="#s-audit">📝 Audit Log</a></nav>
+      <main class="v3-content">
+        <div class="page-header"><div><div class="page-title">Петрова М.В.</div><div class="page-subtitle">ESG Manager · Compliance Director · KazEnergo JSC</div></div><button class="btn btn-primary">💾 Save changes</button></div>
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-title mb-16">Personal Information</div>
+            <div class="form-row"><div class="form-group"><label class="form-label">First name</label><input class="form-input" value="Мария"></div><div class="form-group"><label class="form-label">Last name</label><input class="form-input" value="Петрова"></div></div>
+            <div class="form-group"><label class="form-label">Email</label><input class="form-input" value="petrova@kazenergo.kz"></div>
+            <div class="form-group"><label class="form-label">Position</label><input class="form-input" value="Compliance Director"></div>
+            <div class="form-group">
+              <label class="form-label">Role</label>
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                <label style="display:flex;align-items:center;gap:8px;font-size:12px;padding:8px 12px;border:1px solid #e0ddd8;border-radius:8px;cursor:pointer;"><input type="radio" name="role"> Admin</label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:12px;padding:8px 12px;border:2px solid #2d8a56;border-radius:8px;background:#ecfdf5;cursor:pointer;"><input type="radio" name="role" checked> ESG Manager</label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:12px;padding:8px 12px;border:1px solid #e0ddd8;border-radius:8px;cursor:pointer;"><input type="radio" name="role"> Collector</label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:12px;padding:8px 12px;border:1px solid #e0ddd8;border-radius:8px;cursor:pointer;"><input type="radio" name="role"> Reviewer</label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:12px;padding:8px 12px;border:1px solid #e0ddd8;border-radius:8px;cursor:pointer;"><input type="radio" name="role"> Auditor</label>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="card mb-16">
+              <div class="card-title mb-16">Assigned Metrics (5)</div>
+              <div style="font-size:12px;display:flex;flex-direction:column;gap:6px;">
+                <div class="flex items-center justify-between" style="padding:6px 0;border-bottom:1px solid #f0ede8;"><span>Anti-corruption policy</span><span class="status-badge status-badge--approved">Approved</span></div>
+                <div class="flex items-center justify-between" style="padding:6px 0;border-bottom:1px solid #f0ede8;"><span>Employee turnover</span><span class="status-badge status-badge--missing">Missing</span></div>
+                <div class="flex items-center justify-between" style="padding:6px 0;border-bottom:1px solid #f0ede8;"><span>Board composition</span><span class="status-badge status-badge--review">In review</span></div>
+                <div class="flex items-center justify-between" style="padding:6px 0;border-bottom:1px solid #f0ede8;"><span>Training hours</span><span class="status-badge status-badge--progress">Draft</span></div>
+                <div class="flex items-center justify-between" style="padding:6px 0;"><span>Diversity ratio</span><span class="status-badge status-badge--missing">Missing</span></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-title mb-16">Notifications</div>
+              <div style="font-size:12px;display:flex;flex-direction:column;gap:8px;">
+                <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" checked> Email on assignment</label>
+                <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" checked> Email on deadline reminder</label>
+                <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" checked> Email on review completion</label>
+                <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox"> In-app only (no email)</label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     SCREEN: SETTINGS — ASSIGNMENTS
+     ════════════════════════════════════════════════════════════ -->
+<div id="s-settings-assignments">
+  <div class="screen-label">SETTINGS · <span>Assignments — matrix, SLA, bulk assign</span></div>
+  <div class="screen">
+    <div class="v3-topbar"><div class="v3-topbar-logo"><em>ESG</em>vist</div><div class="v3-topbar-period">📅 <b>Q2 2025</b></div><div class="v3-topbar-center"><div class="v3-topbar-progress"><div class="v3-topbar-progress-fill" style="width:68%"></div></div><span class="v3-topbar-percent">68%</span></div><div class="v3-topbar-right"><span class="v3-topbar-deadline">⏰ Deadline: <b>June 30</b></span><button class="btn btn-outline btn-sm">📤 Export</button><div class="notif-bell">🔔<span class="notif-bell-badge">3</span></div><div class="v3-topbar-avatar">KE</div></div></div>
+    <div class="v3-layout">
+      <nav class="v3-sidebar"><div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Navigation</div></div><a class="v3-sidebar-item" href="#s-overview">📊 Overview</a><a class="v3-sidebar-item" href="#s-collection">📁 Collection</a><a class="v3-sidebar-item" href="#s-validation">✅ Validation <span class="v3-sidebar-badge">3</span></a><a class="v3-sidebar-item" href="#s-tasks">📋 Tasks</a><a class="v3-sidebar-item" href="#s-evidence">📎 Evidence</a><a class="v3-sidebar-item" href="#s-export">📤 Export</a><div class="v3-sidebar-divider"></div><a class="v3-sidebar-item" href="#s-merge">🔀 Merge View</a><div class="v3-sidebar-divider"></div><div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Settings</div></div><a class="v3-sidebar-item" href="#s-settings-standards">📐 Standards</a><a class="v3-sidebar-item" href="#s-settings-users">👥 Users</a><a class="v3-sidebar-item active">📌 Assignments</a><a class="v3-sidebar-item" href="#s-settings-periods">📅 Periods</a><a class="v3-sidebar-item" href="#s-settings-company">🏢 Company</a><a class="v3-sidebar-item" href="#s-audit">📝 Audit Log</a></nav>
+      <main class="v3-content">
+        <div class="page-header"><div><div class="page-title">Assignment Matrix</div><div class="page-subtitle">18 metrics · 4 collectors · 2 reviewers</div></div><button class="btn btn-primary">Bulk assign</button></div>
+        <div class="data-table">
+          <div class="data-table-head" style="grid-template-columns:2fr 1fr 1fr 1fr 100px 100px 80px;">
+            <div>Metric</div><div>Collector</div><div>Reviewer</div><div>Backup</div><div>Deadline</div><div>SLA</div><div>Status</div>
+          </div>
+          <div class="data-table-row" style="grid-template-columns:2fr 1fr 1fr 1fr 100px 100px 80px;">
+            <div><div style="font-weight:600;">Scope 1 emissions</div><div class="text-xs text-muted">GRI 305-1 · Emissions</div></div>
+            <div class="text-xs">Иванов И.А.</div><div class="text-xs">Сидоров К.А.</div><div class="text-xs text-muted">Ахметова Н.</div>
+            <div class="text-xs">Jun 15</div><div><span class="sla sla--green">On track</span></div>
+            <div><span class="status-badge status-badge--review" style="font-size:9px;">Review</span></div>
+          </div>
+          <div class="data-table-row data-table-row--missing" style="grid-template-columns:2fr 1fr 1fr 1fr 100px 100px 80px;">
+            <div><div style="font-weight:600;">Scope 3 emissions</div><div class="text-xs text-muted">GRI 305-3 · Emissions</div></div>
+            <div class="text-xs">Иванов И.А.</div><div class="text-xs">Сидоров К.А.</div><div class="text-xs text-muted">—</div>
+            <div class="text-xs" style="color:#e74c3c;font-weight:700;">Mar 20 ⚠</div><div><span class="sla sla--red">Breach L2</span></div>
+            <div><span class="status-badge status-badge--missing" style="font-size:9px;">Missing</span></div>
+          </div>
+          <div class="data-table-row data-table-row--progress" style="grid-template-columns:2fr 1fr 1fr 1fr 100px 100px 80px;">
+            <div><div style="font-weight:600;">Energy consumption</div><div class="text-xs text-muted">GRI 302-1 · Energy</div></div>
+            <div class="text-xs">Иванов И.А.</div><div class="text-xs">Петрова М.В.</div><div class="text-xs text-muted">Ахметова Н.</div>
+            <div class="text-xs">May 1</div><div><span class="sla sla--yellow">Warning</span></div>
+            <div><span class="status-badge status-badge--progress" style="font-size:9px;">Draft</span></div>
+          </div>
+          <div class="data-table-row" style="grid-template-columns:2fr 1fr 1fr 1fr 100px 100px 80px;opacity:.6;">
+            <div><div style="font-weight:600;">Water consumption</div><div class="text-xs text-muted">GRI 303-1 · Water</div></div>
+            <div class="text-xs">Иванов И.А.</div><div class="text-xs">Сидоров К.А.</div><div class="text-xs text-muted">—</div>
+            <div class="text-xs">Jun 15</div><div><span class="sla sla--green">On track</span></div>
+            <div><span class="status-badge status-badge--approved" style="font-size:9px;">Done</span></div>
+          </div>
+          <div class="data-table-row" style="grid-template-columns:2fr 1fr 1fr 1fr 100px 100px 80px;">
+            <div><div style="font-weight:600;color:#aaa;">Employee turnover</div><div class="text-xs text-muted">GRI 401-1 · Not assigned</div></div>
+            <div class="text-xs" style="color:#d97706;font-style:italic;">Not assigned</div><div class="text-xs" style="color:#d97706;font-style:italic;">Not assigned</div><div class="text-xs text-muted">—</div>
+            <div class="text-xs text-muted">—</div><div><span class="sla" style="background:#f5f5f0;color:#aaa;">Pending</span></div>
+            <div><span class="status-badge status-badge--draft" style="font-size:9px;">Pending</span></div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="annotation">💡 v3: Assignment matrix with SLA indicators, backup collector column, escalation status. Unassigned metrics highlighted.</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     SCREEN: SETTINGS — PERIODS
+     ════════════════════════════════════════════════════════════ -->
+<div id="s-settings-periods">
+  <div class="screen-label">SETTINGS · <span>Reporting periods — manage fiscal years, quarters</span></div>
+  <div class="screen">
+    <div class="v3-topbar"><div class="v3-topbar-logo"><em>ESG</em>vist</div><div class="v3-topbar-period">📅 <b>Q2 2025</b></div><div class="v3-topbar-center"><div class="v3-topbar-progress"><div class="v3-topbar-progress-fill" style="width:68%"></div></div><span class="v3-topbar-percent">68%</span></div><div class="v3-topbar-right"><span class="v3-topbar-deadline">⏰ Deadline: <b>June 30</b></span><button class="btn btn-outline btn-sm">📤 Export</button><div class="notif-bell">🔔<span class="notif-bell-badge">3</span></div><div class="v3-topbar-avatar">KE</div></div></div>
+    <div class="v3-layout">
+      <nav class="v3-sidebar"><div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Navigation</div></div><a class="v3-sidebar-item" href="#s-overview">📊 Overview</a><a class="v3-sidebar-item" href="#s-collection">📁 Collection</a><a class="v3-sidebar-item" href="#s-validation">✅ Validation <span class="v3-sidebar-badge">3</span></a><a class="v3-sidebar-item" href="#s-tasks">📋 Tasks</a><a class="v3-sidebar-item" href="#s-evidence">📎 Evidence</a><a class="v3-sidebar-item" href="#s-export">📤 Export</a><div class="v3-sidebar-divider"></div><a class="v3-sidebar-item" href="#s-merge">🔀 Merge View</a><div class="v3-sidebar-divider"></div><div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Settings</div></div><a class="v3-sidebar-item" href="#s-settings-standards">📐 Standards</a><a class="v3-sidebar-item" href="#s-settings-users">👥 Users</a><a class="v3-sidebar-item" href="#s-settings-assignments">📌 Assignments</a><a class="v3-sidebar-item active">📅 Periods</a><a class="v3-sidebar-item" href="#s-settings-company">🏢 Company</a><a class="v3-sidebar-item" href="#s-audit">📝 Audit Log</a></nav>
+      <main class="v3-content">
+        <div class="page-header"><div><div class="page-title">Reporting Periods</div><div class="page-subtitle">3 periods configured</div></div><button class="btn btn-primary">+ New period</button></div>
+        <div class="data-table">
+          <div class="data-table-head" style="grid-template-columns:1fr 1fr 1fr 1fr 100px 100px;">
+            <div>Code</div><div>Start</div><div>End</div><div>Deadline</div><div>Projects</div><div>Status</div>
+          </div>
+          <div class="data-table-row" style="grid-template-columns:1fr 1fr 1fr 1fr 100px 100px;background:#ecfdf5;">
+            <div style="font-weight:700;">Q2 2025</div><div class="text-xs">Apr 1, 2025</div><div class="text-xs">Jun 30, 2025</div><div class="text-xs fw-800">Jun 30, 2025</div>
+            <div class="text-xs">1 project</div><div><span class="status-badge status-badge--approved">Open</span></div>
+          </div>
+          <div class="data-table-row" style="grid-template-columns:1fr 1fr 1fr 1fr 100px 100px;">
+            <div style="font-weight:600;">Q1 2025</div><div class="text-xs">Jan 1, 2025</div><div class="text-xs">Mar 31, 2025</div><div class="text-xs">Apr 15, 2025</div>
+            <div class="text-xs">1 project</div><div><span class="status-badge status-badge--draft">Closed</span></div>
+          </div>
+          <div class="data-table-row" style="grid-template-columns:1fr 1fr 1fr 1fr 100px 100px;opacity:.5;">
+            <div style="font-weight:600;">FY 2024</div><div class="text-xs">Jan 1, 2024</div><div class="text-xs">Dec 31, 2024</div><div class="text-xs">Mar 1, 2025</div>
+            <div class="text-xs">1 project</div><div><span class="status-badge" style="background:#f5f5f0;color:#aaa;">Archived</span></div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="annotation">💡 v3 NEW: Reporting periods management. Active period highlighted. Linked project count.</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     SCREEN: SETTINGS — COMPANY
+     ════════════════════════════════════════════════════════════ -->
+<div id="s-settings-company">
+  <div class="screen-label">SETTINGS · <span>Company — info, boundary, reference data</span></div>
+  <div class="screen">
+    <div class="v3-topbar"><div class="v3-topbar-logo"><em>ESG</em>vist</div><div class="v3-topbar-period">📅 <b>Q2 2025</b></div><div class="v3-topbar-center"><div class="v3-topbar-progress"><div class="v3-topbar-progress-fill" style="width:68%"></div></div><span class="v3-topbar-percent">68%</span></div><div class="v3-topbar-right"><span class="v3-topbar-deadline">⏰ Deadline: <b>June 30</b></span><button class="btn btn-outline btn-sm">📤 Export</button><div class="notif-bell">🔔<span class="notif-bell-badge">3</span></div><div class="v3-topbar-avatar">KE</div></div></div>
+    <div class="v3-layout">
+      <nav class="v3-sidebar"><div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Navigation</div></div><a class="v3-sidebar-item" href="#s-overview">📊 Overview</a><a class="v3-sidebar-item" href="#s-collection">📁 Collection</a><a class="v3-sidebar-item" href="#s-validation">✅ Validation <span class="v3-sidebar-badge">3</span></a><a class="v3-sidebar-item" href="#s-tasks">📋 Tasks</a><a class="v3-sidebar-item" href="#s-evidence">📎 Evidence</a><a class="v3-sidebar-item" href="#s-export">📤 Export</a><div class="v3-sidebar-divider"></div><a class="v3-sidebar-item" href="#s-merge">🔀 Merge View</a><div class="v3-sidebar-divider"></div><div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Settings</div></div><a class="v3-sidebar-item" href="#s-settings-standards">📐 Standards</a><a class="v3-sidebar-item" href="#s-settings-users">👥 Users</a><a class="v3-sidebar-item" href="#s-settings-assignments">📌 Assignments</a><a class="v3-sidebar-item" href="#s-settings-periods">📅 Periods</a><a class="v3-sidebar-item active">🏢 Company</a><a class="v3-sidebar-item" href="#s-audit">📝 Audit Log</a></nav>
+      <main class="v3-content">
+        <div class="page-header"><div><div class="page-title">Company Settings</div><div class="page-subtitle">KazEnergo JSC · Organization configuration</div></div><button class="btn btn-primary">💾 Save</button></div>
+        <div style="display:flex;gap:4px;border-bottom:2px solid #e8e5e0;margin-bottom:16px;">
+          <div style="padding:8px 16px;font-size:12px;font-weight:700;color:#2d8a56;border-bottom:2px solid #2d8a56;margin-bottom:-2px;cursor:pointer;">General</div>
+          <div style="padding:8px 16px;font-size:12px;font-weight:600;color:#888;cursor:pointer;">Boundary</div>
+          <div style="padding:8px 16px;font-size:12px;font-weight:600;color:#888;cursor:pointer;">Reference Data</div>
+          <div style="padding:8px 16px;font-size:12px;font-weight:600;color:#888;cursor:pointer;">Notifications</div>
+        </div>
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-title mb-16">Organization</div>
+            <div class="form-group"><label class="form-label">Company name</label><input class="form-input" value="KazEnergo JSC"></div>
+            <div class="form-group"><label class="form-label">Legal entity code</label><input class="form-input" value="KZ-BIN-123456789"></div>
+            <div class="form-group"><label class="form-label">Industry</label><select class="form-select"><option selected>Oil & Gas</option><option>Mining</option><option>Utilities</option></select></div>
+            <div class="form-group"><label class="form-label">Timezone</label><select class="form-select"><option selected>UTC+5 (Almaty)</option></select></div>
+          </div>
+          <div class="card">
+            <div class="card-title mb-16">Reporting Defaults</div>
+            <div class="form-group"><label class="form-label">Default boundary</label><select class="form-select"><option selected>Operational control</option><option>Financial control</option><option>Equity share</option></select></div>
+            <div class="form-group"><label class="form-label">Default unit system</label><select class="form-select"><option selected>Metric (SI)</option><option>Imperial</option></select></div>
+            <div class="form-group"><label class="form-label">Fiscal year start</label><select class="form-select"><option selected>January</option><option>April</option><option>July</option></select></div>
+            <div class="form-group"><label class="form-label">Language</label><select class="form-select"><option selected>English</option><option>Russian</option></select></div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     SCREEN: AUDIT LOG
+     ════════════════════════════════════════════════════════════ -->
+<div id="s-audit">
+  <div class="screen-label">AUDIT · <span>Action log — who, what, when</span></div>
+  <div class="screen">
+    <div class="v3-topbar"><div class="v3-topbar-logo"><em>ESG</em>vist</div><div class="v3-topbar-period">📅 <b>Q2 2025</b></div><div class="v3-topbar-center"><div class="v3-topbar-progress"><div class="v3-topbar-progress-fill" style="width:68%"></div></div><span class="v3-topbar-percent">68%</span></div><div class="v3-topbar-right"><span class="v3-topbar-deadline">⏰ Deadline: <b>June 30</b></span><button class="btn btn-outline btn-sm">📤 Export</button><div class="notif-bell">🔔<span class="notif-bell-badge">3</span></div><div class="v3-topbar-avatar">KE</div></div></div>
+    <div class="v3-layout">
+      <nav class="v3-sidebar"><div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Navigation</div></div><a class="v3-sidebar-item" href="#s-overview">📊 Overview</a><a class="v3-sidebar-item" href="#s-collection">📁 Collection</a><a class="v3-sidebar-item" href="#s-validation">✅ Validation <span class="v3-sidebar-badge">3</span></a><a class="v3-sidebar-item" href="#s-tasks">📋 Tasks</a><a class="v3-sidebar-item" href="#s-evidence">📎 Evidence</a><a class="v3-sidebar-item" href="#s-export">📤 Export</a><div class="v3-sidebar-divider"></div><a class="v3-sidebar-item" href="#s-merge">🔀 Merge View</a><div class="v3-sidebar-divider"></div><div class="v3-sidebar-section"><div class="v3-sidebar-section-title">Settings</div></div><a class="v3-sidebar-item" href="#s-settings-standards">📐 Standards</a><a class="v3-sidebar-item" href="#s-settings-users">👥 Users</a><a class="v3-sidebar-item" href="#s-settings-assignments">📌 Assignments</a><a class="v3-sidebar-item" href="#s-settings-periods">📅 Periods</a><a class="v3-sidebar-item" href="#s-settings-company">🏢 Company</a><a class="v3-sidebar-item active">📝 Audit Log</a></nav>
+      <main class="v3-content">
+        <div class="page-header"><div><div class="page-title">Audit Log</div><div class="page-subtitle">All system actions · Immutable history</div></div><button class="btn btn-outline">📥 Export CSV</button></div>
+        <div class="filter-row">
+          <select class="form-select" style="width:150px;padding:7px 12px;font-size:12px;"><option>All entities</option><option>DataPoint</option><option>Assignment</option><option>User</option><option>Standard</option><option>Project</option></select>
+          <select class="form-select" style="width:130px;padding:7px 12px;font-size:12px;"><option>All actions</option><option>Create</option><option>Update</option><option>Submit</option><option>Approve</option><option>Reject</option></select>
+          <select class="form-select" style="width:130px;padding:7px 12px;font-size:12px;"><option>All users</option><option>Тимурова А.</option><option>Иванов И.</option><option>Петрова М.</option><option>Сидоров К.</option></select>
+          <input class="form-input" type="date" style="width:140px;padding:7px 12px;font-size:12px;">
+          <span class="text-xs text-muted">to</span>
+          <input class="form-input" type="date" style="width:140px;padding:7px 12px;font-size:12px;">
+        </div>
+        <div class="data-table">
+          <div class="data-table-head" style="grid-template-columns:140px 1fr 100px 2fr 100px;">
+            <div>Timestamp</div><div>User</div><div>Action</div><div>Details</div><div>Entity</div>
+          </div>
+          <div class="data-table-row" style="grid-template-columns:140px 1fr 100px 2fr 100px;">
+            <div class="text-xs text-muted">Mar 22, 14:32</div>
+            <div class="text-xs fw-800">Сидоров К.А.</div>
+            <div><span class="tag tag-env">Approve</span></div>
+            <div class="text-xs">Approved "Water consumption" (GRI 303-1). Value: 18,200 m³</div>
+            <div class="text-xs text-muted">DataPoint</div>
+          </div>
+          <div class="data-table-row" style="grid-template-columns:140px 1fr 100px 2fr 100px;">
+            <div class="text-xs text-muted">Mar 22, 11:15</div>
+            <div class="text-xs fw-800">Иванов И.А.</div>
+            <div><span class="tag tag-soc">Submit</span></div>
+            <div class="text-xs">Submitted "Direct CO₂ emissions" for review. Value: 1,240 t CO₂e</div>
+            <div class="text-xs text-muted">DataPoint</div>
+          </div>
+          <div class="data-table-row" style="grid-template-columns:140px 1fr 100px 2fr 100px;">
+            <div class="text-xs text-muted">Mar 21, 16:45</div>
+            <div class="text-xs fw-800">Петрова М.В.</div>
+            <div><span class="tag" style="background:#fef2f2;color:#991b1b;">Reject</span></div>
+            <div class="text-xs">Rejected "Energy consumption". Comment: "Value seems too high, please verify"</div>
+            <div class="text-xs text-muted">DataPoint</div>
+          </div>
+          <div class="data-table-row" style="grid-template-columns:140px 1fr 100px 2fr 100px;">
+            <div class="text-xs text-muted">Mar 21, 09:00</div>
+            <div class="text-xs fw-800">Тимурова А.С.</div>
+            <div><span class="tag" style="background:#f5f3ff;color:#7c3aed;">Create</span></div>
+            <div class="text-xs">Created assignment: Scope 3 → Иванов И.А. (collector), Сидоров К.А. (reviewer)</div>
+            <div class="text-xs text-muted">Assignment</div>
+          </div>
+          <div class="data-table-row" style="grid-template-columns:140px 1fr 100px 2fr 100px;">
+            <div class="text-xs text-muted">Mar 20, 08:00</div>
+            <div class="text-xs fw-800">System</div>
+            <div><span class="tag" style="background:#fff7ed;color:#9a3412;">SLA</span></div>
+            <div class="text-xs">SLA Breach Level 2: Scope 3 emissions data overdue by 7 days</div>
+            <div class="text-xs text-muted">Assignment</div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <div class="annotation">💡 v3: Audit log with entity/action/user/date filters. SLA breach events logged. Immutable history. CSV export.</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     MODAL: IMPACT WARNING
+     ════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-impact" style="display:flex;">
+  <div class="modal">
+    <div class="modal-title">⚠️ Impact Preview</div>
+    <div class="modal-body">
+      Adding <b>IFRS S2</b> to this project will affect the following:
+      <div style="margin:12px 0;display:flex;flex-direction:column;gap:8px;">
+        <div class="flex items-center gap-8"><span class="status-badge status-badge--approved">✅ 12</span> requirements already covered (reuse)</div>
+        <div class="flex items-center gap-8"><span class="status-badge status-badge--progress">+Δ 3</span> delta requirements (additional fields)</div>
+        <div class="flex items-center gap-8"><span class="status-badge status-badge--missing">🆕 3</span> new requirements (data entry needed)</div>
+      </div>
+      <div class="text-xs text-muted">Estimated coverage after adding: <b style="color:#2d8a56;">67%</b></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline">Cancel</button>
+      <button class="btn btn-primary">Confirm & add IFRS S2</button>
+    </div>
+  </div>
+</div>
+
+</div><!-- /screens -->
+
+<!-- ═══ HASH NAVIGATION JS ═══ -->
+<script>
+(function() {
+  var hash = window.location.hash.slice(1);
+  if (!hash || !hash.startsWith('s-')) return;
+  var target = document.getElementById(hash);
+  if (!target) return;
+  var allScreens = document.querySelectorAll('.screens > div');
+  allScreens.forEach(function(el) {
+    if (el !== target) el.style.display = 'none';
+  });
+  var screensWrap = document.querySelector('.screens');
+  if (screensWrap) screensWrap.style.padding = '32px';
+  var backBar = document.createElement('div');
+  backBar.style.cssText = 'margin-bottom:12px;display:flex;align-items:center;gap:10px;';
+  backBar.innerHTML = '<a href="sitemap.html" style="font-size:12px;color:#2d8a56;font-weight:600;">← Sitemap</a>'
+    + '<span style="font-size:11px;color:#aaa;">Single screen · <a href="mockup-v3.html" style="color:#2d8a56;">Show all</a></span>';
+  target.insertBefore(backBar, target.firstChild);
+})();
+</script>
+
+</body>
+</html>
