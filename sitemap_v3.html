@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ESGvist v3 — Sitemap & User Flow</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f4f3f0; color: #1a1a1a; min-height: 100vh; }
+
+  /* ── Top bar ── */
+  .topbar {
+    background: #1a1a1a; color: #fff;
+    display: flex; align-items: center; gap: 16px;
+    padding: 0 32px; height: 52px; position: sticky; top: 0; z-index: 100;
+  }
+  .topbar-logo { font-size: 16px; font-weight: 900; letter-spacing: -.5px; }
+  .topbar-logo em { color: #4ade80; font-style: normal; }
+  .topbar-title { font-size: 13px; color: #aaa; font-weight: 500; }
+  .topbar-sep { color: #444; }
+  .topbar-badge {
+    margin-left: auto; display: flex; gap: 16px; align-items: center;
+    font-size: 11px; color: #aaa;
+  }
+  .topbar-badge span { background: #2d2d2d; border-radius: 5px; padding: 3px 9px; }
+  .topbar-badge .done { background: #14532d; color: #86efac; }
+
+  /* ── Legend ── */
+  .legend {
+    display: flex; gap: 20px; align-items: center;
+    padding: 14px 32px; background: #fff; border-bottom: 1px solid #e8e5e0;
+  }
+  .legend-item { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #555; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+  .legend-dot.core { background: #2d8a56; }
+  .legend-dot.new { background: #3b82f6; }
+  .legend-dot.settings { background: #7c3aed; }
+  .legend-dot.wizard { background: #d97706; }
+  .legend-note { font-size: 11px; color: #aaa; margin-left: auto; }
+
+  /* ── Main layout ── */
+  .map-wrap { padding: 32px; display: flex; flex-direction: column; gap: 40px; max-width: 1400px; margin: 0 auto; }
+
+  /* ── Section header ── */
+  .section-hd { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .section-hd-icon {
+    width: 32px; height: 32px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; flex-shrink: 0;
+  }
+  .section-hd-label { font-size: 15px; font-weight: 800; color: #1a1a1a; }
+  .section-hd-sub { font-size: 12px; color: #888; margin-top: 1px; }
+  .section-hd-line { flex: 1; height: 1px; background: #e8e5e0; }
+
+  /* ── Card row ── */
+  .card-row { display: flex; gap: 12px; flex-wrap: wrap; }
+
+  /* ── Node card ── */
+  .node {
+    background: #fff; border: 1.5px solid #e8e5e0; border-radius: 12px;
+    padding: 14px 16px; min-width: 180px; max-width: 220px; flex: 1;
+    display: flex; flex-direction: column; gap: 6px;
+    position: relative; transition: box-shadow .15s, transform .1s;
+    cursor: pointer;
+  }
+  .node:hover {
+    box-shadow: 0 4px 16px rgba(45,138,86,.18); transform: translateY(-2px);
+  }
+  .node.core { border-color: #bbf7d0; }
+  .node.core:hover { border-color: #2d8a56; }
+  .node.new { border-color: #93c5fd; }
+  .node.new:hover { border-color: #3b82f6; box-shadow: 0 4px 16px rgba(59,130,246,.18); }
+  .node.settings { border-color: #c4b5fd; }
+  .node.settings:hover { border-color: #7c3aed; box-shadow: 0 4px 16px rgba(124,58,237,.12); }
+  .node.wizard { border-color: #fde68a; }
+  .node.wizard:hover { border-color: #d97706; box-shadow: 0 4px 16px rgba(217,119,6,.12); }
+  .node.modal { border-color: #fecaca; border-style: dashed; }
+  .node.modal:hover { border-color: #e74c3c; box-shadow: 0 4px 16px rgba(231,76,60,.12); }
+
+  .node-status {
+    position: absolute; top: 10px; right: 12px;
+    width: 8px; height: 8px; border-radius: 50%;
+  }
+  .node-status.core { background: #2d8a56; }
+  .node-status.new { background: #3b82f6; }
+  .node-status.settings { background: #7c3aed; }
+  .node-status.wizard { background: #d97706; }
+
+  .node-id { font-size: 10px; font-weight: 700; color: #aaa; letter-spacing: .04em; text-transform: uppercase; }
+  .node-name { font-size: 12px; font-weight: 700; color: #1a1a1a; line-height: 1.35; }
+  .node-desc { font-size: 11px; color: #888; line-height: 1.45; }
+  .node-tag {
+    display: inline-block; font-size: 10px; font-weight: 700; border-radius: 4px;
+    padding: 2px 7px; margin-top: 2px; align-self: flex-start;
+  }
+  .node-tag.core { background: #f0fdf4; color: #2d8a56; }
+  .node-tag.new { background: #eff6ff; color: #3b82f6; }
+  .node-tag.settings { background: #f5f3ff; color: #7c3aed; }
+  .node-tag.wizard { background: #fffbeb; color: #92400e; }
+  .node-tag.modal { background: #fef2f2; color: #991b1b; }
+
+  /* ── Wizard arrow ── */
+  .wizard-row { display: flex; align-items: center; gap: 0; flex-wrap: wrap; }
+  .wizard-arrow { padding: 0 8px; font-size: 16px; color: #c8c4bc; flex-shrink: 0; }
+
+  /* ── Flow connectors ── */
+  .flow-group {
+    background: #f9f8f6; border: 1px solid #e8e5e0; border-radius: 12px;
+    padding: 16px 20px; display: flex; flex-direction: column; gap: 12px;
+  }
+  .flow-group-label {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+    color: #aaa; margin-bottom: 4px;
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 900px) {
+    .card-row { flex-direction: column; }
+    .node { max-width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Top bar ── -->
+<div class="topbar">
+  <div class="topbar-logo"><em>ESG</em>vist</div>
+  <span class="topbar-sep">·</span>
+  <span class="topbar-title">v3 Sitemap & User Flow</span>
+  <div class="topbar-badge">
+    <span class="done">✓ 17 screens</span>
+    <span>+ 1 modal</span>
+  </div>
+</div>
+
+<!-- ── Legend ── -->
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot core"></div> Core screens</div>
+  <div class="legend-item"><div class="legend-dot new"></div> New in v3</div>
+  <div class="legend-item"><div class="legend-dot wizard"></div> Wizard flows</div>
+  <div class="legend-item"><div class="legend-dot settings"></div> Settings</div>
+  <div class="legend-note">Click any card to open the screen</div>
+</div>
+
+<!-- ── Map ── -->
+<div class="map-wrap">
+
+  <!-- ════ SECTION 1: Auth & Overview ════ -->
+  <section>
+    <div class="section-hd">
+      <div class="section-hd-icon" style="background:#ecfdf5;">🔐</div>
+      <div>
+        <div class="section-hd-label">Auth & Overview</div>
+        <div class="section-hd-sub">Entry point → main dashboard</div>
+      </div>
+      <div class="section-hd-line"></div>
+    </div>
+    <div class="card-row">
+      <div class="node core" onclick="window.location.href='mockup-v3.html#s-login'">
+        <div class="node-status core"></div>
+        <div class="node-id">LOGIN</div>
+        <div class="node-name">Sign In</div>
+        <div class="node-desc">Email/password, SSO, remember me</div>
+        <div class="node-tag core">standalone</div>
+      </div>
+      <div style="display:flex;align-items:center;font-size:20px;color:#c8c4bc;padding:0 4px;">→</div>
+      <div class="node core" onclick="window.location.href='mockup-v3.html#s-overview'">
+        <div class="node-status core"></div>
+        <div class="node-id">OVERVIEW</div>
+        <div class="node-name">Dashboard</div>
+        <div class="node-desc">Progress, issues, categories, tasks, SLA indicators</div>
+        <div class="node-tag core">main screen</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════ SECTION 2: Core Navigation ════ -->
+  <section>
+    <div class="section-hd">
+      <div class="section-hd-icon" style="background:#ecfdf5;">📊</div>
+      <div>
+        <div class="section-hd-label">Core Navigation</div>
+        <div class="section-hd-sub">Main workflow screens — sidebar navigation</div>
+      </div>
+      <div class="section-hd-line"></div>
+    </div>
+    <div class="card-row">
+      <div class="node core" onclick="window.location.href='mockup-v3.html#s-collection'">
+        <div class="node-status core"></div>
+        <div class="node-id">COLLECTION</div>
+        <div class="node-name">Data Collection</div>
+        <div class="node-desc">Status-first table, reuse badges, outlier flags, SLA colors</div>
+        <div class="node-tag core">redesigned</div>
+      </div>
+      <div class="node core" onclick="window.location.href='mockup-v3.html#s-validation'">
+        <div class="node-status core"></div>
+        <div class="node-id">VALIDATION</div>
+        <div class="node-name">Review Panel</div>
+        <div class="node-desc">Split panel, approve/reject, reuse transparency, threaded comments</div>
+        <div class="node-tag core">redesigned</div>
+      </div>
+      <div class="node new" onclick="window.location.href='mockup-v3.html#s-tasks'">
+        <div class="node-status new"></div>
+        <div class="node-id">TASKS</div>
+        <div class="node-name">My Tasks</div>
+        <div class="node-desc">Personal task list, SLA Breach L1/L2, escalation badges</div>
+        <div class="node-tag new">new in v3</div>
+      </div>
+      <div class="node core" onclick="window.location.href='mockup-v3.html#s-evidence'">
+        <div class="node-status core"></div>
+        <div class="node-id">EVIDENCE</div>
+        <div class="node-name">Evidence Repository</div>
+        <div class="node-desc">Files, binding status, upload, search</div>
+        <div class="node-tag core">redesigned</div>
+      </div>
+      <div class="node core" onclick="window.location.href='mockup-v3.html#s-export'">
+        <div class="node-status core"></div>
+        <div class="node-id">EXPORT</div>
+        <div class="node-name">Export & Report</div>
+        <div class="node-desc">Readiness check, GRI Content Index, PDF/Excel, publish</div>
+        <div class="node-tag core">redesigned</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════ SECTION 3: Merge View ════ -->
+  <section>
+    <div class="section-hd">
+      <div class="section-hd-icon" style="background:#eff6ff;">🔀</div>
+      <div>
+        <div class="section-hd-label">Merge View</div>
+        <div class="section-hd-sub">Multi-standard coverage matrix — Phase 2 key screen</div>
+      </div>
+      <div class="section-hd-line"></div>
+    </div>
+    <div class="card-row">
+      <div class="node new" onclick="window.location.href='mockup-v3.html#s-merge'">
+        <div class="node-status new"></div>
+        <div class="node-id">MERGE</div>
+        <div class="node-name">Merge View Matrix</div>
+        <div class="node-desc">Element × Standard (GRI/IFRS/SASB). ✔/❌/+Δ/—. Coverage per standard. Drill-down.</div>
+        <div class="node-tag new">new in v3</div>
+      </div>
+      <div class="node modal" onclick="window.location.href='mockup-v3.html#s-merge'">
+        <div class="node-id">MODAL</div>
+        <div class="node-name">Impact Preview</div>
+        <div class="node-desc">Shows impact of adding standard: 12 covered, 3 deltas, 3 new</div>
+        <div class="node-tag modal">overlay</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════ SECTION 4: Data Entry Wizards ════ -->
+  <section>
+    <div class="section-hd">
+      <div class="section-hd-icon" style="background:#fffbeb;">✏️</div>
+      <div>
+        <div class="section-hd-label">Data Entry</div>
+        <div class="section-hd-sub">Wizard flows — from Collection screen</div>
+      </div>
+      <div class="section-hd-line"></div>
+    </div>
+    <div class="flow-group">
+      <div class="flow-group-label">Quantitative metrics (4 steps consolidated)</div>
+      <div class="wizard-row">
+        <div class="node wizard" onclick="window.location.href='mockup-v3.html#s-wizard-qn'" style="min-width:160px;">
+          <div class="node-id">WIZARD-QN</div>
+          <div class="node-name">Quantitative Wizard</div>
+          <div class="node-desc">Select → Enter data → Verify → Submit. Reuse badge, delta section, draft/submit.</div>
+          <div class="node-tag wizard">consolidated</div>
+        </div>
+      </div>
+    </div>
+    <div class="flow-group" style="margin-top:12px;">
+      <div class="flow-group-label">Qualitative metrics (3 steps consolidated)</div>
+      <div class="wizard-row">
+        <div class="node wizard" onclick="window.location.href='mockup-v3.html#s-wizard-ql'" style="min-width:160px;">
+          <div class="node-id">WIZARD-QL</div>
+          <div class="node-name">Qualitative Wizard</div>
+          <div class="node-desc">Select → Rich text editor → Submit. Evidence inline, draft/submit.</div>
+          <div class="node-tag wizard">consolidated</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════ SECTION 5: Settings ════ -->
+  <section>
+    <div class="section-hd">
+      <div class="section-hd-icon" style="background:#f5f3ff;">⚙️</div>
+      <div>
+        <div class="section-hd-label">Settings & Administration</div>
+        <div class="section-hd-sub">Standards, users, assignments, periods, company, audit</div>
+      </div>
+      <div class="section-hd-line"></div>
+    </div>
+    <div class="card-row">
+      <div class="node settings" onclick="window.location.href='mockup-v3.html#s-settings-standards'">
+        <div class="node-status settings"></div>
+        <div class="node-id">STANDARDS</div>
+        <div class="node-name">Standards Management</div>
+        <div class="node-desc">Catalog, tree view, disclosure items, reuse badges, versioning</div>
+        <div class="node-tag settings">consolidated</div>
+      </div>
+      <div class="node settings" onclick="window.location.href='mockup-v3.html#s-settings-users'">
+        <div class="node-status settings"></div>
+        <div class="node-id">USERS</div>
+        <div class="node-name">User Management</div>
+        <div class="node-desc">User list, role filters, activity</div>
+        <div class="node-tag settings">settings</div>
+      </div>
+      <div class="node settings" onclick="window.location.href='mockup-v3.html#s-settings-user-edit'">
+        <div class="node-status settings"></div>
+        <div class="node-id">USER-EDIT</div>
+        <div class="node-name">User Profile</div>
+        <div class="node-desc">Personal info, role, assigned metrics, notifications</div>
+        <div class="node-tag settings">settings</div>
+      </div>
+      <div class="node settings" onclick="window.location.href='mockup-v3.html#s-settings-assignments'">
+        <div class="node-status settings"></div>
+        <div class="node-id">ASSIGNMENTS</div>
+        <div class="node-name">Assignment Matrix</div>
+        <div class="node-desc">Metric × Collector × Reviewer × SLA × Backup owner</div>
+        <div class="node-tag settings">settings</div>
+      </div>
+      <div class="node new" onclick="window.location.href='mockup-v3.html#s-settings-periods'" style="border-color:#93c5fd;">
+        <div class="node-status new"></div>
+        <div class="node-id">PERIODS</div>
+        <div class="node-name">Reporting Periods</div>
+        <div class="node-desc">Fiscal years, quarters, deadlines, linked projects</div>
+        <div class="node-tag new">new in v3</div>
+      </div>
+      <div class="node settings" onclick="window.location.href='mockup-v3.html#s-settings-company'">
+        <div class="node-status settings"></div>
+        <div class="node-id">COMPANY</div>
+        <div class="node-name">Company Settings</div>
+        <div class="node-desc">Org info, boundary, reference data, notification config</div>
+        <div class="node-tag settings">consolidated</div>
+      </div>
+      <div class="node settings" onclick="window.location.href='mockup-v3.html#s-audit'">
+        <div class="node-status settings"></div>
+        <div class="node-id">AUDIT</div>
+        <div class="node-name">Audit Log</div>
+        <div class="node-desc">Who, what, when. Filters by entity/action/user/date. CSV export.</div>
+        <div class="node-tag settings">settings</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════ SECTION 6: v2 → v3 Changes ════ -->
+  <section>
+    <div class="section-hd">
+      <div class="section-hd-icon" style="background:#fef2f2;">📋</div>
+      <div>
+        <div class="section-hd-label">v2 → v3 Changelog</div>
+        <div class="section-hd-sub">What changed from mockup-v2</div>
+      </div>
+      <div class="section-hd-line"></div>
+    </div>
+    <div style="background:#fff;border:1px solid #e8e5e0;border-radius:12px;padding:20px;font-size:12px;line-height:1.8;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+        <div>
+          <div style="font-weight:800;color:#2d8a56;margin-bottom:8px;">✅ Added (3 new screens)</div>
+          <div>• <b>Tasks</b> — personal task list with SLA indicators</div>
+          <div>• <b>Merge View</b> — element × standard matrix</div>
+          <div>• <b>Periods</b> — reporting period management</div>
+          <div>• <b>Impact Modal</b> — preview when adding standard</div>
+          <div style="font-weight:800;color:#3b82f6;margin-bottom:8px;margin-top:16px;">🔄 Redesigned (7 screens)</div>
+          <div>• <b>Overview</b> — SLA, notification bell, visual hierarchy</div>
+          <div>• <b>Collection</b> — reuse badges, outlier flags, SLA colors</div>
+          <div>• <b>Validation</b> — reuse transparency, threaded comments</div>
+          <div>• <b>Evidence</b> — binding status, unbound highlight</div>
+          <div>• <b>Export</b> — readiness check, blocking issues</div>
+          <div>• <b>Standards</b> — consolidated from SETUP-0/1/2/3 + CUSTOM-1/2/3/4</div>
+          <div>• <b>Assignments</b> — SLA column, backup owner, escalation</div>
+        </div>
+        <div>
+          <div style="font-weight:800;color:#e74c3c;margin-bottom:8px;">❌ Removed (15 screens consolidated)</div>
+          <div>• <b>Onboarding</b> → folded into Overview</div>
+          <div>• <b>WS-1, WS-2, WS-3, WS-ADM</b> → replaced by role-based Overview + Tasks</div>
+          <div>• <b>SETUP-0/1/2/3</b> → consolidated into Standards</div>
+          <div>• <b>CUSTOM-1/2/3/4</b> → consolidated into Standards</div>
+          <div>• <b>QN-1/2/3/4</b> → consolidated into Wizard-QN</div>
+          <div>• <b>QL-1/2/3</b> → consolidated into Wizard-QL</div>
+          <div>• <b>Roles</b> → folded into Users</div>
+          <div>• <b>Boundary</b> → folded into Company Settings</div>
+          <div style="font-weight:800;color:#d97706;margin-bottom:8px;margin-top:16px;">🏗 Architecture changes</div>
+          <div>• CSS class system (no inline styles)</div>
+          <div>• Unified layout: topbar + sidebar on ALL screens</div>
+          <div>• Notification bell with unread count</div>
+          <div>• English UI (Russian in data examples only)</div>
+          <div>• 32 screens → 17 screens (51% reduction)</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+</body>
+</html>
