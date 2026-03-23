@@ -11,6 +11,7 @@ from app.api.routes import (
     export,
     health,
     mappings,
+    merge,
     notifications,
     projects,
     requirement_items,
@@ -70,6 +71,7 @@ def create_app() -> FastAPI:
     app.include_router(review.router)
     app.include_router(export.router)
     app.include_router(audit.router)
+    app.include_router(merge.router)
 
     return app
 
