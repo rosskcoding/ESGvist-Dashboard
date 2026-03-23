@@ -98,7 +98,7 @@ function AddStandardDialog({
   });
 
   const createMutation = useApiMutation<Standard, typeof form>(
-    "/api/standards",
+    "/standards",
     "POST",
     {
       onSuccess: () => {
@@ -526,7 +526,7 @@ export default function StandardsPage() {
 
   const { data: standards, isLoading } = useApiQuery<Standard[]>(
     ["standards"],
-    "/api/standards"
+    "/standards"
   );
 
   const selectedStandard = useMemo(

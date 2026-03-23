@@ -132,7 +132,7 @@ export default function ValidationPage() {
   /* Fetch review items */
   const { data: reviewItems, isLoading, refetch } = useApiQuery<ReviewItem[]>(
     ["review-items"],
-    "/api/data-points?status=submitted,in_review"
+    "/data-points?status=submitted,in_review"
   );
 
   const items = reviewItems ?? [];

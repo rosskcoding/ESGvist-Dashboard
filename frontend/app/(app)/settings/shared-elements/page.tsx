@@ -134,7 +134,7 @@ function ElementDialog({
   });
 
   const createMutation = useApiMutation<SharedElement, typeof form>(
-    "/api/shared-elements",
+    "/shared-elements",
     "POST",
     {
       onSuccess: () => {
@@ -286,14 +286,14 @@ function LinkRequirementDialog({
 
   const { data: requirementItems } = useApiQuery<RequirementItemOption[]>(
     ["requirement-items-options"],
-    "/api/requirement-items",
+    "/requirement-items",
     { enabled: open }
   );
 
   const linkMutation = useApiMutation<
     Mapping,
     { shared_element_id: number; requirement_item_id: number; binding_type: BindingType }
-  >("/api/mappings", "POST", {
+  >("/mappings", "POST", {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mappings"] });
       onOpenChange(false);
@@ -420,11 +420,11 @@ export default function SharedElementsPage() {
 
   const { data: elements, isLoading: elementsLoading } = useApiQuery<
     SharedElement[]
-  >(["shared-elements"], "/api/shared-elements");
+  >(["shared-elements"], "/shared-elements");
 
   const { data: mappings, isLoading: mappingsLoading } = useApiQuery<Mapping[]>(
     ["mappings"],
-    "/api/mappings"
+    "/mappings"
   );
 
   const filteredElements = useMemo(() => {

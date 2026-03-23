@@ -37,7 +37,7 @@ class DemoUserSpec:
     platform_admin: bool = False
 
 
-PASSWORD = os.getenv("DEMO_PASSWORD", "DemoPass123!")
+PASSWORD = os.getenv("DEMO_PASSWORD", "Test1234")
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "postgresql+asyncpg://postgres:postgres@localhost:5432/esgdashboard_demo_20260323",
@@ -47,45 +47,40 @@ API_URL = os.getenv("DEMO_API_URL", "http://localhost:8002/api")
 
 USER_SPECS = [
     DemoUserSpec(
-        key="platform_admin",
-        email="platform.admin@northwind-demo.example.com",
-        full_name="Paula Platform",
+        key="admin",
+        email="admin@esgvist.com",
+        full_name="Ross Admin",
+        org_role="admin",
         platform_admin=True,
     ),
     DemoUserSpec(
-        key="admin",
-        email="admin@northwind-demo.example.com",
-        full_name="Alice Admin",
-        org_role="admin",
-    ),
-    DemoUserSpec(
         key="esg_manager",
-        email="esg.manager@northwind-demo.example.com",
-        full_name="Ethan ESG Manager",
+        email="manager@greentech.com",
+        full_name="Anna Manager",
         org_role="esg_manager",
     ),
     DemoUserSpec(
         key="reviewer",
-        email="reviewer@northwind-demo.example.com",
-        full_name="Rita Reviewer",
+        email="reviewer@greentech.com",
+        full_name="Dmitry Reviewer",
         org_role="reviewer",
     ),
     DemoUserSpec(
         key="auditor",
-        email="auditor@northwind-demo.example.com",
-        full_name="Ava Auditor",
+        email="auditor@greentech.com",
+        full_name="Elena Auditor",
         org_role="auditor",
     ),
     DemoUserSpec(
         key="collector_energy",
-        email="collector.energy@northwind-demo.example.com",
-        full_name="Cole Energy Collector",
+        email="collector1@greentech.com",
+        full_name="Ivan Collector",
         org_role="collector",
     ),
     DemoUserSpec(
         key="collector_climate",
-        email="collector.climate@northwind-demo.example.com",
-        full_name="Clara Climate Collector",
+        email="collector2@greentech.com",
+        full_name="Maria Data",
         org_role="collector",
     ),
 ]
@@ -774,7 +769,7 @@ async def main() -> None:
         session.add(
             UserInvitation(
                 organization_id=org.id,
-                email="pending.facility@northwind-demo.example.com",
+                email="pending.facility@greentech.com",
                 role="collector",
                 invited_by=users["admin"].id,
                 status="pending",
@@ -805,7 +800,7 @@ async def main() -> None:
                     "id": users[spec.key].id,
                     "email": spec.email,
                     "full_name": spec.full_name,
-                    "role": spec.org_role or "platform_admin",
+                    "role": "platform_admin" if spec.platform_admin else spec.org_role,
                 }
                 for spec in USER_SPECS
             },
@@ -888,13 +883,12 @@ async def main() -> None:
             "",
             "| Role | Full Name | Email | Notes |",
             "| --- | --- | --- | --- |",
-            "| platform_admin | Paula Platform | `platform.admin@northwind-demo.example.com` | Platform-wide admin only |",
-            "| admin | Alice Admin | `admin@northwind-demo.example.com` | Tenant admin for Northwind demo org |",
-            "| esg_manager | Ethan ESG Manager | `esg.manager@northwind-demo.example.com` | Owns project and backup collector duties |",
-            "| reviewer | Rita Reviewer | `reviewer@northwind-demo.example.com` | Reviews submitted data points |",
-            "| auditor | Ava Auditor | `auditor@northwind-demo.example.com` | Audit trail / evidence verification |",
-            "| collector | Cole Energy Collector | `collector.energy@northwind-demo.example.com` | GRI 302 energy collection |",
-            "| collector | Clara Climate Collector | `collector.climate@northwind-demo.example.com` | GRI 305 / IFRS S2 / ESRS climate collection |",
+            "| platform_admin | Ross Admin | `admin@esgvist.com` | Full access plus tenant management for the demo org |",
+            "| esg_manager | Anna Manager | `manager@greentech.com` | Projects, assignments, boundary, dashboard |",
+            "| collector | Ivan Collector | `collector1@greentech.com` | Input for GHG Scope 1 and Scope 2 data |",
+            "| collector | Maria Data | `collector2@greentech.com` | Input for Energy and Water style operational data |",
+            "| reviewer | Dmitry Reviewer | `reviewer@greentech.com` | Approve or reject data points |",
+            "| auditor | Elena Auditor | `auditor@greentech.com` | Read-only access to audit log and snapshots |",
             "",
             "Manual verification:",
             "",

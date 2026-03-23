@@ -152,7 +152,7 @@ function RequirementDialog({
   );
 
   const createMutation = useApiMutation<RequirementItem, RequirementFormData>(
-    "/api/requirement-items",
+    "/requirement-items",
     "POST",
     {
       onSuccess: () => {

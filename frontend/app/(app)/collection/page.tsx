@@ -77,7 +77,7 @@ export default function CollectionPage() {
   /* Data */
   const { data, isLoading, error } = useApiQuery<DataPointsResponse>(
     ["data-points"],
-    "/api/data-points?project_id=current"
+    "/data-points?project_id=current"
   );
 
   const items = data?.items ?? [];

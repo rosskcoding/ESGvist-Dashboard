@@ -1,7 +1,7 @@
 {
   "base_url": "http://localhost:3002",
   "api_url": "http://localhost:8002/api",
-  "password": "DemoPass123!",
+  "password": "Test1234",
   "organization": {
     "id": 1,
     "name": "Northwind Renewables Group"
@@ -22,46 +22,40 @@
     }
   },
   "users": {
-    "platform_admin": {
+    "admin": {
       "id": 1,
-      "email": "platform.admin@northwind-demo.example.com",
-      "full_name": "Paula Platform",
+      "email": "admin@esgvist.com",
+      "full_name": "Ross Admin",
       "role": "platform_admin"
     },
-    "admin": {
-      "id": 2,
-      "email": "admin@northwind-demo.example.com",
-      "full_name": "Alice Admin",
-      "role": "admin"
-    },
     "esg_manager": {
-      "id": 3,
-      "email": "esg.manager@northwind-demo.example.com",
-      "full_name": "Ethan ESG Manager",
+      "id": 2,
+      "email": "manager@greentech.com",
+      "full_name": "Anna Manager",
       "role": "esg_manager"
     },
     "reviewer": {
-      "id": 4,
-      "email": "reviewer@northwind-demo.example.com",
-      "full_name": "Rita Reviewer",
+      "id": 3,
+      "email": "reviewer@greentech.com",
+      "full_name": "Dmitry Reviewer",
       "role": "reviewer"
     },
     "auditor": {
-      "id": 5,
-      "email": "auditor@northwind-demo.example.com",
-      "full_name": "Ava Auditor",
+      "id": 4,
+      "email": "auditor@greentech.com",
+      "full_name": "Elena Auditor",
       "role": "auditor"
     },
     "collector_energy": {
-      "id": 6,
-      "email": "collector.energy@northwind-demo.example.com",
-      "full_name": "Cole Energy Collector",
+      "id": 5,
+      "email": "collector1@greentech.com",
+      "full_name": "Ivan Collector",
       "role": "collector"
     },
     "collector_climate": {
-      "id": 7,
-      "email": "collector.climate@northwind-demo.example.com",
-      "full_name": "Clara Climate Collector",
+      "id": 6,
+      "email": "collector2@greentech.com",
+      "full_name": "Maria Data",
       "role": "collector"
     }
   },

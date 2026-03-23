@@ -131,7 +131,7 @@ function BoundaryDialog({
   });
 
   const createMutation = useApiMutation<Boundary, typeof form>(
-    "/api/boundaries",
+    "/boundaries",
     "POST",
     {
       onSuccess: () => {
@@ -538,7 +538,7 @@ export default function BoundariesPage() {
 
   const { data: boundaries, isLoading } = useApiQuery<Boundary[]>(
     ["boundaries"],
-    "/api/boundaries"
+    "/boundaries"
   );
 
   const selectedBoundary = useMemo(

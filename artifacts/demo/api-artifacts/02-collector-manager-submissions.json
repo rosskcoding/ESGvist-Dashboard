@@ -6,8 +6,8 @@
     "title": "FY2025 Energy Ledger Extract",
     "description": "Consolidated utility ledger export for UK generation entity",
     "source_type": "manual",
-    "created_by": 6,
-    "created_at": "2026-03-23T14:36:11.141005Z"
+    "created_by": 5,
+    "created_at": "2026-03-23T14:43:25.474230Z"
   },
   "energyPoint": {
     "id": 1,
@@ -19,7 +19,7 @@
     "numeric_value": 128450.4,
     "text_value": null,
     "unit_code": "MWH",
-    "created_by": 6
+    "created_by": 5
   },
   "energyGate": {
     "allowed": true,
@@ -38,8 +38,8 @@
     "title": "Hamburg Wind Farm emissions workbook",
     "description": "Metered combustion and purchased electricity workbook",
     "source_type": "manual",
-    "created_by": 7,
-    "created_at": "2026-03-23T14:36:11.637160Z"
+    "created_by": 6,
+    "created_at": "2026-03-23T14:43:25.962166Z"
   },
   "scope1Point": {
     "id": 2,
@@ -51,7 +51,7 @@
     "numeric_value": 5421.7,
     "text_value": null,
     "unit_code": "TCO2E",
-    "created_by": 7
+    "created_by": 6
   },
   "scope1Submit": {
     "id": 2,
@@ -68,7 +68,7 @@
     "numeric_value": 3180.2,
     "text_value": null,
     "unit_code": "TCO2E",
-    "created_by": 7
+    "created_by": 6
   },
   "scope2Submit": {
     "id": 3,
@@ -82,8 +82,8 @@
     "title": "Water stress site screening memo",
     "description": "Manual site screening memo for biodiversity pilot",
     "source_type": "manual",
-    "created_by": 7,
-    "created_at": "2026-03-23T14:36:12.078141Z"
+    "created_by": 6,
+    "created_at": "2026-03-23T14:43:26.232975Z"
   },
   "customPoint": {
     "id": 4,
@@ -95,7 +95,7 @@
     "numeric_value": 1,
     "text_value": null,
     "unit_code": "COUNT",
-    "created_by": 7
+    "created_by": 6
   },
   "customSubmit": {
     "id": 4,
@@ -112,7 +112,7 @@
     "numeric_value": null,
     "text_value": "The board sustainability committee reviews climate and broader ESG risks quarterly, while management runs a monthly operating review.",
     "unit_code": null,
-    "created_by": 3
+    "created_by": 2
   },
   "governanceSubmit": {
     "id": 5,

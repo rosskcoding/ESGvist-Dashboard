@@ -70,9 +70,9 @@
     "shared_element_id": 5,
     "entity_id": 5,
     "facility_id": null,
-    "collector_id": 7,
-    "reviewer_id": 4,
-    "backup_collector_id": 3,
+    "collector_id": 6,
+    "reviewer_id": 3,
+    "backup_collector_id": 2,
     "deadline": "2026-04-18",
     "escalation_after_days": 3,
     "status": "assigned"

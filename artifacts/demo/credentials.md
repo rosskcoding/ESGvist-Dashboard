@@ -2,17 +2,16 @@
 
 - Web URL: `http://localhost:3002`
 - API URL: `http://localhost:8002/api`
-- Shared password for all seeded accounts: `DemoPass123!`
+- Shared password for all seeded accounts: `Test1234`
 
 | Role | Full Name | Email | Notes |
 | --- | --- | --- | --- |
-| platform_admin | Paula Platform | `platform.admin@northwind-demo.example.com` | Platform-wide admin only |
-| admin | Alice Admin | `admin@northwind-demo.example.com` | Tenant admin for Northwind demo org |
-| esg_manager | Ethan ESG Manager | `esg.manager@northwind-demo.example.com` | Owns project and backup collector duties |
-| reviewer | Rita Reviewer | `reviewer@northwind-demo.example.com` | Reviews submitted data points |
-| auditor | Ava Auditor | `auditor@northwind-demo.example.com` | Audit trail / evidence verification |
-| collector | Cole Energy Collector | `collector.energy@northwind-demo.example.com` | GRI 302 energy collection |
-| collector | Clara Climate Collector | `collector.climate@northwind-demo.example.com` | GRI 305 / IFRS S2 / ESRS climate collection |
+| platform_admin | Ross Admin | `admin@esgvist.com` | Full access plus tenant management for the demo org |
+| esg_manager | Anna Manager | `manager@greentech.com` | Projects, assignments, boundary, dashboard |
+| collector | Ivan Collector | `collector1@greentech.com` | Input for GHG Scope 1 and Scope 2 data |
+| collector | Maria Data | `collector2@greentech.com` | Input for Energy and Water style operational data |
+| reviewer | Dmitry Reviewer | `reviewer@greentech.com` | Approve or reject data points |
+| auditor | Elena Auditor | `auditor@greentech.com` | Read-only access to audit log and snapshots |
 
 Manual verification:
 

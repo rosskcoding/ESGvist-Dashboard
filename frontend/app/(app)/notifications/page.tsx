@@ -102,17 +102,17 @@ export default function NotificationsPage() {
     isLoading,
     error,
     refetch,
-  } = useApiQuery<Notification[]>(["notifications"], "/api/notifications");
+  } = useApiQuery<Notification[]>(["notifications"], "/notifications");
 
   const items = notifications ?? [];
 
   /* Mutations */
   const markReadMutation = useApiMutation(
-    "/api/notifications/mark-read",
+    "/notifications/mark-read",
     "POST"
   );
   const markAllReadMutation = useApiMutation(
-    "/api/notifications/mark-all-read",
+    "/notifications/mark-all-read",
     "POST"
   );
 

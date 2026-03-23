@@ -130,7 +130,7 @@ export default function DataEntryWizardPage() {
 
   /* Gate check mutation */
   const gateCheck = useApiMutation<GateCheckResult>(
-    "/api/gate-check",
+    "/gate-check",
     "POST"
   );
 
