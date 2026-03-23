@@ -1,6 +1,8 @@
 import pytest
 from httpx import AsyncClient
 
+from app.core.security import generate_totp_code
+
 
 @pytest.mark.asyncio
 async def test_register_creates_user(client: AsyncClient):
@@ -124,3 +126,98 @@ async def test_error_response_format(client: AsyncClient):
     assert "code" in data["error"]
     assert "message" in data["error"]
     assert "requestId" in data["error"]
+
+
+@pytest.mark.asyncio
+async def test_two_factor_setup_enable_and_login(client: AsyncClient):
+    await client.post(
+        "/api/auth/register",
+        json={"email": "2fa@example.com", "password": "password123", "full_name": "Two Factor"},
+    )
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": "2fa@example.com", "password": "password123"},
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    setup = await client.post("/api/auth/2fa/setup", headers=headers)
+    assert setup.status_code == 200
+    secret = setup.json()["secret"]
+    assert len(setup.json()["backup_codes"]) == 8
+
+    status_before = await client.get("/api/auth/2fa/status", headers=headers)
+    assert status_before.status_code == 200
+    assert status_before.json()["pending_setup"] is True
+    assert status_before.json()["enabled"] is False
+
+    enable = await client.post(
+        "/api/auth/2fa/enable",
+        json={"code": generate_totp_code(secret)},
+        headers=headers,
+    )
+    assert enable.status_code == 200
+    assert enable.json()["enabled"] is True
+    assert enable.json()["backup_codes_remaining"] == 8
+
+    blocked = await client.post(
+        "/api/auth/login",
+        json={"email": "2fa@example.com", "password": "password123"},
+    )
+    assert blocked.status_code == 401
+    assert blocked.json()["error"]["code"] == "TWO_FACTOR_REQUIRED"
+
+    allowed = await client.post(
+        "/api/auth/login",
+        json={
+            "email": "2fa@example.com",
+            "password": "password123",
+            "totp_code": generate_totp_code(secret),
+        },
+    )
+    assert allowed.status_code == 200
+    assert "access_token" in allowed.json()
+
+
+@pytest.mark.asyncio
+async def test_two_factor_backup_code_can_be_used_once(client: AsyncClient):
+    await client.post(
+        "/api/auth/register",
+        json={"email": "backup@example.com", "password": "password123", "full_name": "Backup User"},
+    )
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": "backup@example.com", "password": "password123"},
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    setup = await client.post("/api/auth/2fa/setup", headers=headers)
+    secret = setup.json()["secret"]
+    backup_code = setup.json()["backup_codes"][0]
+
+    enable = await client.post(
+        "/api/auth/2fa/enable",
+        json={"code": generate_totp_code(secret)},
+        headers=headers,
+    )
+    assert enable.status_code == 200
+
+    first = await client.post(
+        "/api/auth/login",
+        json={
+            "email": "backup@example.com",
+            "password": "password123",
+            "backup_code": backup_code,
+        },
+    )
+    assert first.status_code == 200
+
+    second = await client.post(
+        "/api/auth/login",
+        json={
+            "email": "backup@example.com",
+            "password": "password123",
+            "backup_code": backup_code,
+        },
+    )
+    assert second.status_code == 401
+    assert second.json()["error"]["code"] == "TWO_FACTOR_REQUIRED"

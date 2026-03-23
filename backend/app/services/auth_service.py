@@ -6,11 +6,17 @@ from app.core.config import settings
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError
 from app.core.security import (
+    build_totp_uri,
     create_access_token,
     create_refresh_token,
     decode_token,
+    generate_backup_codes,
+    generate_totp_secret,
+    hash_backup_code,
     hash_password,
+    verify_backup_code,
     verify_password,
+    verify_totp,
 )
 from app.db.models.organization import Organization
 from app.db.models.sso import SSOProvider
@@ -22,6 +28,8 @@ from app.schemas.auth import (
     OrganizationAuthSettingsOut,
     OrganizationAuthSettingsUpdate,
     RoleBindingOut,
+    TwoFactorSetupOut,
+    TwoFactorStatusOut,
     TokenResponse,
     UserResponse,
 )
@@ -176,8 +184,126 @@ class AuthService:
             roles=[RoleBindingOut.model_validate(b) for b in bindings],
         )
 
+    async def get_two_factor_status(self, user_id: int) -> TwoFactorStatusOut:
+        user = await self.user_repo.get_by_id(user_id)
+        if not user:
+            raise AppError("NOT_FOUND", 404, "User not found")
+        return TwoFactorStatusOut(
+            enabled=user.totp_enabled,
+            pending_setup=bool(user.totp_pending_secret),
+            confirmed_at=user.totp_confirmed_at.isoformat() if user.totp_confirmed_at else None,
+            backup_codes_remaining=len(user.totp_backup_codes or []),
+        )
+
+    async def setup_two_factor(self, user_id: int) -> TwoFactorSetupOut:
+        user = await self.user_repo.get_by_id(user_id)
+        if not user:
+            raise AppError("NOT_FOUND", 404, "User not found")
+        if user.totp_enabled:
+            raise AppError("TWO_FACTOR_ALREADY_ENABLED", 409, "Two-factor authentication is already enabled")
+
+        secret = generate_totp_secret()
+        backup_codes = generate_backup_codes()
+        user.totp_pending_secret = secret
+        user.totp_backup_codes = [hash_backup_code(code) for code in backup_codes]
+        await self.user_repo.session.flush()
+        return TwoFactorSetupOut(
+            secret=secret,
+            otpauth_uri=build_totp_uri(secret, email=user.email),
+            backup_codes=backup_codes,
+        )
+
+    async def enable_two_factor(self, user_id: int, code: str) -> TwoFactorStatusOut:
+        user = await self.user_repo.get_by_id(user_id)
+        if not user:
+            raise AppError("NOT_FOUND", 404, "User not found")
+        if user.totp_enabled:
+            raise AppError("TWO_FACTOR_ALREADY_ENABLED", 409, "Two-factor authentication is already enabled")
+        if not user.totp_pending_secret:
+            raise AppError("TWO_FACTOR_NOT_SETUP", 409, "Two-factor setup has not been started")
+        if not verify_totp(user.totp_pending_secret, code):
+            raise AppError("TWO_FACTOR_INVALID_CODE", 401, "Invalid two-factor verification code")
+
+        user.totp_secret = user.totp_pending_secret
+        user.totp_pending_secret = None
+        user.totp_enabled = True
+        user.totp_confirmed_at = datetime.now(timezone.utc)
+        await self.user_repo.session.flush()
+        await self.audit_repo.log(
+            entity_type="User",
+            entity_id=user.id,
+            action="two_factor_enabled",
+            user_id=user.id,
+        )
+        return await self.get_two_factor_status(user.id)
+
+    async def disable_two_factor(
+        self,
+        user_id: int,
+        *,
+        code: str | None = None,
+        backup_code: str | None = None,
+    ) -> TwoFactorStatusOut:
+        user = await self.user_repo.get_by_id(user_id)
+        if not user:
+            raise AppError("NOT_FOUND", 404, "User not found")
+        if not user.totp_enabled or not user.totp_secret:
+            raise AppError("TWO_FACTOR_NOT_ENABLED", 409, "Two-factor authentication is not enabled")
+
+        verified = False
+        if code and verify_totp(user.totp_secret, code):
+            verified = True
+        elif backup_code:
+            verified, remaining = verify_backup_code(backup_code, user.totp_backup_codes)
+            if verified:
+                user.totp_backup_codes = remaining
+        if not verified:
+            raise AppError("TWO_FACTOR_INVALID_CODE", 401, "Invalid two-factor verification code")
+
+        user.totp_enabled = False
+        user.totp_secret = None
+        user.totp_pending_secret = None
+        user.totp_backup_codes = None
+        user.totp_confirmed_at = None
+        await self.user_repo.session.flush()
+        await self.audit_repo.log(
+            entity_type="User",
+            entity_id=user.id,
+            action="two_factor_disabled",
+            user_id=user.id,
+        )
+        return await self.get_two_factor_status(user.id)
+
+    async def _verify_login_two_factor(
+        self,
+        user,
+        *,
+        totp_code: str | None = None,
+        backup_code: str | None = None,
+    ) -> None:
+        if not user.totp_enabled:
+            return
+        if user.totp_secret and totp_code and verify_totp(user.totp_secret, totp_code):
+            return
+        if backup_code:
+            matched, remaining = verify_backup_code(backup_code, user.totp_backup_codes)
+            if matched:
+                user.totp_backup_codes = remaining
+                await self.user_repo.session.flush()
+                return
+        raise AppError(
+            code="TWO_FACTOR_REQUIRED",
+            status_code=401,
+            message="Two-factor verification is required for this account",
+        )
+
     async def login(
-        self, email: str, password: str, request_id: str | None = None
+        self,
+        email: str,
+        password: str,
+        request_id: str | None = None,
+        totp_code: str | None = None,
+        backup_code: str | None = None,
     ) -> TokenResponse:
         user = await self.user_repo.get_by_email(email)
         if not user or not verify_password(password, user.password_hash):
@@ -187,6 +313,12 @@ class AuthService:
 
         if not user.is_active:
             raise AppError(code="FORBIDDEN", status_code=403, message="Account is deactivated")
+
+        await self._verify_login_two_factor(
+            user,
+            totp_code=totp_code,
+            backup_code=backup_code,
+        )
 
         bindings = await self.role_binding_repo.get_bindings(user.id)
         if not any(binding.scope_type == "platform" and binding.role == "platform_admin" for binding in bindings):

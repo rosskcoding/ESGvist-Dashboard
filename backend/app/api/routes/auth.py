@@ -19,6 +19,10 @@ from app.schemas.auth import (
     RefreshRequest,
     RegisterRequest,
     TokenResponse,
+    TwoFactorDisableRequest,
+    TwoFactorEnableRequest,
+    TwoFactorSetupOut,
+    TwoFactorStatusOut,
     UserRoleUpdateRequest,
     UserStatusUpdateRequest,
     UserResponse,
@@ -60,7 +64,12 @@ async def register(payload: RegisterRequest, session: AsyncSession = Depends(get
 @router.post("/login", response_model=TokenResponse)
 async def login(payload: LoginRequest, session: AsyncSession = Depends(get_session)):
     service = _get_auth_service(session)
-    return await service.login(payload.email, payload.password)
+    return await service.login(
+        payload.email,
+        payload.password,
+        totp_code=payload.totp_code,
+        backup_code=payload.backup_code,
+    )
 
 
 @router.get("/login-options", response_model=OrganizationAuthSettingsOut)
@@ -90,6 +99,44 @@ async def logout(
 ):
     service = _get_auth_service(session)
     await service.logout(user.id)
+
+
+@router.get("/2fa/status", response_model=TwoFactorStatusOut)
+async def get_two_factor_status(
+    user: CurrentUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _get_auth_service(session).get_two_factor_status(user.id)
+
+
+@router.post("/2fa/setup", response_model=TwoFactorSetupOut)
+async def setup_two_factor(
+    user: CurrentUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _get_auth_service(session).setup_two_factor(user.id)
+
+
+@router.post("/2fa/enable", response_model=TwoFactorStatusOut)
+async def enable_two_factor(
+    payload: TwoFactorEnableRequest,
+    user: CurrentUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _get_auth_service(session).enable_two_factor(user.id, payload.code)
+
+
+@router.post("/2fa/disable", response_model=TwoFactorStatusOut)
+async def disable_two_factor(
+    payload: TwoFactorDisableRequest,
+    user: CurrentUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _get_auth_service(session).disable_two_factor(
+        user.id,
+        code=payload.code,
+        backup_code=payload.backup_code,
+    )
 
 
 @router.get("/organization/users", response_model=OrganizationUsersOut)

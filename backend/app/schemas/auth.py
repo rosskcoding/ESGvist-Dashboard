@@ -12,6 +12,8 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+    totp_code: str | None = None
+    backup_code: str | None = None
 
 
 class RefreshRequest(BaseModel):
@@ -100,3 +102,25 @@ class OrganizationAuthSettingsOut(BaseModel):
     enforce_sso: bool
     active_sso_provider_count: int
     sso_available: bool
+
+
+class TwoFactorStatusOut(BaseModel):
+    enabled: bool
+    pending_setup: bool
+    confirmed_at: str | None = None
+    backup_codes_remaining: int = 0
+
+
+class TwoFactorSetupOut(BaseModel):
+    secret: str
+    otpauth_uri: str
+    backup_codes: list[str]
+
+
+class TwoFactorEnableRequest(BaseModel):
+    code: str = Field(min_length=6, max_length=6)
+
+
+class TwoFactorDisableRequest(BaseModel):
+    code: str | None = None
+    backup_code: str | None = None
