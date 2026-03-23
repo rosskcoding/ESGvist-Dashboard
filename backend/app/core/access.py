@@ -67,7 +67,7 @@ async def user_has_project_assignment(
                 MetricAssignment.reviewer_id == user_id,
             )
         )
-    return result.scalar_one_or_none() is not None
+    return result.scalars().first() is not None
 
 
 async def get_user_assignments(

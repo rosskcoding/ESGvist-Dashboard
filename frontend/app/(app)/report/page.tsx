@@ -202,7 +202,7 @@ export default function ReportPage() {
     },
   };
 
-  const sc = statusConfig[readiness.status];
+  const sc = statusConfig[readiness.status as keyof typeof statusConfig] ?? statusConfig.blocking;
   const StatusIcon = sc.icon;
 
   const formatCards = [
@@ -327,14 +327,14 @@ export default function ReportPage() {
               <span className="text-sm text-slate-500">Selected Boundary</span>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">
-                  {readiness.boundary.boundary_name}
+                  {(readiness.boundary ?? {} as Record<string, unknown>).boundary_name}
                 </span>
                 <Badge variant="secondary">Active</Badge>
               </div>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm text-slate-500">Snapshot Locked</span>
-              {readiness.boundary.snapshot_locked ? (
+              {(readiness.boundary ?? {} as Record<string, unknown>).snapshot_locked ? (
                 <Badge variant="default">
                   <CheckCircle2 className="mr-1 h-3 w-3" /> Locked
                 </Badge>
@@ -347,13 +347,13 @@ export default function ReportPage() {
             <div className="flex items-center justify-between">
               <span className="text-sm text-slate-500">Entities in Scope</span>
               <span className="text-sm font-semibold">
-                {readiness.boundary.entities_in_scope}
+                {(readiness.boundary ?? {} as Record<string, unknown>).entities_in_scope}
               </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm text-slate-500">Manual Overrides</span>
               <span className="text-sm font-semibold">
-                {readiness.boundary.manual_overrides}
+                {(readiness.boundary ?? {} as Record<string, unknown>).manual_overrides}
               </span>
             </div>
           </CardContent>
@@ -361,12 +361,12 @@ export default function ReportPage() {
       </div>
 
       {/* Issues Lists */}
-      {readiness.blocking_issues.length > 0 && (
+      {(readiness.blocking_issues ?? []).length > 0 && (
         <Card className="border-red-200">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-red-600">
               <XCircle className="h-5 w-5" />
-              Blocking Issues ({readiness.blocking_issues.length})
+              Blocking Issues ({(readiness.blocking_issues ?? []).length})
             </CardTitle>
             <CardDescription>
               These must be resolved before publishing
@@ -374,7 +374,7 @@ export default function ReportPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {readiness.blocking_issues.map((issue) => (
+              {(readiness.blocking_issues ?? []).map((issue) => (
                 <Link
                   key={issue.id}
                   href={issue.link}
@@ -394,12 +394,12 @@ export default function ReportPage() {
         </Card>
       )}
 
-      {readiness.warnings.length > 0 && (
+      {(readiness.warnings ?? []).length > 0 && (
         <Card className="border-amber-200">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-amber-600">
               <AlertTriangle className="h-5 w-5" />
-              Warnings ({readiness.warnings.length})
+              Warnings ({(readiness.warnings ?? []).length})
             </CardTitle>
             <CardDescription>
               These are recommended but not required
@@ -407,7 +407,7 @@ export default function ReportPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {readiness.warnings.map((warning) => (
+              {(readiness.warnings ?? []).map((warning) => (
                 <Link
                   key={warning.id}
                   href={warning.link}
@@ -489,13 +489,13 @@ export default function ReportPage() {
           </div>
 
           {/* Previously Generated Exports */}
-          {readiness.exports.length > 0 && (
+          {(readiness.exports ?? []).length > 0 && (
             <div>
               <h4 className="mb-3 text-sm font-medium text-slate-700">
                 Previously Generated Exports
               </h4>
               <div className="space-y-2">
-                {readiness.exports.map((exp) => (
+                {(readiness.exports ?? []).map((exp) => (
                   <div
                     key={exp.id}
                     className="flex items-center justify-between rounded-lg border border-slate-200 p-3"

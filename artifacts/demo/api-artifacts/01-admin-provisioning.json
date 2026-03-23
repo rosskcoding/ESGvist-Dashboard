@@ -1,0 +1,80 @@
+{
+  "customStandard": {
+    "id": 5,
+    "code": "NW-CUSTOM",
+    "name": "Northwind Custom Reporting Standard",
+    "version": "2025.1",
+    "jurisdiction": "UK",
+    "effective_from": null,
+    "effective_to": null,
+    "is_active": true
+  },
+  "section": {
+    "id": 7,
+    "standard_id": 5,
+    "parent_section_id": null,
+    "code": "BIO",
+    "title": "Biodiversity and Water Stress",
+    "sort_order": 10,
+    "children": []
+  },
+  "disclosure": {
+    "id": 6,
+    "standard_id": 5,
+    "section_id": 7,
+    "code": "NW-BIO-01",
+    "title": "Sites in high water stress areas",
+    "description": "Custom Northwind biodiversity pilot disclosure",
+    "requirement_type": "quantitative",
+    "mandatory_level": "mandatory",
+    "applicability_rule": null,
+    "sort_order": 10
+  },
+  "item": {
+    "id": 8,
+    "disclosure_requirement_id": 6,
+    "parent_item_id": null,
+    "item_code": "WATER_STRESS_SITES_COUNT",
+    "name": "Sites in water stress areas",
+    "description": "Count of operational sites located in high water stress basins",
+    "item_type": "metric",
+    "value_type": "number",
+    "unit_code": "COUNT",
+    "is_required": true,
+    "requires_evidence": true,
+    "cardinality_min": 0,
+    "cardinality_max": null,
+    "granularity_rule": null,
+    "validation_rule": null,
+    "sort_order": 10
+  },
+  "element": {
+    "id": 5,
+    "code": "WATER_STRESS_SITES_COUNT",
+    "name": "Sites in Water Stress Areas",
+    "description": "Operational sites located in high water stress areas",
+    "concept_domain": "water",
+    "default_value_type": "number",
+    "default_unit_code": "COUNT",
+    "dimensions": []
+  },
+  "mapping": {
+    "id": 8,
+    "requirement_item_id": 8,
+    "shared_element_id": 5,
+    "mapping_type": "full"
+  },
+  "assignment": {
+    "id": 5,
+    "reporting_project_id": 1,
+    "shared_element_id": 5,
+    "entity_id": 5,
+    "facility_id": null,
+    "collector_id": 7,
+    "reviewer_id": 4,
+    "backup_collector_id": 3,
+    "deadline": "2026-04-18",
+    "escalation_after_days": 3,
+    "status": "assigned"
+  }
+}
