@@ -66,7 +66,10 @@ export function useAuth(): UseAuthReturn {
     setOrganizationIdState(id);
   }, []);
 
-  const role = user?.roles?.[0]?.role ?? "";
+  const role =
+    user?.roles?.find((binding) => binding.scope_type === "organization")?.role
+    ?? user?.roles?.[0]?.role
+    ?? "";
 
   return {
     user,

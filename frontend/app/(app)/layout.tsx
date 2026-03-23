@@ -76,9 +76,30 @@ const navGroups: NavGroup[] = [
     title: "Main",
     items: [
       { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-      { label: "Collection", href: "/collection", icon: ClipboardList },
-      { label: "Validation", href: "/validation", icon: CheckSquare },
-      { label: "Merge View", href: "/merge", icon: GitMerge },
+      {
+        label: "Collection",
+        href: "/collection",
+        icon: ClipboardList,
+        requiredRoles: ["collector", "esg_manager", "admin", "platform_admin"],
+      },
+      {
+        label: "Evidence",
+        href: "/evidence",
+        icon: Search,
+        requiredRoles: ["collector", "esg_manager", "auditor", "admin", "platform_admin"],
+      },
+      {
+        label: "Validation",
+        href: "/validation",
+        icon: CheckSquare,
+        requiredRoles: ["reviewer", "auditor"],
+      },
+      {
+        label: "Merge View",
+        href: "/merge",
+        icon: GitMerge,
+        requiredRoles: ["esg_manager", "admin", "auditor"],
+      },
     ],
   },
   {
@@ -96,22 +117,72 @@ const navGroups: NavGroup[] = [
         icon: PieChart,
         requiredRoles: ["admin", "esg_manager", "auditor", "platform_admin"],
       },
-      { label: "Report / Export", href: "/report", icon: FileOutput },
-      { label: "Audit Log", href: "/audit", icon: ScrollText },
+      {
+        label: "Report / Export",
+        href: "/report",
+        icon: FileOutput,
+        requiredRoles: ["admin", "esg_manager", "platform_admin"],
+      },
+      {
+        label: "Audit Log",
+        href: "/audit",
+        icon: ScrollText,
+        requiredRoles: ["admin", "auditor", "platform_admin"],
+      },
     ],
   },
   {
     title: "Settings",
     items: [
-      { label: "Organization", href: "/settings", icon: Settings },
+      {
+        label: "Organization",
+        href: "/settings",
+        icon: Settings,
+        requiredRoles: ["admin", "platform_admin"],
+      },
       { label: "Profile", href: "/settings/profile", icon: UserCircle },
-      { label: "Company Structure", href: "/settings/company-structure", icon: Building2 },
-      { label: "Assignments", href: "/settings/assignments", icon: UserCog },
-      { label: "Standards", href: "/settings/standards", icon: BookOpen },
-      { label: "Shared Elements", href: "/settings/shared-elements", icon: Share2 },
-      { label: "Users", href: "/settings/users", icon: Users },
-      { label: "Boundaries", href: "/settings/boundaries", icon: Map },
-      { label: "Webhooks", href: "/settings/webhooks", icon: Webhook },
+      {
+        label: "Company Structure",
+        href: "/settings/company-structure",
+        icon: Building2,
+        requiredRoles: ["admin", "esg_manager", "platform_admin"],
+      },
+      {
+        label: "Assignments",
+        href: "/settings/assignments",
+        icon: UserCog,
+        requiredRoles: ["admin", "esg_manager", "platform_admin"],
+      },
+      {
+        label: "Standards",
+        href: "/settings/standards",
+        icon: BookOpen,
+        requiredRoles: ["admin", "platform_admin"],
+      },
+      {
+        label: "Shared Elements",
+        href: "/settings/shared-elements",
+        icon: Share2,
+        requiredRoles: ["admin", "platform_admin"],
+      },
+      {
+        label: "Users",
+        href: "/settings/users",
+        icon: Users,
+        requiredRoles: ["admin", "platform_admin"],
+      },
+      {
+        label: "Boundaries",
+        href: "/settings/boundaries",
+        icon: Map,
+        requiredRoles: ["admin", "platform_admin"],
+      },
+      {
+        label: "Webhooks",
+        href: "/settings/webhooks",
+        icon: Webhook,
+        requiredRoles: ["admin", "platform_admin"],
+      },
     ],
   },
   {
@@ -130,8 +201,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [copilotOpen, setCopilotOpen] = useState(false);
 
-  const userRole = user?.roles?.[0]?.role ?? "";
+  const userRoles = user?.roles?.map((role) => role.role) ?? [];
+  const userRole = userRoles[0] ?? "";
   const organizationName = "Organization";
+  const canAccessNotifications = userRoles.some((role) => role !== "auditor");
+
+  const hasRequiredRole = useCallback(
+    (requiredRoles?: string[]) => {
+      if (!requiredRoles || requiredRoles.length === 0) return true;
+      return requiredRoles.some((requiredRole) => userRoles.includes(requiredRole));
+    },
+    [userRoles]
+  );
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -153,13 +234,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   const fetchUnread = useCallback(async () => {
+    if (!canAccessNotifications) {
+      setUnreadCount(0);
+      return;
+    }
     try {
-      const data = await api.get<{ count: number }>("/notifications/unread-count");
-      setUnreadCount(data.count);
+      const data = await api.get<{ unread_count: number }>("/notifications/unread-count");
+      setUnreadCount(data.unread_count);
     } catch {
       // silently ignore
     }
-  }, []);
+  }, [canAccessNotifications]);
 
   useEffect(() => {
     if (!user) return;
@@ -189,7 +274,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Sidebar */}
       <aside className="flex w-64 flex-col border-r border-gray-200 bg-white">
         <div className="flex h-16 items-center border-b border-gray-200 px-6">
-          <Link href="/dashboard" className="text-xl font-bold text-gray-900">
+          <Link href="/dashboard" prefetch={false} className="text-xl font-bold text-gray-900">
             ESGvist
           </Link>
         </div>
@@ -205,7 +290,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </p>
                 <div className="space-y-1">
                   {group.items.map((item) => {
-                    if (item.requiredRoles && !item.requiredRoles.includes(userRole)) {
+                    if (!hasRequiredRole(item.requiredRoles)) {
                       return null;
                     }
                     const isActive =
@@ -217,6 +302,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                       <Link
                         key={item.href}
                         href={item.href}
+                        prefetch={false}
                         className={cn(
                           "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                           isActive
@@ -260,7 +346,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </Button>
 
             {/* Notification bell */}
-            <Button variant="ghost" size="icon" className="relative">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative"
+              aria-label="Notifications"
+              onClick={() => router.push("/notifications")}
+            >
               <Bell className="h-5 w-5 text-gray-500" />
               {unreadCount > 0 && (
                 <Badge

@@ -40,7 +40,7 @@ test.describe("Screen 12 - Project Settings", () => {
     await page.getByRole("tab", { name: "Standards" }).click();
     await page.getByRole("button", { name: "Add Standard" }).click();
     await page.getByLabel("Standard").selectOption(String(demoState.standards.gri.id));
-    await page.getByRole("button", { name: "Add" }).click();
+    await page.getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByText("GRI")).toBeVisible();
 
     await page.getByRole("tab", { name: "Boundary" }).click();

@@ -50,6 +50,7 @@ import {
   Eye,
   Network,
   CircleDot,
+  ShieldAlert,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -86,7 +87,8 @@ interface OwnershipLink {
   id: number;
   parent_entity_id: number;
   child_entity_id: number;
-  ownership_percentage: number;
+  ownership_percent?: number;
+  ownership_percentage?: number;
   ownership_type: string;
   parent_name?: string;
   child_name?: string;
@@ -162,6 +164,11 @@ const STATUS_COLORS: Record<EntityStatus, string> = {
 };
 
 type ViewMode = "structure" | "control" | "boundary";
+
+function isForbidden(error: Error | null) {
+  const code = (error as Error & { code?: string } | null)?.code;
+  return code === "FORBIDDEN" || /not allowed|access denied|forbidden/i.test(error?.message || "");
+}
 
 // ---------------------------------------------------------------------------
 // Custom Node
@@ -579,7 +586,7 @@ function AddOwnershipLinkDialog({
   const [form, setForm] = useState({
     parent_entity_id: "",
     child_entity_id: selectedEntityId ? String(selectedEntityId) : "",
-    ownership_percentage: "100",
+    ownership_percent: "100",
     ownership_type: "direct",
   });
 
@@ -590,7 +597,7 @@ function AddOwnershipLinkDialog({
   }, [selectedEntityId]);
 
   const mutation = useApiMutation<OwnershipLink, typeof form>(
-    "/entities/ownership-links",
+    "/ownership-links",
     "POST",
     {
       onSuccess: () => {
@@ -638,9 +645,9 @@ function AddOwnershipLinkDialog({
                 type="number"
                 min="0"
                 max="100"
-                value={form.ownership_percentage}
+                value={form.ownership_percent}
                 onChange={(e) =>
-                  setForm({ ...form, ownership_percentage: e.target.value })
+                  setForm({ ...form, ownership_percent: e.target.value })
                 }
               />
             </div>
@@ -697,7 +704,7 @@ function AddControlLinkDialog({
   const [form, setForm] = useState({
     controlling_entity_id: "",
     controlled_entity_id: selectedEntityId ? String(selectedEntityId) : "",
-    control_type: "operational",
+    control_type: "operational_control",
   });
 
   useEffect(() => {
@@ -710,7 +717,7 @@ function AddControlLinkDialog({
   }, [selectedEntityId]);
 
   const mutation = useApiMutation<ControlLink, typeof form>(
-    "/entities/control-links",
+    "/control-links",
     "POST",
     {
       onSuccess: () => {
@@ -753,9 +760,9 @@ function AddControlLinkDialog({
           <Select
             label="Control Type"
             options={[
-              { value: "operational", label: "Operational Control" },
-              { value: "financial", label: "Financial Control" },
-              { value: "joint", label: "Joint Control" },
+              { value: "operational_control", label: "Operational Control" },
+              { value: "financial_control", label: "Financial Control" },
+              { value: "management_control", label: "Management Control" },
               { value: "significant_influence", label: "Significant Influence" },
             ]}
             value={form.control_type}
@@ -862,7 +869,7 @@ function EntityDetailPanel({
       let total = 0;
       for (const link of pLinks) {
         const parentPct = calcChain(link.parent_entity_id);
-        total += (link.ownership_percentage / 100) * parentPct;
+        total += (((link.ownership_percentage ?? link.ownership_percent) ?? 0) / 100) * parentPct;
       }
       return total;
     }
@@ -1046,7 +1053,7 @@ function EntityDetailPanel({
                     </span>
                   </div>
                   <Badge variant="outline" className="text-[10px]">
-                    {l.ownership_percentage}%
+                    {l.ownership_percentage ?? l.ownership_percent ?? 0}%
                   </Badge>
                 </div>
               ))}
@@ -1062,7 +1069,7 @@ function EntityDetailPanel({
                     </span>
                   </div>
                   <Badge variant="outline" className="text-[10px]">
-                    {l.ownership_percentage}%
+                    {l.ownership_percentage ?? l.ownership_percent ?? 0}%
                   </Badge>
                 </div>
               ))}
@@ -1329,6 +1336,29 @@ export default function CompanyStructurePage() {
   }
 
   if (entitiesError) {
+    if (isForbidden(entitiesError)) {
+      return (
+        <div className="space-y-6">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900">
+              Company Structure
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Manage your corporate entity hierarchy
+            </p>
+          </div>
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <ShieldAlert className="mb-3 h-10 w-10 text-red-500" />
+              <p className="text-sm font-medium text-slate-900">Access denied</p>
+              <p className="mt-1 text-sm text-slate-500">
+                Only admin and ESG manager roles can manage company structure.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
     return (
       <div className="space-y-6">
         <div>

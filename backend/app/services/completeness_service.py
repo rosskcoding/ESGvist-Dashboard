@@ -153,12 +153,14 @@ class CompletenessService:
             for scope_entity_id in [self._scope_entity_id(dp)]
             if scope_entity_id is not None
         }
+        # Boundary-wide coverage must be opt-in per requirement item.
+        # A normal entity-scoped metric may legitimately apply to one entity only.
         boundary_coverage_required = bool(
             requirement_item
             and requirement_item.granularity_rule
             and requirement_item.granularity_rule.get("boundary_coverage_required")
         )
-        if boundary_coverage_required and boundary_scope and approved_entity_ids:
+        if boundary_coverage_required and boundary_scope:
             boundary_entity_ids = set(boundary_scope["entity_ids"])
             if boundary_entity_ids and approved_entity_ids != boundary_entity_ids:
                 missing_entity_names = self._missing_boundary_entity_names(approved_entity_ids, boundary_scope)

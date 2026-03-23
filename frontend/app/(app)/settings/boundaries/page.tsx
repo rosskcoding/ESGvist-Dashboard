@@ -39,6 +39,7 @@ import {
   RefreshCw,
   History,
   Pencil,
+  ShieldAlert,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -67,14 +68,14 @@ interface Boundary {
 
 interface Membership {
   id: number;
-  boundary_id: number;
   entity_id: number;
   entity_name: string;
-  entity_code: string;
   entity_type: string;
   included: boolean;
-  consolidation_method: ConsolidationMethod;
-  is_override: boolean;
+  inclusion_source?: string | null;
+  consolidation_method: ConsolidationMethod | null;
+  inclusion_reason?: string | null;
+  explicit: boolean;
 }
 
 interface Snapshot {
@@ -83,6 +84,18 @@ interface Snapshot {
   snapshot_date: string;
   created_by: string;
   entity_count: number;
+}
+
+interface BoundaryMembershipResponse {
+  boundary_id: number;
+  boundary_name: string;
+  memberships: Membership[];
+}
+
+interface CurrentUser {
+  roles: Array<{
+    role: string;
+  }>;
 }
 
 const BOUNDARY_TYPE_OPTIONS = [
@@ -126,7 +139,8 @@ function BoundaryDialog({
 
   const [form, setForm] = useState({
     name: boundary?.name ?? "",
-    type: boundary?.type ?? ("financial_reporting_default" as BoundaryType),
+    boundary_type:
+      (boundary?.boundary_type ?? boundary?.type ?? "financial_reporting_default") as BoundaryType,
     description: boundary?.description ?? "",
     is_default: boundary?.is_default ?? false,
   });
@@ -143,8 +157,8 @@ function BoundaryDialog({
   );
 
   const updateMutation = useApiMutation<Boundary, typeof form>(
-    `/api/boundaries/${boundary?.id}`,
-    "PUT",
+    `/boundaries/${boundary?.id}`,
+    "PATCH",
     {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ["boundaries"] });
@@ -187,9 +201,9 @@ function BoundaryDialog({
 
           <Select
             label="Type"
-            value={form.type}
+            value={form.boundary_type}
             onChange={(v) =>
-              setForm((f) => ({ ...f, type: v as BoundaryType }))
+              setForm((f) => ({ ...f, boundary_type: v as BoundaryType }))
             }
             options={BOUNDARY_TYPE_OPTIONS}
           />
@@ -240,30 +254,19 @@ function BoundaryDialog({
 // ---------------------------------------------------------------------------
 
 function MembershipIncludedToggle({
-  membership,
-  boundaryId,
+  checked,
+  onCheckedChange,
+  disabled,
 }: {
-  membership: Membership;
-  boundaryId: number;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  disabled?: boolean;
 }) {
-  const queryClient = useQueryClient();
-  const toggleMutation = useApiMutation<
-    Membership,
-    { included: boolean }
-  >(`/api/boundaries/${boundaryId}/memberships/${membership.id}`, "PATCH", {
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["boundary-memberships", boundaryId],
-      });
-      queryClient.invalidateQueries({ queryKey: ["boundaries"] });
-    },
-  });
-
   return (
     <Switch
-      checked={membership.included}
-      onCheckedChange={(checked) => toggleMutation.mutate({ included: checked })}
-      disabled={toggleMutation.isPending}
+      checked={checked}
+      onCheckedChange={onCheckedChange}
+      disabled={disabled}
     />
   );
 }
@@ -273,34 +276,20 @@ function MembershipIncludedToggle({
 // ---------------------------------------------------------------------------
 
 function MembershipMethodSelect({
-  membership,
-  boundaryId,
+  value,
+  onChange,
+  disabled,
 }: {
-  membership: Membership;
-  boundaryId: number;
+  value: ConsolidationMethod | null;
+  onChange: (value: ConsolidationMethod) => void;
+  disabled?: boolean;
 }) {
-  const queryClient = useQueryClient();
-  const updateMutation = useApiMutation<
-    Membership,
-    { consolidation_method: ConsolidationMethod }
-  >(`/api/boundaries/${boundaryId}/memberships/${membership.id}`, "PATCH", {
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["boundary-memberships", boundaryId],
-      });
-    },
-  });
-
   return (
     <Select
-      value={membership.consolidation_method}
-      onChange={(v) =>
-        updateMutation.mutate({
-          consolidation_method: v as ConsolidationMethod,
-        })
-      }
+      value={value ?? "full"}
+      onChange={(v) => onChange(v as ConsolidationMethod)}
       options={CONSOLIDATION_OPTIONS}
-      disabled={updateMutation.isPending}
+      disabled={disabled}
     />
   );
 }
@@ -312,22 +301,15 @@ function MembershipMethodSelect({
 function BoundaryDetail({ boundary }: { boundary: Boundary }) {
   const queryClient = useQueryClient();
 
-  const { data: memberships, isLoading: membershipsLoading } = useApiQuery<
-    Membership[]
+  const { data: membershipData, isLoading: membershipsLoading } = useApiQuery<
+    BoundaryMembershipResponse
   >(
     ["boundary-memberships", boundary.id],
-    `/api/boundaries/${boundary.id}/memberships`
-  );
-
-  const { data: snapshots, isLoading: snapshotsLoading } = useApiQuery<
-    Snapshot[]
-  >(
-    ["boundary-snapshots", boundary.id],
-    `/api/boundaries/${boundary.id}/snapshots`
+    `/boundaries/${boundary.id}/memberships`
   );
 
   const calculateMutation = useApiMutation<void, void>(
-    `/api/boundaries/${boundary.id}/calculate`,
+    `/boundaries/${boundary.id}/recalculate`,
     "POST",
     {
       onSuccess: () => {
@@ -338,6 +320,54 @@ function BoundaryDetail({ boundary }: { boundary: Boundary }) {
       },
     }
   );
+
+  const replaceMembershipsMutation = useApiMutation<
+    BoundaryMembershipResponse,
+    { memberships: Array<{
+      entity_id: number;
+      included: boolean;
+      inclusion_source: string;
+      consolidation_method: ConsolidationMethod | null;
+      inclusion_reason?: string | null;
+    }> }
+  >(`/boundaries/${boundary.id}/memberships`, "PUT", {
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["boundary-memberships", boundary.id],
+      });
+      queryClient.invalidateQueries({ queryKey: ["boundaries"] });
+    },
+  });
+
+  const memberships = membershipData?.memberships ?? [];
+  const snapshots: Snapshot[] = [];
+  const snapshotsLoading = false;
+
+  const buildMembershipPayload = (
+    membership: Membership,
+    patch: Partial<Pick<Membership, "included" | "consolidation_method">>
+  ) => ({
+    entity_id: membership.entity_id,
+    included: patch.included ?? membership.included,
+    inclusion_source: membership.explicit
+      ? membership.inclusion_source ?? "override"
+      : "override",
+    consolidation_method: patch.consolidation_method ?? membership.consolidation_method ?? "full",
+    inclusion_reason: membership.inclusion_reason ?? null,
+  });
+
+  const handleMembershipChange = (
+    entityId: number,
+    patch: Partial<Pick<Membership, "included" | "consolidation_method">>
+  ) => {
+    replaceMembershipsMutation.mutate({
+      memberships: memberships.map((membership) =>
+        membership.entity_id === entityId
+          ? buildMembershipPayload(membership, patch)
+          : buildMembershipPayload(membership, {})
+      ),
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -419,18 +449,24 @@ function BoundaryDetail({ boundary }: { boundary: Boundary }) {
                   </TableCell>
                   <TableCell>
                     <MembershipIncludedToggle
-                      membership={m}
-                      boundaryId={boundary.id}
+                      checked={m.included}
+                      disabled={replaceMembershipsMutation.isPending}
+                      onCheckedChange={(checked) =>
+                        handleMembershipChange(m.entity_id, { included: checked })
+                      }
                     />
                   </TableCell>
                   <TableCell>
                     <MembershipMethodSelect
-                      membership={m}
-                      boundaryId={boundary.id}
+                      value={m.consolidation_method}
+                      disabled={replaceMembershipsMutation.isPending}
+                      onChange={(value) =>
+                        handleMembershipChange(m.entity_id, { consolidation_method: value })
+                      }
                     />
                   </TableCell>
                   <TableCell>
-                    {m.is_override ? (
+                    {m.explicit && m.inclusion_source === "override" ? (
                       <Badge variant="warning">override</Badge>
                     ) : (
                       <span className="text-sm text-slate-400">--</span>
@@ -537,10 +573,17 @@ export default function BoundariesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editBoundary, setEditBoundary] = useState<Boundary | null>(null);
 
+  const { data: currentUser } = useApiQuery<CurrentUser>(
+    ["auth", "me"],
+    "/auth/me"
+  );
   const { data: boundaries, isLoading } = useApiQuery<Boundary[]>(
     ["boundaries"],
     "/boundaries"
   );
+
+  const currentRole = currentUser?.roles?.[0]?.role ?? "";
+  const canManageBoundaries = ["admin", "platform_admin"].includes(currentRole);
 
   const selectedBoundary = useMemo(
     () => boundaries?.find((b) => b.id === selectedId) ?? null,
@@ -555,6 +598,28 @@ export default function BoundariesPage() {
   function openEdit(b: Boundary) {
     setEditBoundary(b);
     setDialogOpen(true);
+  }
+
+  if (currentUser && !canManageBoundaries) {
+    return (
+      <div className="space-y-6 p-6">
+        <div>
+          <h1 className="text-2xl font-semibold">Boundaries</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Define and manage reporting boundaries
+          </p>
+        </div>
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <ShieldAlert className="mb-3 h-10 w-10 text-red-500" />
+            <p className="text-sm font-medium text-slate-900">Access denied</p>
+            <p className="mt-1 text-sm text-slate-500">
+              Only admin roles can manage boundaries.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   return (

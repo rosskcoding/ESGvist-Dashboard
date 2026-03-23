@@ -18,6 +18,7 @@ from app.core.security import (
     verify_password,
     verify_totp,
 )
+from app.db.models.boundary import BoundaryDefinition
 from app.db.models.organization import Organization
 from app.db.models.sso import SSOProvider
 from app.repositories.audit_repo import AuditRepository
@@ -25,6 +26,7 @@ from app.repositories.refresh_token_repo import RefreshTokenRepository
 from app.repositories.role_binding_repo import RoleBindingRepository
 from app.repositories.user_repo import UserRepository
 from app.schemas.auth import (
+    OrganizationSettingsOut,
     OrganizationAuthSettingsOut,
     OrganizationAuthSettingsUpdate,
     RoleBindingOut,
@@ -67,6 +69,52 @@ class AuthService:
             )
         )
         return int(result.scalar_one())
+
+    async def _get_default_boundary_id(self, organization_id: int) -> int | None:
+        result = await self.user_repo.session.execute(
+            select(BoundaryDefinition.id).where(
+                BoundaryDefinition.organization_id == organization_id,
+                BoundaryDefinition.is_default.is_(True),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def _resolve_user_organization_name(self, bindings: list[RoleBindingOut]) -> str | None:
+        org_binding = next(
+            (
+                binding
+                for binding in bindings
+                if binding.scope_type == "organization" and binding.scope_id is not None
+            ),
+            None,
+        )
+        if not org_binding or org_binding.scope_id is None:
+            return None
+        organization = await self._get_organization_or_raise(org_binding.scope_id)
+        return organization.name
+
+    async def _serialize_user_response(self, user) -> UserResponse:
+        bindings = [RoleBindingOut.model_validate(binding) for binding in await self.role_binding_repo.get_bindings(user.id)]
+        return UserResponse(
+            id=user.id,
+            email=user.email,
+            full_name=user.full_name,
+            is_active=user.is_active,
+            organization_name=await self._resolve_user_organization_name(bindings),
+            roles=bindings,
+        )
+
+    async def _serialize_organization_settings(self, organization: Organization) -> OrganizationSettingsOut:
+        return OrganizationSettingsOut(
+            id=organization.id,
+            name=organization.name,
+            country=organization.country,
+            industry=organization.industry,
+            currency=organization.default_currency,
+            reporting_year=organization.default_reporting_year,
+            logo_url=None,
+            default_boundary_id=await self._get_default_boundary_id(organization.id),
+        )
 
     async def _serialize_org_auth_settings(self, organization: Organization) -> OrganizationAuthSettingsOut:
         active_sso_provider_count = await self._count_active_sso_providers(organization.id)
@@ -175,14 +223,7 @@ class AuthService:
             request_id=request_id,
         )
 
-        bindings = await self.role_binding_repo.get_bindings(user.id)
-        return UserResponse(
-            id=user.id,
-            email=user.email,
-            full_name=user.full_name,
-            is_active=user.is_active,
-            roles=[RoleBindingOut.model_validate(b) for b in bindings],
-        )
+        return await self._serialize_user_response(user)
 
     async def get_two_factor_status(self, user_id: int) -> TwoFactorStatusOut:
         user = await self.user_repo.get_by_id(user_id)
@@ -408,12 +449,116 @@ class AuthService:
         user = await self.user_repo.get_by_id(user_id)
         if not user:
             raise AppError(code="NOT_FOUND", status_code=404, message="User not found")
+        return await self._serialize_user_response(user)
 
-        bindings = await self.role_binding_repo.get_bindings(user.id)
-        return UserResponse(
-            id=user.id,
-            email=user.email,
-            full_name=user.full_name,
-            is_active=user.is_active,
-            roles=[RoleBindingOut.model_validate(b) for b in bindings],
+    async def update_me(self, user_id: int, updates: dict, request_id: str | None = None) -> UserResponse:
+        user = await self.user_repo.get_by_id(user_id)
+        if not user:
+            raise AppError(code="NOT_FOUND", status_code=404, message="User not found")
+
+        changes = {}
+        full_name = updates.get("full_name")
+        if full_name and full_name != user.full_name:
+            user.full_name = full_name
+            changes["full_name"] = full_name
+
+        await self.user_repo.session.flush()
+        if changes:
+            await self.audit_repo.log(
+                entity_type="User",
+                entity_id=user.id,
+                action="profile_updated",
+                user_id=user.id,
+                request_id=request_id,
+                changes=changes,
+            )
+
+        return await self._serialize_user_response(user)
+
+    async def change_password(
+        self,
+        user_id: int,
+        *,
+        current_password: str,
+        new_password: str,
+        request_id: str | None = None,
+    ) -> dict:
+        user = await self.user_repo.get_by_id(user_id)
+        if not user:
+            raise AppError(code="NOT_FOUND", status_code=404, message="User not found")
+        if not verify_password(current_password, user.password_hash):
+            raise AppError("INVALID_CREDENTIALS", 401, "Current password is incorrect")
+        if current_password == new_password:
+            raise AppError("PASSWORD_UNCHANGED", 422, "New password must be different from the current password")
+
+        user.password_hash = hash_password(new_password)
+        await self.user_repo.session.flush()
+        await self.refresh_token_repo.delete_all_for_user(user.id)
+        await self.audit_repo.log(
+            entity_type="User",
+            entity_id=user.id,
+            action="password_changed",
+            user_id=user.id,
+            request_id=request_id,
         )
+        return {"changed": True}
+
+    async def get_my_organization_settings(self, ctx: RequestContext) -> OrganizationSettingsOut:
+        if not ctx.organization_id:
+            raise AppError("ORG_HEADER_REQUIRED", 400, "Organization context required")
+        organization = await self._get_organization_or_raise(ctx.organization_id)
+        return await self._serialize_organization_settings(organization)
+
+    async def update_my_organization_settings(
+        self,
+        ctx: RequestContext,
+        updates: dict,
+    ) -> OrganizationSettingsOut:
+        if not ctx.organization_id:
+            raise AppError("ORG_HEADER_REQUIRED", 400, "Organization context required")
+
+        organization = await self._get_organization_or_raise(ctx.organization_id)
+        changes = {}
+        field_mapping = {
+            "name": "name",
+            "country": "country",
+            "industry": "industry",
+            "currency": "default_currency",
+            "reporting_year": "default_reporting_year",
+        }
+        for public_field, model_field in field_mapping.items():
+            if public_field not in updates:
+                continue
+            value = updates[public_field]
+            if getattr(organization, model_field) != value:
+                setattr(organization, model_field, value)
+                changes[public_field] = value
+
+        if "default_boundary_id" in updates:
+            boundary_id = updates["default_boundary_id"]
+            boundaries_result = await self.user_repo.session.execute(
+                select(BoundaryDefinition).where(BoundaryDefinition.organization_id == organization.id)
+            )
+            boundaries = boundaries_result.scalars().all()
+            selected_boundary = None
+            if boundary_id is not None:
+                selected_boundary = next((boundary for boundary in boundaries if boundary.id == boundary_id), None)
+                if not selected_boundary:
+                    raise AppError("NOT_FOUND", 404, f"Boundary {boundary_id} not found")
+            for boundary in boundaries:
+                boundary.is_default = selected_boundary is not None and boundary.id == selected_boundary.id
+            changes["default_boundary_id"] = boundary_id
+
+        await self.user_repo.session.flush()
+        if changes:
+            await self.audit_repo.log(
+                entity_type="Organization",
+                entity_id=organization.id,
+                action="organization_settings_updated",
+                user_id=ctx.user_id,
+                organization_id=organization.id,
+                changes=changes,
+                performed_by_platform_admin=ctx.is_platform_admin,
+            )
+
+        return await self._serialize_organization_settings(organization)

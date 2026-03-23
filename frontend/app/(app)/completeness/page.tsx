@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useState } from "react";
+import { api } from "@/lib/api";
 import {
   Card,
   CardContent,
@@ -9,6 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
   Table,
@@ -30,6 +32,7 @@ import {
   BarChart3,
   Info,
   ShieldAlert,
+  Sparkles,
 } from "lucide-react";
 
 interface DashboardStandardProgress {
@@ -78,6 +81,13 @@ interface CompletenessResponse {
   disclosures: DisclosureRow[];
 }
 
+interface AIExplainResponse {
+  text: string;
+  reasons?: string[] | null;
+  provider?: string | null;
+  confidence: string;
+}
+
 const disclosureStatusConfig: Record<
   DisclosureRow["status"],
   {
@@ -100,6 +110,9 @@ function isForbidden(error: Error | null) {
 export default function CompletenessPage() {
   const [projectId] = useState(1);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
+  const [aiExplain, setAiExplain] = useState<AIExplainResponse | null>(null);
+  const [aiExplainError, setAiExplainError] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
 
   const {
     data: completeness,
@@ -176,14 +189,67 @@ export default function CompletenessPage() {
   const disclosures = completeness?.disclosures ?? [];
   const boundary = completeness?.boundary_context;
 
+  async function runAiExplain() {
+    setAiExplainError("");
+    setAiLoading(true);
+    try {
+      const response = await api.post<AIExplainResponse>("/ai/explain/completeness", {
+        project_id: projectId,
+      });
+      setAiExplain(response);
+    } catch (requestError) {
+      setAiExplainError(requestError instanceof Error ? requestError.message : "Failed to explain completeness.");
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-slate-900">Completeness</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Data completeness analysis for your ESG reporting
-        </p>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Completeness</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Data completeness analysis for your ESG reporting
+          </p>
+        </div>
+        <Button variant="outline" onClick={() => void runAiExplain()} disabled={aiLoading}>
+          {aiLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+          Explain with AI
+        </Button>
       </div>
+
+      {(aiExplain || aiExplainError) && (
+        <Card className={aiExplainError ? "border-red-200" : undefined}>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4" />
+              Inline AI Explain
+            </CardTitle>
+            {!aiExplainError && aiExplain?.provider ? (
+              <CardDescription>
+                Provider: {aiExplain.provider} · Confidence: {aiExplain.confidence}
+              </CardDescription>
+            ) : null}
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {aiExplainError ? (
+              <p className="text-sm text-red-700">{aiExplainError}</p>
+            ) : (
+              <>
+                <p className="text-sm text-slate-700">{aiExplain?.text}</p>
+                {aiExplain?.reasons && aiExplain.reasons.length > 0 && (
+                  <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
+                    {aiExplain.reasons.map((reason) => (
+                      <li key={reason}>{reason}</li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>

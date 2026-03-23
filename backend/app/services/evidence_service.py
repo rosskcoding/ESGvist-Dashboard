@@ -1,13 +1,23 @@
+from collections import defaultdict
+
+from sqlalchemy import select
+
 from app.core.access import get_data_point_for_ctx
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError
+from app.db.models.data_point import DataPoint
+from app.db.models.evidence import DataPointEvidence, EvidenceFile, EvidenceLink
+from app.db.models.requirement_item import RequirementItem
+from app.db.models.requirement_item_evidence import RequirementItemEvidence
+from app.db.models.shared_element import SharedElement
+from app.db.models.user import User
+from app.events.bus import EvidenceCreated, get_event_bus
 from app.policies.evidence_policy import EvidencePolicy
 from app.repositories.audit_repo import AuditRepository
 from app.repositories.data_point_repo import DataPointRepository
 from app.repositories.evidence_repo import EvidenceRepository
 from app.repositories.project_repo import ProjectRepository
 from app.schemas.evidence import EvidenceCreate, EvidenceListOut, EvidenceOut
-from app.events.bus import EvidenceCreated, get_event_bus
 
 
 class EvidenceService:
@@ -73,7 +83,22 @@ class EvidenceService:
                 type=payload.type,
             )
         )
-        return EvidenceOut.model_validate(ev)
+        return EvidenceOut.model_validate(
+            {
+                "id": ev.id,
+                "organization_id": ev.organization_id,
+                "type": ev.type,
+                "title": ev.title,
+                "description": ev.description,
+                "source_type": ev.source_type,
+                "created_by": ev.created_by,
+                "created_at": ev.created_at,
+                "upload_date": ev.created_at,
+                "binding_status": "unbound",
+                "linked_data_points": [],
+                "linked_requirement_items": [],
+            }
+        )
 
     async def list_evidences(
         self, ctx: RequestContext, page: int = 1, page_size: int = 50
@@ -87,8 +112,9 @@ class EvidenceService:
             page_size,
             created_by=created_by,
         )
+        context = await self._load_context(items)
         return EvidenceListOut(
-            items=[EvidenceOut.model_validate(ev) for ev in items],
+            items=[self._serialize(item, context) for item in items],
             total=total,
         )
 
@@ -104,3 +130,134 @@ class EvidenceService:
         await self.repo.link_to_data_point(dp_id, evidence_id, ctx.user_id)
         await self._audit("evidence_linked", evidence_id, ctx, {"data_point_id": dp_id})
         return {"data_point_id": dp_id, "evidence_id": evidence_id, "linked": True}
+
+    async def _load_context(self, items: list) -> dict:
+        evidence_ids = [item.id for item in items]
+        if not evidence_ids:
+            return {
+                "files": {},
+                "links": {},
+                "user_names": {},
+                "linked_data_points": defaultdict(list),
+                "linked_requirements": defaultdict(list),
+            }
+
+        result = await self.repo.session.execute(
+            select(
+                EvidenceFile.evidence_id,
+                EvidenceFile.file_name,
+                EvidenceFile.file_uri,
+                EvidenceFile.mime_type,
+                EvidenceFile.file_size,
+            ).where(EvidenceFile.evidence_id.in_(evidence_ids))
+        )
+        files = {
+            evidence_id: {
+                "file_name": file_name,
+                "url": file_uri,
+                "mime_type": mime_type,
+                "file_size": file_size,
+            }
+            for evidence_id, file_name, file_uri, mime_type, file_size in result.all()
+        }
+
+        result = await self.repo.session.execute(
+            select(
+                EvidenceLink.evidence_id,
+                EvidenceLink.url,
+                EvidenceLink.label,
+            ).where(EvidenceLink.evidence_id.in_(evidence_ids))
+        )
+        links = {
+            evidence_id: {
+                "url": url,
+                "label": label,
+            }
+            for evidence_id, url, label in result.all()
+        }
+
+        result = await self.repo.session.execute(
+            select(User.id, User.full_name).where(
+                User.id.in_([item.created_by for item in items if item.created_by is not None])
+            )
+        )
+        user_names = {user_id: full_name for user_id, full_name in result.all()}
+
+        result = await self.repo.session.execute(
+            select(
+                DataPointEvidence.evidence_id,
+                DataPointEvidence.data_point_id,
+                SharedElement.code,
+                SharedElement.name,
+            )
+            .join(DataPoint, DataPoint.id == DataPointEvidence.data_point_id)
+            .join(SharedElement, SharedElement.id == DataPoint.shared_element_id)
+            .where(DataPointEvidence.evidence_id.in_(evidence_ids))
+        )
+        linked_data_points: dict[int, list[dict]] = defaultdict(list)
+        for evidence_id, data_point_id, code, name in result.all():
+            linked_data_points[evidence_id].append(
+                {
+                    "data_point_id": data_point_id,
+                    "code": code or f"DP-{data_point_id}",
+                    "label": name or f"Data point {data_point_id}",
+                }
+            )
+
+        result = await self.repo.session.execute(
+            select(
+                RequirementItemEvidence.evidence_id,
+                RequirementItem.id,
+                RequirementItem.item_code,
+                RequirementItem.name,
+            )
+            .join(
+                RequirementItem,
+                RequirementItem.id == RequirementItemEvidence.requirement_item_id,
+            )
+            .where(RequirementItemEvidence.evidence_id.in_(evidence_ids))
+        )
+        linked_requirements: dict[int, list[dict]] = defaultdict(list)
+        for evidence_id, requirement_item_id, code, name in result.all():
+            linked_requirements[evidence_id].append(
+                {
+                    "requirement_item_id": requirement_item_id,
+                    "code": code or f"ITEM-{requirement_item_id}",
+                    "description": name,
+                }
+            )
+
+        return {
+            "files": files,
+            "links": links,
+            "user_names": user_names,
+            "linked_data_points": linked_data_points,
+            "linked_requirements": linked_requirements,
+        }
+
+    def _serialize(self, evidence, context: dict) -> EvidenceOut:
+        file_meta = context["files"].get(evidence.id, {})
+        link_meta = context["links"].get(evidence.id, {})
+        linked_data_points = context["linked_data_points"].get(evidence.id, [])
+        linked_requirements = context["linked_requirements"].get(evidence.id, [])
+        return EvidenceOut.model_validate(
+            {
+                "id": evidence.id,
+                "organization_id": evidence.organization_id,
+                "type": evidence.type,
+                "title": evidence.title,
+                "description": evidence.description,
+                "source_type": evidence.source_type,
+                "created_by": evidence.created_by,
+                "created_by_name": context["user_names"].get(evidence.created_by),
+                "created_at": evidence.created_at,
+                "upload_date": evidence.created_at,
+                "url": file_meta.get("url") or link_meta.get("url"),
+                "file_name": file_meta.get("file_name"),
+                "file_size": file_meta.get("file_size"),
+                "mime_type": file_meta.get("mime_type"),
+                "binding_status": "bound" if linked_data_points or linked_requirements else "unbound",
+                "linked_data_points": linked_data_points,
+                "linked_requirement_items": linked_requirements,
+            }
+        )

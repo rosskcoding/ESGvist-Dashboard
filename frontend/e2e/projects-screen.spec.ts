@@ -42,8 +42,9 @@ test.describe("Screen 11 - Project List", () => {
     await loginThroughUi(page, demoState.users.admin.email, demoState.password);
     await createProjectThroughUi(page, projectName);
 
-    await expect(page.getByText(projectName)).toBeVisible();
-    await expect(page.getByText("Draft")).toBeVisible();
+    const projectRow = page.getByRole("row", { name: new RegExp(projectName) });
+    await expect(projectRow).toBeVisible();
+    await expect(projectRow.getByText("Draft", { exact: true })).toBeVisible();
   });
 
   for (const user of deniedProjectUsers) {

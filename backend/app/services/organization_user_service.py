@@ -29,7 +29,7 @@ class OrganizationUserService:
         self.audit_repo = audit_repo
 
     def _ensure_manage_access(self, ctx: RequestContext) -> int:
-        AuthPolicy.require_manager_or_admin(ctx)
+        AuthPolicy.require_role(ctx, ["admin", "platform_admin"])
         if not ctx.organization_id:
             raise AppError("ORG_HEADER_REQUIRED", 400, "Organization context required")
         return ctx.organization_id

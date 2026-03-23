@@ -97,6 +97,30 @@
 4. итоговый прогон с артефактами;
 5. короткая отметка, что экран переведён в regression baseline.
 
+### After screen baseline
+
+После того как весь screen baseline переведён в зелёный regression-набор, работа продолжается не новыми страницами, а более глубокими сценариями поверх уже стабилизированных экранов.
+
+### Phase 2 — Deep role journeys
+
+После полного page-level покрытия следующие итерации идут по сквозным сценариям между ролями:
+
+1. `collector -> reviewer -> collector revision -> reviewer approve -> auditor audit`
+2. `esg_manager -> project settings -> boundary/readiness -> report/export`
+3. `admin -> standards/mappings -> assignment rollout -> collector visibility`
+4. `platform_admin -> tenant/platform controls -> org-level auth policy`
+
+### Phase 2 — Edge cases
+
+После deep role journeys каждый ключевой экран дополнительно проходит edge-case слой:
+
+1. empty states;
+2. API failures / stale state;
+3. forbidden role access;
+4. conflicting concurrent actions;
+5. lock/read-only states;
+6. audit and notification side effects.
+
 ---
 
 ## 1. Auth (3 screens)

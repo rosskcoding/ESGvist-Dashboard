@@ -1,89 +1,45 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { useEffect, useState } from "react";
+import { Building2, Globe, Loader2, LockKeyhole, Save, ShieldAlert } from "lucide-react";
+
+import { useApiMutation, useApiQuery } from "@/lib/hooks/use-api";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { cn } from "@/lib/utils";
-import { useApiQuery, useApiMutation } from "@/lib/hooks/use-api";
-import {
-  Loader2,
-  Building2,
-  Save,
-  Upload,
-  CheckCircle2,
-  Globe,
-} from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 
-interface OrgSettings {
+type RoleBinding = { role: string };
+
+type OrgSettings = {
   id: number;
   name: string;
-  country: string;
-  industry: string;
+  country: string | null;
+  industry: string | null;
   currency: string;
-  reporting_year: number;
+  reporting_year: number | null;
   logo_url: string | null;
   default_boundary_id: number | null;
-}
+};
 
-interface Boundary {
+type Boundary = {
   id: number;
   name: string;
-}
+  is_default?: boolean;
+};
 
-const currencyOptions = [
-  { value: "USD", label: "USD - US Dollar" },
-  { value: "EUR", label: "EUR - Euro" },
-  { value: "GBP", label: "GBP - British Pound" },
-  { value: "CHF", label: "CHF - Swiss Franc" },
-  { value: "JPY", label: "JPY - Japanese Yen" },
-  { value: "AUD", label: "AUD - Australian Dollar" },
-  { value: "CAD", label: "CAD - Canadian Dollar" },
-  { value: "SGD", label: "SGD - Singapore Dollar" },
-];
-
-const countryOptions = [
-  { value: "", label: "Select country" },
-  { value: "US", label: "United States" },
-  { value: "GB", label: "United Kingdom" },
-  { value: "DE", label: "Germany" },
-  { value: "FR", label: "France" },
-  { value: "NL", label: "Netherlands" },
-  { value: "CH", label: "Switzerland" },
-  { value: "AU", label: "Australia" },
-  { value: "CA", label: "Canada" },
-  { value: "JP", label: "Japan" },
-  { value: "SG", label: "Singapore" },
-];
-
-const industryOptions = [
-  { value: "", label: "Select industry" },
-  { value: "technology", label: "Technology" },
-  { value: "finance", label: "Financial Services" },
-  { value: "healthcare", label: "Healthcare" },
-  { value: "manufacturing", label: "Manufacturing" },
-  { value: "energy", label: "Energy" },
-  { value: "retail", label: "Retail" },
-  { value: "real_estate", label: "Real Estate" },
-  { value: "transportation", label: "Transportation" },
-  { value: "agriculture", label: "Agriculture" },
-  { value: "other", label: "Other" },
-];
+type OrgAuthSettings = {
+  organization_id: number;
+  allow_password_login: boolean;
+  allow_sso_login: boolean;
+  enforce_sso: boolean;
+  active_sso_provider_count: number;
+  sso_available: boolean;
+};
 
 const currentYear = new Date().getFullYear();
-const yearOptions = Array.from({ length: 5 }, (_, i) => ({
-  value: String(currentYear - i),
-  label: String(currentYear - i),
-}));
 
 export default function OrganizationSettingsPage() {
   const [form, setForm] = useState({
@@ -94,64 +50,99 @@ export default function OrganizationSettingsPage() {
     reporting_year: String(currentYear),
     default_boundary_id: "",
   });
+  const [authForm, setAuthForm] = useState({
+    allow_password_login: true,
+    allow_sso_login: true,
+    enforce_sso: false,
+  });
   const [saved, setSaved] = useState(false);
+  const [authSaved, setAuthSaved] = useState(false);
+  const [authError, setAuthError] = useState("");
 
-  const { data, isLoading } = useApiQuery<OrgSettings>(
+  const { data: me, isLoading: meLoading } = useApiQuery<{ roles: RoleBinding[] }>(
+    ["auth-me", "organization-settings"],
+    "/auth/me"
+  );
+  const canAccess = (me?.roles ?? []).some((binding) =>
+    ["admin", "platform_admin"].includes(binding.role)
+  );
+  const accessDenied = Boolean(me) && !canAccess;
+
+  const { data, isLoading, refetch } = useApiQuery<OrgSettings>(
     ["org-settings"],
-    "/auth/me/organization"
+    "/auth/me/organization",
+    { enabled: canAccess }
   );
 
-  const { data: boundaries } = useApiQuery<Boundary[]>(
-    ["boundaries-list"],
-    "/boundaries"
+  const { data: boundaries = [] } = useApiQuery<Boundary[]>(
+    ["boundaries-list", "org-settings"],
+    "/boundaries",
+    { enabled: canAccess }
   );
 
-  const saveMutation = useApiMutation("/auth/me/organization", "PATCH");
+  const { data: authSettings, refetch: refetchAuthSettings } = useApiQuery<OrgAuthSettings>(
+    ["organization-auth-settings"],
+    "/auth/organization/auth-settings",
+    { enabled: canAccess }
+  );
+
+  const saveMutation = useApiMutation<OrgSettings, Record<string, string | number | null>>(
+    "/auth/me/organization",
+    "PATCH"
+  );
+  const authSettingsMutation = useApiMutation<OrgAuthSettings, Partial<OrgAuthSettings>>(
+    "/auth/organization/auth-settings",
+    "PATCH"
+  );
 
   useEffect(() => {
-    if (data) {
-      setForm({
-        name: data.name,
-        country: data.country,
-        industry: data.industry,
-        currency: data.currency,
-        reporting_year: String(data.reporting_year),
-        default_boundary_id: data.default_boundary_id
-          ? String(data.default_boundary_id)
-          : "",
-      });
-    }
+    if (!data) return;
+    setForm({
+      name: data.name,
+      country: data.country ?? "",
+      industry: data.industry ?? "",
+      currency: data.currency,
+      reporting_year: String(data.reporting_year ?? currentYear),
+      default_boundary_id: data.default_boundary_id ? String(data.default_boundary_id) : "",
+    });
   }, [data]);
 
-  const updateField = (field: string, value: string) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
-  };
+  useEffect(() => {
+    if (!authSettings) return;
+    setAuthForm({
+      allow_password_login: authSettings.allow_password_login,
+      allow_sso_login: authSettings.allow_sso_login,
+      enforce_sso: authSettings.enforce_sso,
+    });
+  }, [authSettings]);
 
-  const handleSave = async () => {
+  async function saveOrganizationSettings() {
     setSaved(false);
     await saveMutation.mutateAsync({
       name: form.name,
-      country: form.country,
-      industry: form.industry,
+      country: form.country || null,
+      industry: form.industry || null,
       currency: form.currency,
-      reporting_year: parseInt(form.reporting_year, 10),
-      default_boundary_id: form.default_boundary_id
-        ? parseInt(form.default_boundary_id, 10)
-        : null,
-    } as never);
+      reporting_year: Number(form.reporting_year),
+      default_boundary_id: form.default_boundary_id ? Number(form.default_boundary_id) : null,
+    });
+    await refetch();
     setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
-  };
+  }
 
-  const boundaryOptions = [
-    { value: "", label: "No default boundary" },
-    ...(boundaries ?? []).map((b) => ({
-      value: String(b.id),
-      label: b.name,
-    })),
-  ];
+  async function saveAuthSettings() {
+    setAuthError("");
+    setAuthSaved(false);
+    try {
+      await authSettingsMutation.mutateAsync(authForm);
+      await refetchAuthSettings();
+      setAuthSaved(true);
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : "Failed to save auth settings.");
+    }
+  }
 
-  if (isLoading) {
+  if (meLoading || (canAccess && isLoading)) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
@@ -159,164 +150,187 @@ export default function OrganizationSettingsPage() {
     );
   }
 
+  if (accessDenied) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Organization Settings</h2>
+          <p className="mt-1 text-sm text-slate-500">Manage organization metadata, boundaries, and login policy.</p>
+        </div>
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="flex items-start gap-3 p-6 text-red-700">
+            <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" />
+            <div>
+              <p className="font-semibold">Access denied</p>
+              <p className="mt-1 text-sm">Only organization admins can manage organization settings.</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      {/* Page header */}
+    <div className="mx-auto max-w-4xl space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-slate-900">
-          Organization Settings
-        </h2>
+        <h2 className="text-2xl font-bold text-slate-900">Organization Settings</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Manage your organization&apos;s configuration
+          Manage organization metadata, default boundary selection, and authentication policy.
         </p>
       </div>
 
-      {/* Organization Details */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Building2 className="h-4 w-4" />
-            Organization Details
-          </CardTitle>
-          <CardDescription>
-            Basic information about your organization
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="orgName">Organization Name</Label>
-            <Input
-              id="orgName"
-              value={form.name}
-              onChange={(e) => updateField("name", e.target.value)}
-              placeholder="Organization name"
-            />
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="country">Country</Label>
-              <Select
-                id="country"
-                options={countryOptions}
-                value={form.country}
-                onChange={(val) => updateField("country", val)}
+      <div className="grid gap-6 xl:grid-cols-[1.3fr_1fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Building2 className="h-4 w-4" />
+              Organization Details
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-1.5">
+              <Label htmlFor="orgName">Organization Name</Label>
+              <Input
+                id="orgName"
+                value={form.name}
+                onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
               />
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="industry">Industry</Label>
-              <Select
-                id="industry"
-                options={industryOptions}
-                value={form.industry}
-                onChange={(val) => updateField("industry", val)}
-              />
-            </div>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="currency">Currency</Label>
-              <Select
-                id="currency"
-                options={currencyOptions}
-                value={form.currency}
-                onChange={(val) => updateField("currency", val)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="reportingYear">Reporting Year</Label>
-              <Select
-                id="reportingYear"
-                options={yearOptions}
-                value={form.reporting_year}
-                onChange={(val) => updateField("reporting_year", val)}
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Logo */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Logo</CardTitle>
-          <CardDescription>
-            Upload your organization&apos;s logo for reports
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-4">
-            <div className="flex h-20 w-20 items-center justify-center rounded-lg border-2 border-dashed border-slate-200 bg-slate-50">
-              {data?.logo_url ? (
-                <img
-                  src={data.logo_url}
-                  alt="Logo"
-                  className="h-full w-full rounded-lg object-contain p-2"
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-1.5">
+                <Label htmlFor="country">Country</Label>
+                <Input
+                  id="country"
+                  value={form.country}
+                  onChange={(event) => setForm((current) => ({ ...current, country: event.target.value }))}
                 />
-              ) : (
-                <Building2 className="h-8 w-8 text-slate-300" />
-              )}
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="industry">Industry</Label>
+                <Input
+                  id="industry"
+                  value={form.industry}
+                  onChange={(event) => setForm((current) => ({ ...current, industry: event.target.value }))}
+                />
+              </div>
             </div>
-            <div>
-              <Button variant="outline" size="sm" disabled>
-                <Upload className="mr-2 h-4 w-4" />
-                Upload Logo
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-1.5">
+                <Label htmlFor="currency">Currency</Label>
+                <Input
+                  id="currency"
+                  value={form.currency}
+                  onChange={(event) => setForm((current) => ({ ...current, currency: event.target.value.toUpperCase() }))}
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="reportingYear">Reporting Year</Label>
+                <Input
+                  id="reportingYear"
+                  type="number"
+                  value={form.reporting_year}
+                  onChange={(event) => setForm((current) => ({ ...current, reporting_year: event.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="defaultBoundary">Default Boundary</Label>
+              <Select
+                id="defaultBoundary"
+                value={form.default_boundary_id}
+                onChange={(value) => setForm((current) => ({ ...current, default_boundary_id: value }))}
+                options={[
+                  { value: "", label: "No default boundary" },
+                  ...boundaries.map((boundary) => ({ value: String(boundary.id), label: boundary.name })),
+                ]}
+              />
+            </div>
+            {saved && (
+              <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+                Settings saved successfully.
+              </div>
+            )}
+            <div className="flex justify-end">
+              <Button onClick={() => void saveOrganizationSettings()} disabled={saveMutation.isPending || !form.name.trim()}>
+                {saveMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="mr-2 h-4 w-4" />
+                )}
+                Save Settings
               </Button>
-              <p className="mt-1 text-xs text-slate-400">
-                PNG, JPG up to 2MB. Recommended 200x200px.
-              </p>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      {/* Default Boundary */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Globe className="h-4 w-4" />
-            Default Boundary
-          </CardTitle>
-          <CardDescription>
-            Set the default boundary for new projects
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            <Label htmlFor="defaultBoundary">Default Boundary</Label>
-            <Select
-              id="defaultBoundary"
-              options={boundaryOptions}
-              value={form.default_boundary_id}
-              onChange={(val) => updateField("default_boundary_id", val)}
-            />
-          </div>
-        </CardContent>
-      </Card>
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Globe className="h-4 w-4" />
+                Boundary Context
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm text-slate-600">
+              <p>Available boundaries: {boundaries.length}</p>
+              <p>
+                Current default: {boundaries.find((boundary) => String(boundary.id) === form.default_boundary_id)?.name ?? "None"}
+              </p>
+            </CardContent>
+          </Card>
 
-      {/* Save */}
-      {saved && (
-        <Alert variant="success">
-          <CheckCircle2 className="h-4 w-4" />
-          <AlertDescription>Settings saved successfully</AlertDescription>
-        </Alert>
-      )}
-
-      <div className="flex justify-end">
-        <Button
-          onClick={handleSave}
-          disabled={saveMutation.isPending}
-        >
-          {saveMutation.isPending ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <Save className="mr-2 h-4 w-4" />
-          )}
-          Save Settings
-        </Button>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <LockKeyhole className="h-4 w-4" />
+                Authentication Policy
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-lg border border-slate-200 p-4">
+                <Switch
+                  checked={authForm.allow_password_login}
+                  onCheckedChange={(value) => setAuthForm((current) => ({ ...current, allow_password_login: value }))}
+                  label="Allow password login"
+                />
+              </div>
+              <div className="rounded-lg border border-slate-200 p-4">
+                <Switch
+                  checked={authForm.allow_sso_login}
+                  onCheckedChange={(value) => setAuthForm((current) => ({ ...current, allow_sso_login: value }))}
+                  label="Allow SSO login"
+                />
+              </div>
+              <div className="rounded-lg border border-slate-200 p-4">
+                <Switch
+                  checked={authForm.enforce_sso}
+                  onCheckedChange={(value) => setAuthForm((current) => ({ ...current, enforce_sso: value }))}
+                  label="Enforce SSO"
+                />
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                <p>Active SSO providers: {authSettings?.active_sso_provider_count ?? 0}</p>
+                <p className="mt-1">SSO available: {authSettings?.sso_available ? "Yes" : "No"}</p>
+              </div>
+              {authError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {authError}
+                </div>
+              )}
+              {authSaved && (
+                <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+                  Authentication policy saved.
+                </div>
+              )}
+              <div className="flex justify-end">
+                <Button variant="outline" onClick={() => void saveAuthSettings()} disabled={authSettingsMutation.isPending}>
+                  {authSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Save Auth Policy
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

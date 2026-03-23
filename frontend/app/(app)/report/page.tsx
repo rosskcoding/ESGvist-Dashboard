@@ -1,143 +1,226 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
+import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
-import { useApiQuery, useApiMutation } from "@/lib/hooks/use-api";
-import {
-  CheckCircle2,
   AlertTriangle,
-  XCircle,
-  Shield,
-  Download,
-  FileText,
-  FileSpreadsheet,
+  CheckCircle2,
+  Eye,
   FileOutput,
-  Code,
+  FileSpreadsheet,
+  FileText,
   Loader2,
   RefreshCw,
   Send,
-  Clock,
+  Shield,
+  ShieldAlert,
+  XCircle,
 } from "lucide-react";
 
-interface BlockingIssue {
-  id: string;
-  message: string;
-  link: string;
-  entity_type: string;
-}
+import { api } from "@/lib/api";
+import { useApiMutation, useApiQuery } from "@/lib/hooks/use-api";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
+import { cn } from "@/lib/utils";
+import { withQuery } from "@/lib/api";
 
-interface Warning {
-  id: string;
+type ReadinessDetail = {
+  code: string;
   message: string;
-  link: string;
-  entity_type: string;
-}
+  count: number;
+};
 
-interface BoundaryValidation {
-  boundary_name: string;
-  boundary_id: number | null;
+type BoundaryValidation = {
+  selected_boundary: string;
   snapshot_locked: boolean;
   entities_in_scope: number;
   manual_overrides: number;
-}
+  boundary_differs_from_default: boolean;
+  entities_without_data: string[];
+};
 
-interface ExportFile {
+type ReadinessResponse = {
+  ready: boolean;
+  overall_ready: boolean;
+  completion_percent: number;
+  total_items: number;
+  complete: number;
+  partial: number;
+  missing: number;
+  blocking_issues: number;
+  warnings: number;
+  blocking_issue_details: ReadinessDetail[];
+  warning_details: ReadinessDetail[];
+  boundary_validation: BoundaryValidation | null;
+};
+
+type ExportJob = {
   id: number;
-  filename: string;
-  format: string;
-  created_at: string;
-  size_bytes: number;
-  download_url: string;
-}
+  report_type: string;
+  export_format: string;
+  status: string;
+  artifact_name: string | null;
+  created_at: string | null;
+  completed_at: string | null;
+  error_message: string | null;
+};
 
-interface ReadinessData {
-  status?: "ready" | "warnings" | "blocking";
-  ready?: boolean;
-  overall_ready?: boolean;
-  completion_percent?: number;
-  completion_percentage?: number;
-  boundary?: BoundaryValidation;
-  blocking_issues?: BlockingIssue[];
-  warnings?: Warning[];
-  exports?: ExportFile[];
+type ExportListResponse = {
+  items: ExportJob[];
+  total: number;
+};
+
+type ExportAction = {
+  key: string;
+  label: string;
+  description: string;
+  route: string;
+  icon: typeof FileText;
+};
+
+const exportActions: ExportAction[] = [
+  {
+    key: "gri-pdf",
+    label: "GRI Index PDF",
+    description: "Queue GRI content index as PDF.",
+    route: "export/gri-index?export_format=pdf",
+    icon: FileText,
+  },
+  {
+    key: "gri-xlsx",
+    label: "GRI Index XLSX",
+    description: "Queue GRI content index as Excel.",
+    route: "export/gri-index?export_format=xlsx",
+    icon: FileSpreadsheet,
+  },
+  {
+    key: "report-pdf",
+    label: "Full Report PDF",
+    description: "Queue the full project report as PDF.",
+    route: "export/report?export_format=pdf",
+    icon: FileOutput,
+  },
+  {
+    key: "report-xlsx",
+    label: "Full Report XLSX",
+    description: "Queue the full project report as Excel.",
+    route: "export/report?export_format=xlsx",
+    icon: FileSpreadsheet,
+  },
+  {
+    key: "xbrl",
+    label: "XBRL Instance",
+    description: "Queue the XBRL export instance.",
+    route: "export/xbrl",
+    icon: FileOutput,
+  },
+];
+
+function formatTimestamp(value: string | null) {
+  if (!value) return "Pending";
+  return new Date(value).toLocaleString();
 }
 
 export default function ReportPage() {
-  const [projectId] = useState(1);
+  const searchParams = useSearchParams();
+  const resolvedProjectId = Number(searchParams.get("projectId") || "1");
+  const [projectId] = useState(Number.isFinite(resolvedProjectId) && resolvedProjectId > 0 ? resolvedProjectId : 1);
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
-  const [selectedFormats, setSelectedFormats] = useState<Record<string, boolean>>({
-    gri_pdf: false,
-    gri_excel: false,
-    full_pdf: false,
-    data_excel: false,
-    xbrl: false,
-  });
+  const [activeExportKey, setActiveExportKey] = useState<string | null>(null);
 
-  const { data, isLoading, error, refetch } = useApiQuery<ReadinessData>(
+  const { data: me, isLoading: meLoading } = useApiQuery<{
+    roles: Array<{ role: string }>;
+  }>(["auth-me", "report"], "/auth/me");
+
+  const role = me?.roles?.[0]?.role ?? "";
+  const canAccess = role === "admin" || role === "esg_manager";
+  const accessDenied = Boolean(role) && !canAccess;
+
+  const {
+    data: readiness,
+    isLoading: readinessLoading,
+    error: readinessError,
+    refetch: refetchReadiness,
+  } = useApiQuery<ReadinessResponse>(
     ["report", "readiness", projectId],
-    `/projects/${projectId}/export/readiness`
-  );
-
-  const readinessCheck = useApiMutation<ReadinessData>(
     `/projects/${projectId}/export/readiness`,
-    "POST"
+    { enabled: canAccess }
   );
 
-  const publishMutation = useApiMutation(
-    `/projects/${projectId}/publish`,
-    "POST"
+  const {
+    data: exportJobs,
+    isLoading: exportJobsLoading,
+    refetch: refetchExportJobs,
+  } = useApiQuery<ExportListResponse>(
+    ["report", "exports", projectId],
+    `/projects/${projectId}/exports`,
+    { enabled: canAccess }
   );
 
-  const exportMutation = useApiMutation<{ download_url: string }, { format: string }>(
-    `/projects/${projectId}/export`,
-    "POST"
+  const publishMutation = useApiMutation(`/projects/${projectId}/publish`, "POST");
+
+  const latestCompletedJob = useMemo(
+    () => exportJobs?.items.find((job) => job.status === "completed") ?? null,
+    [exportJobs?.items]
   );
 
-  const handleRunReadiness = async () => {
-    await readinessCheck.mutateAsync(undefined);
-    refetch();
-  };
+  const statusTone = useMemo(() => {
+    if (readiness?.overall_ready) {
+      return {
+        icon: CheckCircle2,
+        label: "Ready to Publish",
+        badge: "default" as const,
+        className: "border-green-200 bg-green-50 text-green-700",
+      };
+    }
+    if ((readiness?.warning_details?.length ?? 0) > 0) {
+      return {
+        icon: AlertTriangle,
+        label: "Warnings Present",
+        badge: "warning" as const,
+        className: "border-amber-200 bg-amber-50 text-amber-700",
+      };
+    }
+    return {
+      icon: XCircle,
+      label: "Blocking Issues",
+      badge: "destructive" as const,
+      className: "border-red-200 bg-red-50 text-red-700",
+    };
+  }, [readiness?.overall_ready, readiness?.warning_details?.length]);
 
-  const handlePublish = async () => {
+  async function refreshAll() {
+    await Promise.all([refetchReadiness(), refetchExportJobs()]);
+  }
+
+  async function queueExport(route: string, exportKey: string) {
+    setActiveExportKey(exportKey);
+    try {
+      await api.post(`/projects/${projectId}/${route}`);
+      await refetchExportJobs();
+    } finally {
+      setActiveExportKey(null);
+    }
+  }
+
+  async function handlePublish() {
     await publishMutation.mutateAsync(undefined);
     setPublishDialogOpen(false);
-    refetch();
-  };
+    await refreshAll();
+  }
 
-  const handleExport = async (format: string) => {
-    const result = await exportMutation.mutateAsync({ format });
-    if (result?.download_url) {
-      window.open(result.download_url, "_blank");
-    }
-    refetch();
-  };
-
-  const toggleFormat = (key: string) => {
-    if (key === "xbrl") return;
-    setSelectedFormats((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
-
-  if (isLoading) {
+  if (meLoading || (canAccess && (readinessLoading || exportJobsLoading))) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
@@ -145,13 +228,37 @@ export default function ReportPage() {
     );
   }
 
-  if (error) {
+  if (accessDenied) {
     return (
       <div className="space-y-6">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Report &amp; Export</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Check readiness and export your report
+            Check readiness, preview exports, and publish reporting output.
+          </p>
+        </div>
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="flex items-start gap-3 p-6 text-red-700">
+            <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" />
+            <div>
+              <p className="font-semibold">Access denied</p>
+              <p className="mt-1 text-sm">
+                Only admin and ESG manager roles can access report readiness and export.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (readinessError || !readiness) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Report &amp; Export</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Check readiness, preview exports, and publish reporting output.
           </p>
         </div>
         <Card>
@@ -166,391 +273,252 @@ export default function ReportPage() {
     );
   }
 
-  const readiness = data ?? {
-    status: "blocking" as const,
-    completion_percentage: 0,
-    boundary: {
-      boundary_name: "No boundary",
-      boundary_id: null,
-      snapshot_locked: false,
-      entities_in_scope: 0,
-      manual_overrides: 0,
-    },
-    blocking_issues: [],
-    warnings: [],
-    exports: [],
-  };
-
-  const statusConfig = {
-    ready: {
-      icon: CheckCircle2,
-      label: "Ready to Publish",
-      color: "text-green-600",
-      bg: "bg-green-50 border-green-200",
-      badge: "default" as const,
-    },
-    warnings: {
-      icon: AlertTriangle,
-      label: "Warnings Present",
-      color: "text-amber-600",
-      bg: "bg-amber-50 border-amber-200",
-      badge: "warning" as const,
-    },
-    blocking: {
-      icon: XCircle,
-      label: "Blocking Issues",
-      color: "text-red-600",
-      bg: "bg-red-50 border-red-200",
-      badge: "destructive" as const,
-    },
-  };
-
-  const derivedStatus = readiness.ready ? "ready" : ((readiness.warnings ?? []).length > 0 && (readiness.blocking_issues ?? []).length === 0) ? "warnings" : "blocking";
-  const sc = statusConfig[derivedStatus as keyof typeof statusConfig] ?? statusConfig.blocking;
-  const StatusIcon = sc.icon;
-
-  const formatCards = [
-    {
-      key: "gri_pdf",
-      label: "GRI Content Index",
-      format: "PDF",
-      icon: FileText,
-      disabled: false,
-    },
-    {
-      key: "gri_excel",
-      label: "GRI Content Index",
-      format: "Excel",
-      icon: FileSpreadsheet,
-      disabled: false,
-    },
-    {
-      key: "full_pdf",
-      label: "Full Report",
-      format: "PDF",
-      icon: FileOutput,
-      disabled: false,
-    },
-    {
-      key: "data_excel",
-      label: "Data Export",
-      format: "Excel",
-      icon: FileSpreadsheet,
-      disabled: false,
-    },
-    {
-      key: "xbrl",
-      label: "XBRL",
-      format: "Coming Soon",
-      icon: Code,
-      disabled: true,
-    },
-  ];
+  const StatusIcon = statusTone.icon;
+  const completedExports = exportJobs?.items ?? [];
 
   return (
     <div className="space-y-6">
-      {/* Page header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Report &amp; Export</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Check readiness and export your report
+            Check readiness, preview exports, and publish reporting output.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            onClick={handleRunReadiness}
-            disabled={readinessCheck.isPending}
-          >
-            {readinessCheck.isPending ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="mr-2 h-4 w-4" />
-            )}
-            Run Readiness Check
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="outline" onClick={refreshAll}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh readiness
           </Button>
-          <Button
-            onClick={() => setPublishDialogOpen(true)}
-            disabled={derivedStatus !== "ready"}
-          >
+          <Button variant="outline" asChild disabled={!latestCompletedJob}>
+            <Link
+              href={
+                latestCompletedJob
+                  ? withQuery("/report/preview", { projectId, jobId: latestCompletedJob.id })
+                  : withQuery("/report/preview", { projectId })
+              }
+            >
+              <Eye className="mr-2 h-4 w-4" />
+              Preview latest
+            </Link>
+          </Button>
+          <Button onClick={() => setPublishDialogOpen(true)} disabled={!readiness.overall_ready}>
             <Send className="mr-2 h-4 w-4" />
             Publish Project
           </Button>
         </div>
       </div>
 
-      {/* Readiness Check Section */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Overall Status */}
-        <Card className={cn("border", sc.bg)}>
+      <div className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
+        <Card className={cn("border", statusTone.className)}>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2">
-              <StatusIcon className={cn("h-5 w-5", sc.color)} />
-              Overall Status
+              <StatusIcon className="h-5 w-5" />
+              Readiness Summary
             </CardTitle>
+            <CardDescription>
+              Overall state before export or publish.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center gap-3">
-              <Badge variant={sc.badge} className="text-sm">
-                {sc.label}
-              </Badge>
+            <div className="flex items-center justify-between">
+              <Badge variant={statusTone.badge}>{statusTone.label}</Badge>
+              <span className="text-2xl font-bold text-slate-900">
+                {Math.round(readiness.completion_percent)}%
+              </span>
             </div>
-            <div>
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-sm font-medium text-slate-700">Completion</span>
-                <span className="text-2xl font-bold text-slate-900">
-                  {Math.round((readiness.completion_percentage ?? readiness.completion_percent ?? 0))}%
-                </span>
-              </div>
-              <Progress
-                value={(readiness.completion_percentage ?? readiness.completion_percent ?? 0)}
-                className="h-3"
-                indicatorClassName={cn(
-                  (readiness.completion_percentage ?? readiness.completion_percent ?? 0) >= 80
-                    ? "bg-green-500"
-                    : (readiness.completion_percentage ?? readiness.completion_percent ?? 0) >= 50
-                      ? "bg-amber-500"
-                      : "bg-red-500"
-                )}
-              />
+            <Progress
+              value={readiness.completion_percent}
+              className="h-3"
+              indicatorClassName={cn(
+                readiness.completion_percent >= 80
+                  ? "bg-green-500"
+                  : readiness.completion_percent >= 50
+                    ? "bg-amber-500"
+                    : "bg-red-500"
+              )}
+            />
+            <div className="grid gap-3 sm:grid-cols-4">
+              <MetricCard label="Total" value={readiness.total_items} />
+              <MetricCard label="Complete" value={readiness.complete} />
+              <MetricCard label="Partial" value={readiness.partial} />
+              <MetricCard label="Missing" value={readiness.missing} />
             </div>
           </CardContent>
         </Card>
 
-        {/* Boundary Validation */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2">
               <Shield className="h-5 w-5 text-slate-600" />
               Boundary Validation
             </CardTitle>
+            <CardDescription>
+              Snapshot lock and scope checks for the active reporting boundary.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-500">Selected Boundary</span>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">
-                  {(readiness.boundary ?? {} as any).boundary_name}
-                </span>
-                <Badge variant="secondary">Active</Badge>
+            <BoundaryRow label="Selected Boundary" value={readiness.boundary_validation?.selected_boundary ?? "None"} />
+            <BoundaryRow
+              label="Snapshot Locked"
+              value={readiness.boundary_validation?.snapshot_locked ? "Locked" : "Not locked"}
+            />
+            <BoundaryRow
+              label="Entities in Scope"
+              value={String(readiness.boundary_validation?.entities_in_scope ?? 0)}
+            />
+            <BoundaryRow
+              label="Manual Overrides"
+              value={String(readiness.boundary_validation?.manual_overrides ?? 0)}
+            />
+            <BoundaryRow
+              label="Differs from Default"
+              value={readiness.boundary_validation?.boundary_differs_from_default ? "Yes" : "No"}
+            />
+            {(readiness.boundary_validation?.entities_without_data?.length ?? 0) > 0 && (
+              <div>
+                <p className="mb-1 text-xs font-medium text-slate-500">Entities Without Data</p>
+                <div className="flex flex-wrap gap-2">
+                  {readiness.boundary_validation!.entities_without_data.map((name) => (
+                    <Badge key={name} variant="secondary">
+                      {name}
+                    </Badge>
+                  ))}
+                </div>
               </div>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-500">Snapshot Locked</span>
-              {(readiness.boundary ?? {} as any).snapshot_locked ? (
-                <Badge variant="default">
-                  <CheckCircle2 className="mr-1 h-3 w-3" /> Locked
-                </Badge>
-              ) : (
-                <Badge variant="destructive">
-                  <XCircle className="mr-1 h-3 w-3" /> Not Locked
-                </Badge>
-              )}
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-500">Entities in Scope</span>
-              <span className="text-sm font-semibold">
-                {(readiness.boundary ?? {} as any).entities_in_scope}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-500">Manual Overrides</span>
-              <span className="text-sm font-semibold">
-                {(readiness.boundary ?? {} as any).manual_overrides}
-              </span>
-            </div>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Issues Lists */}
-      {(readiness.blocking_issues ?? []).length > 0 && (
-        <Card className="border-red-200">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-red-600">
-              <XCircle className="h-5 w-5" />
-              Blocking Issues ({(readiness.blocking_issues ?? []).length})
-            </CardTitle>
-            <CardDescription>
-              These must be resolved before publishing
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {(readiness.blocking_issues ?? []).map((issue) => (
-                <Link
-                  key={issue.id}
-                  href={issue.link}
-                  className="flex items-center gap-3 rounded-lg border border-red-100 bg-red-50 p-3 transition-colors hover:bg-red-100"
-                >
-                  <XCircle className="h-4 w-4 shrink-0 text-red-500" />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-red-800">
-                      {issue.message}
-                    </p>
-                    <p className="text-xs text-red-600">{issue.entity_type}</p>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+      {(readiness.blocking_issue_details.length > 0 || readiness.warning_details.length > 0) && (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <IssueList
+            title="Blocking Issues"
+            description="These must be cleared before publish."
+            icon={XCircle}
+            tone="red"
+            items={readiness.blocking_issue_details}
+          />
+          <IssueList
+            title="Warnings"
+            description="These do not block export but should be reviewed."
+            icon={AlertTriangle}
+            tone="amber"
+            items={readiness.warning_details}
+          />
+        </div>
       )}
 
-      {(readiness.warnings ?? []).length > 0 && (
-        <Card className="border-amber-200">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-amber-600">
-              <AlertTriangle className="h-5 w-5" />
-              Warnings ({(readiness.warnings ?? []).length})
-            </CardTitle>
-            <CardDescription>
-              These are recommended but not required
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {(readiness.warnings ?? []).map((warning) => (
-                <Link
-                  key={warning.id}
-                  href={warning.link}
-                  className="flex items-center gap-3 rounded-lg border border-amber-100 bg-amber-50 p-3 transition-colors hover:bg-amber-100"
-                >
-                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-amber-800">
-                      {warning.message}
-                    </p>
-                    <p className="text-xs text-amber-600">{warning.entity_type}</p>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Export Section */}
       <Card>
         <CardHeader>
-          <CardTitle>Export</CardTitle>
+          <CardTitle>Export Formats</CardTitle>
           <CardDescription>
-            Select formats and generate your reports
+            Queue report artifacts and open the preview screen for completed jobs.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Format Cards */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {formatCards.map((fc) => {
-              const Icon = fc.icon;
-              const checked = selectedFormats[fc.key] ?? false;
-              return (
-                <div
-                  key={fc.key}
-                  className={cn(
-                    "flex items-start gap-3 rounded-lg border p-4 transition-colors",
-                    fc.disabled
-                      ? "cursor-not-allowed border-slate-100 bg-slate-50 opacity-60"
-                      : checked
-                        ? "border-blue-200 bg-blue-50"
-                        : "cursor-pointer border-slate-200 hover:border-slate-300"
-                  )}
-                  onClick={() => toggleFormat(fc.key)}
-                >
-                  <Checkbox
-                    checked={checked}
-                    onCheckedChange={() => toggleFormat(fc.key)}
-                    disabled={fc.disabled}
-                  />
-                  <div className="flex-1">
+        <CardContent className="grid gap-4 lg:grid-cols-2">
+          {exportActions.map((action) => {
+            const Icon = action.icon;
+            const isRunning = activeExportKey === action.key;
+            return (
+              <div key={action.key} className="rounded-lg border border-slate-200 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
                     <div className="flex items-center gap-2">
                       <Icon className="h-4 w-4 text-slate-600" />
-                      <span className="text-sm font-medium">{fc.label}</span>
+                      <p className="font-medium text-slate-900">{action.label}</p>
                     </div>
-                    <p className="mt-1 text-xs text-slate-500">{fc.format}</p>
+                    <p className="mt-1 text-sm text-slate-500">{action.description}</p>
                   </div>
-                  {!fc.disabled && checked && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleExport(fc.key);
-                      }}
-                      disabled={exportMutation.isPending}
-                    >
-                      {exportMutation.isPending ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : (
-                        "Generate"
-                      )}
-                    </Button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Previously Generated Exports */}
-          {(readiness.exports ?? []).length > 0 && (
-            <div>
-              <h4 className="mb-3 text-sm font-medium text-slate-700">
-                Previously Generated Exports
-              </h4>
-              <div className="space-y-2">
-                {(readiness.exports ?? []).map((exp) => (
-                  <div
-                    key={exp.id}
-                    className="flex items-center justify-between rounded-lg border border-slate-200 p-3"
+                  <Button
+                    size="sm"
+                    onClick={() => queueExport(action.route, action.key)}
+                    disabled={!readiness.overall_ready || isRunning}
+                    aria-label={`Queue ${action.label}`}
                   >
-                    <div className="flex items-center gap-3">
-                      <FileText className="h-4 w-4 text-slate-400" />
-                      <div>
-                        <p className="text-sm font-medium">{exp.filename}</p>
-                        <p className="text-xs text-slate-500">
-                          {new Date(exp.created_at).toLocaleString()} &middot;{" "}
-                          {(exp.size_bytes / 1024).toFixed(1)} KB
-                        </p>
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => window.open(exp.download_url, "_blank")}
-                    >
-                      <Download className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
+                    {isRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : "Generate"}
+                  </Button>
+                </div>
               </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Export Jobs</CardTitle>
+          <CardDescription>
+            Latest queued, completed, and failed report artifacts.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {completedExports.length === 0 ? (
+            <p className="text-sm text-slate-500">No export jobs yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {completedExports.map((job) => (
+                <div
+                  key={job.id}
+                  className="flex flex-col gap-3 rounded-lg border border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between"
+                >
+                  <div>
+                    <p className="font-medium text-slate-900">
+                      {job.artifact_name ?? `${job.report_type}.${job.export_format}`}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {job.report_type} • {job.export_format.toUpperCase()} • created {formatTimestamp(job.created_at)}
+                    </p>
+                    {job.error_message && (
+                      <p className="mt-1 text-sm text-red-600">{job.error_message}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant={
+                        job.status === "completed"
+                          ? "success"
+                          : job.status === "failed" || job.status === "dead_letter"
+                            ? "destructive"
+                            : "secondary"
+                      }
+                    >
+                      {job.status}
+                    </Badge>
+                    <Button variant="outline" size="sm" asChild>
+                      <Link href={withQuery("/report/preview", { projectId, jobId: job.id })}>Preview</Link>
+                    </Button>
+                    {job.status === "completed" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => window.open(`/api/exports/${job.id}/artifact`, "_blank")}
+                      >
+                        Open artifact
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Publish Confirmation Dialog */}
       <Dialog open={publishDialogOpen} onOpenChange={setPublishDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Publish Project</DialogTitle>
             <DialogDescription>
-              Are you sure you want to publish this project? This will lock the
-              current reporting period and make the data available for external
-              stakeholders. This action cannot be undone.
+              Publishing locks the current reporting project and exposes the final reporting state.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="mt-4">
-            <Button
-              variant="outline"
-              onClick={() => setPublishDialogOpen(false)}
-            >
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPublishDialogOpen(false)}>
               Cancel
             </Button>
-            <Button
-              onClick={handlePublish}
-              disabled={publishMutation.isPending}
-            >
+            <Button onClick={handlePublish} disabled={publishMutation.isPending}>
               {publishMutation.isPending ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
@@ -562,5 +530,76 @@ export default function ReportPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function MetricCard({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+      <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="mt-1 text-lg font-semibold text-slate-900">{value}</p>
+    </div>
+  );
+}
+
+function BoundaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-sm text-slate-500">{label}</span>
+      <span className="text-sm font-medium text-slate-900">{value}</span>
+    </div>
+  );
+}
+
+function IssueList({
+  title,
+  description,
+  icon: Icon,
+  tone,
+  items,
+}: {
+  title: string;
+  description: string;
+  icon: typeof AlertTriangle;
+  tone: "red" | "amber";
+  items: ReadinessDetail[];
+}) {
+  if (items.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>{title}</CardTitle>
+          <CardDescription>{description}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-slate-500">No items.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const classes =
+    tone === "red"
+      ? "border-red-200 bg-red-50 text-red-700"
+      : "border-amber-200 bg-amber-50 text-amber-700";
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Icon className="h-5 w-5" />
+          {title}
+        </CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {items.map((item) => (
+          <div key={item.code} className={cn("rounded-lg border px-4 py-3", classes)}>
+            <p className="font-medium">{item.message}</p>
+            <p className="mt-1 text-sm">Code: {item.code} • Count: {item.count}</p>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }

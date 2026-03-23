@@ -15,6 +15,16 @@ class EntityCreate(BaseModel):
     valid_to: date | None = None
 
 
+class EntityUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=500)
+    code: str | None = None
+    country: str | None = None
+    jurisdiction: str | None = None
+    status: str | None = None
+    valid_from: date | None = None
+    valid_to: date | None = None
+
+
 class EntityOut(BaseModel):
     id: int
     organization_id: int

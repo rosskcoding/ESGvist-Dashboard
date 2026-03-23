@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Body, Depends, Query, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import RequestContext, get_current_context
+from app.core.exceptions import AppError
 from app.db.session import get_session
 from app.policies.auth_policy import AuthPolicy
 from app.repositories.project_repo import ProjectRepository
@@ -36,6 +37,10 @@ router = APIRouter(tags=["Projects"])
 
 class ProjectWorkflowAction(BaseModel):
     comment: str | None = None
+
+
+class ApplyBoundaryRequest(BaseModel):
+    boundary_id: int | None = None
 
 
 def _get_service(session: AsyncSession) -> ProjectService:
@@ -224,12 +229,16 @@ async def recalculate_boundary_memberships(
 @router.put("/api/projects/{project_id}/boundary", response_model=ProjectOut)
 async def apply_boundary(
     project_id: int,
-    boundary_id: int = Query(...),
+    boundary_id: int | None = Query(default=None),
+    payload: ApplyBoundaryRequest | None = Body(default=None),
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
     AuthPolicy.auditor_read_only(ctx)
-    return await _get_service(session).apply_boundary(project_id, boundary_id, ctx)
+    resolved_boundary_id = boundary_id if boundary_id is not None else payload.boundary_id if payload else None
+    if resolved_boundary_id is None:
+        raise AppError("BOUNDARY_ID_REQUIRED", 422, "boundary_id is required")
+    return await _get_service(session).apply_boundary(project_id, resolved_boundary_id, ctx)
 
 
 @router.get("/api/projects/{project_id}/boundary", response_model=ProjectBoundaryOut)

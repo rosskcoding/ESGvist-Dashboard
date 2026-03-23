@@ -11,6 +11,7 @@ from app.schemas.entities import (
     EntityCreate,
     EntityListOut,
     EntityOut,
+    EntityUpdate,
     OrgSetupRequest,
     OwnershipLinkCreate,
     OwnershipLinkOut,
@@ -55,6 +56,10 @@ class EntityService:
     def _require_write(self, ctx: RequestContext) -> None:
         if ctx.role not in ("admin", "esg_manager", "platform_admin"):
             raise AppError("FORBIDDEN", 403, "Only admin/esg_manager can manage entities")
+
+    def _require_read(self, ctx: RequestContext) -> None:
+        if ctx.role not in ("admin", "esg_manager", "platform_admin"):
+            raise AppError("FORBIDDEN", 403, "Only admin or ESG manager can view company structure")
 
     # --- Org Setup ---
     async def setup_organization(
@@ -138,6 +143,7 @@ class EntityService:
     async def list_entities(
         self, ctx: RequestContext, page: int = 1, page_size: int = 50
     ) -> EntityListOut:
+        self._require_read(ctx)
         if not ctx.organization_id:
             raise AppError("ORG_HEADER_REQUIRED", 400, "Organization context required")
         items, total = await self.repo.list_entities(ctx.organization_id, page, page_size)
@@ -156,6 +162,25 @@ class EntityService:
         await self._audit("CompanyEntity", "create_entity", ctx, entity_id=e.id,
                           changes=payload.model_dump())
         return EntityOut.model_validate(e)
+
+    async def update_entity(
+        self,
+        entity_id: int,
+        payload: EntityUpdate,
+        ctx: RequestContext,
+    ) -> EntityOut:
+        self._require_write(ctx)
+        if not ctx.organization_id:
+            raise AppError("ORG_HEADER_REQUIRED", 400, "Organization context required")
+
+        entity = await self.repo.get_or_raise(entity_id)
+        if entity.organization_id != ctx.organization_id and not ctx.is_platform_admin:
+            raise AppError("FORBIDDEN", 403, "Entity does not belong to this organization")
+
+        updates = payload.model_dump(exclude_unset=True)
+        updated = await self.repo.update_entity(entity_id, **updates)
+        await self._audit("CompanyEntity", "update_entity", ctx, entity_id=entity_id, changes=updates)
+        return EntityOut.model_validate(updated)
 
     # --- Ownership ---
     async def create_ownership(

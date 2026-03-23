@@ -1,5 +1,10 @@
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import update
+
+from app.db.models.boundary import BoundaryMembership
+from app.db.models.data_point import DataPoint
+from tests.conftest import TestSessionLocal
 
 
 @pytest.fixture
@@ -400,7 +405,7 @@ async def test_project_completeness_with_boundary_context(client: AsyncClient, c
         headers=ctx["headers"],
     )
     assert item_status.status_code == 200
-    assert item_status.json()["status"] == "partial"
+    assert item_status.json()["status"] == "complete"
 
     await client.get(
         f"/api/projects/{ctx['project_id']}/completeness/items/{ctx['item2_id']}",
@@ -428,3 +433,106 @@ async def test_project_completeness_with_boundary_context(client: AsyncClient, c
         "excluded_entities": 1,
         "missing_entity_names": ["Plant B"],
     }
+
+
+@pytest.mark.asyncio
+async def test_boundary_coverage_rule_blocks_item_without_full_boundary_coverage(client: AsyncClient, ctx: dict):
+    entity_a = await client.post(
+        "/api/entities",
+        json={"name": "Ops A", "entity_type": "legal_entity", "parent_entity_id": ctx["root_entity_id"]},
+        headers=ctx["headers"],
+    )
+    entity_b = await client.post(
+        "/api/entities",
+        json={"name": "Ops B", "entity_type": "legal_entity", "parent_entity_id": ctx["root_entity_id"]},
+        headers=ctx["headers"],
+    )
+    boundary = await client.post(
+        "/api/boundaries",
+        json={"name": "Boundary Coverage", "boundary_type": "operational_control"},
+        headers=ctx["headers"],
+    )
+    assert entity_a.status_code == 201
+    assert entity_b.status_code == 201
+    assert boundary.status_code == 201
+
+    async with TestSessionLocal() as session:
+        session.add_all(
+            [
+                BoundaryMembership(
+                    boundary_definition_id=boundary.json()["id"],
+                    entity_id=entity_a.json()["id"],
+                    included=True,
+                    inclusion_source="manual",
+                    consolidation_method="full",
+                ),
+                BoundaryMembership(
+                    boundary_definition_id=boundary.json()["id"],
+                    entity_id=entity_b.json()["id"],
+                    included=True,
+                    inclusion_source="manual",
+                    consolidation_method="full",
+                ),
+            ]
+        )
+        await session.commit()
+
+    scoped_item = await client.post(
+        f"/api/disclosures/{ctx['disclosure_id']}/items",
+        json={
+            "item_code": "BOUNDARY-COVERAGE",
+            "name": "Boundary Coverage Metric",
+            "item_type": "metric",
+            "value_type": "number",
+            "unit_code": "MWH",
+            "is_required": True,
+            "granularity_rule": {"boundary_coverage_required": True},
+            "sort_order": 30,
+        },
+        headers=ctx["headers"],
+    )
+    assert scoped_item.status_code == 201
+
+    applied = await client.put(
+        f"/api/projects/{ctx['project_id']}/boundary",
+        params={"boundary_id": boundary.json()["id"]},
+        headers=ctx["headers"],
+    )
+    assert applied.status_code == 200
+
+    snapshot = await client.post(
+        f"/api/projects/{ctx['project_id']}/boundary/snapshot",
+        headers=ctx["headers"],
+    )
+    assert snapshot.status_code == 200
+
+    scoped_dp = await client.post(
+        f"/api/projects/{ctx['project_id']}/data-points",
+        json={
+            "shared_element_id": ctx["element_id"],
+            "entity_id": entity_a.json()["id"],
+            "numeric_value": 999,
+        },
+        headers=ctx["headers"],
+    )
+    assert scoped_dp.status_code == 201
+
+    bind = await client.post(
+        f"/api/projects/{ctx['project_id']}/bindings",
+        json={"requirement_item_id": scoped_item.json()["id"], "data_point_id": scoped_dp.json()["id"]},
+        headers=ctx["headers"],
+    )
+    assert bind.status_code == 201
+
+    async with TestSessionLocal() as session:
+        await session.execute(
+            update(DataPoint).where(DataPoint.id == scoped_dp.json()["id"]).values(status="approved")
+        )
+        await session.commit()
+
+    item_status = await client.get(
+        f"/api/projects/{ctx['project_id']}/completeness/items/{scoped_item.json()['id']}",
+        headers=ctx["headers"],
+    )
+    assert item_status.status_code == 200
+    assert item_status.json()["status"] == "partial"

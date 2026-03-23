@@ -7,7 +7,7 @@ from app.core.assignment_sla import (
     assignment_matches_data_point,
     resolve_assignment_sla,
 )
-from app.core.access import get_project_for_ctx
+from app.core.access import get_project_for_ctx, get_user_assignments, user_has_project_assignment
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError, GateBlockedError
 from app.db.models.boundary import BoundaryMembership
@@ -636,10 +636,23 @@ class ProjectService:
         return await self._build_project_out(p)
 
     async def list_projects(self, ctx: RequestContext, page: int = 1, page_size: int = 20) -> ProjectListOut:
-        self._require_manager(ctx)
         if not ctx.organization_id:
             raise AppError("ORG_HEADER_REQUIRED", 400, "Organization context required")
         items, total = await self.repo.list_projects(ctx.organization_id, page, page_size)
+        if ctx.role == "collector":
+            items = [
+                project
+                for project in items
+                if await user_has_project_assignment(self.repo.session, project.id, ctx.user_id, "collector")
+            ]
+            total = len(items)
+        elif ctx.role == "reviewer":
+            items = [
+                project
+                for project in items
+                if await user_has_project_assignment(self.repo.session, project.id, ctx.user_id, "reviewer")
+            ]
+            total = len(items)
         return ProjectListOut(
             items=[await self._build_project_out(p) for p in items],
             total=total,
@@ -853,16 +866,30 @@ class ProjectService:
         return AssignmentOut.model_validate(a)
 
     async def list_assignments(self, project_id: int, ctx: RequestContext) -> AssignmentMatrixOut:
-        project = await get_project_for_ctx(self.repo.session, project_id, ctx)
-        items = await self.repo.list_assignments(project_id)
         if ctx.role == "collector":
-            items = [
-                assignment
-                for assignment in items
-                if assignment.collector_id == ctx.user_id or assignment.backup_collector_id == ctx.user_id
-            ]
-        elif ctx.role == "reviewer":
-            items = [assignment for assignment in items if assignment.reviewer_id == ctx.user_id]
+            project = await get_project_for_ctx(
+                self.repo.session,
+                project_id,
+                ctx,
+                allow_collectors=True,
+                allow_reviewers=False,
+            )
+            items = await get_user_assignments(
+                self.repo.session,
+                project_id,
+                ctx.user_id,
+                "collector",
+            )
+        else:
+            self._require_manager(ctx)
+            project = await get_project_for_ctx(
+                self.repo.session,
+                project_id,
+                ctx,
+                allow_collectors=False,
+                allow_reviewers=False,
+            )
+            items = await self.repo.list_assignments(project_id)
         return await self._build_assignment_matrix(
             project_id=project_id,
             project_org_id=project.organization_id,

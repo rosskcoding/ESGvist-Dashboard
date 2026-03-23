@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError
 from app.db.models.data_point import DataPoint, DataPointDimension
+from app.db.models.evidence import DataPointEvidence
 
 
 class DataPointRepository:
@@ -79,3 +80,11 @@ class DataPointRepository:
         self.session.add(dim)
         await self.session.flush()
         return dim
+
+    async def count_evidence_links(self, dp_id: int) -> int:
+        result = await self.session.execute(
+            select(func.count()).select_from(DataPointEvidence).where(
+                DataPointEvidence.data_point_id == dp_id
+            )
+        )
+        return result.scalar_one()

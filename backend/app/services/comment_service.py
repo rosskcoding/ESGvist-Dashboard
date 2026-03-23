@@ -5,6 +5,7 @@ from app.core.access import get_data_point_for_ctx
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError
 from app.db.models.comment import Comment
+from app.db.models.user import User
 from app.policies.auth_policy import AuthPolicy
 
 
@@ -44,12 +45,20 @@ class CommentService:
         result = await self.session.execute(q)
         comments = list(result.scalars().all())
 
+        user_ids = list({comment.user_id for comment in comments if comment.user_id is not None})
+        user_names: dict[int, str] = {}
+        if user_ids:
+            user_result = await self.session.execute(
+                select(User.id, User.full_name).where(User.id.in_(user_ids))
+            )
+            user_names = {user_id: full_name for user_id, full_name in user_result.all()}
+
         # Build threaded structure
         by_id: dict[int, dict] = {}
         roots: list[dict] = []
 
         for c in comments:
-            d = self._to_dict(c)
+            d = self._to_dict(c, user_names.get(c.user_id))
             d["replies"] = []
             by_id[c.id] = d
 
@@ -80,15 +89,19 @@ class CommentService:
         return {"id": c.id, "is_resolved": True}
 
     @staticmethod
-    def _to_dict(c: Comment) -> dict:
+    def _to_dict(c: Comment, author_name: str | None = None) -> dict:
         return {
             "id": c.id,
             "user_id": c.user_id,
+            "author_name": author_name,
             "body": c.body,
+            "content": c.body,
             "comment_type": c.comment_type,
+            "type": c.comment_type,
             "data_point_id": c.data_point_id,
             "requirement_item_id": c.requirement_item_id,
             "parent_comment_id": c.parent_comment_id,
+            "parent_id": c.parent_comment_id,
             "is_resolved": c.is_resolved,
             "created_at": c.created_at.isoformat() if c.created_at else None,
         }

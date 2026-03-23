@@ -1,331 +1,167 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { useParams } from "next/navigation";
-import { cn } from "@/lib/utils";
-import { useApiQuery, useApiMutation } from "@/lib/hooks/use-api";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useParams, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ArrowLeft, FileText, Loader2, Plus, ShieldAlert } from "lucide-react";
+
+import { useApiMutation, useApiQuery } from "@/lib/hooks/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Select } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import {
   Table,
-  TableHeader,
   TableBody,
-  TableRow,
-  TableHead,
   TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "@/components/ui/table";
-import {
-  Search,
-  Plus,
-  Pencil,
-  Loader2,
-  Filter,
-  ClipboardList,
-} from "lucide-react";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-type ItemType = "metric" | "attribute" | "narrative" | "document";
-type ValueType = "number" | "text" | "boolean" | "date" | "enum";
-
-interface RequirementItem {
+type Standard = {
   id: number;
-  standard_id: number;
   code: string;
   name: string;
-  description: string;
-  item_type: ItemType;
-  value_type: ValueType;
-  unit: string;
-  is_required: boolean;
-  requires_evidence: boolean;
-  validation_rules: string;
-  granularity_rules: string;
-  created_at: string;
-  updated_at: string;
-}
+  version: string | null;
+};
 
-interface RequirementFormData {
+type Disclosure = {
+  id: number;
   code: string;
+  title: string;
+  requirement_type: string;
+};
+
+type DisclosureListResponse = { items: Disclosure[]; total: number };
+
+type RequirementItem = {
+  id: number;
+  item_code: string | null;
   name: string;
-  description: string;
-  item_type: ItemType;
-  value_type: ValueType;
-  unit: string;
+  item_type: string;
+  value_type: string;
+  unit_code: string | null;
   is_required: boolean;
   requires_evidence: boolean;
-  validation_rules: string;
-  granularity_rules: string;
-}
-
-const EMPTY_FORM: RequirementFormData = {
-  code: "",
-  name: "",
-  description: "",
-  item_type: "metric",
-  value_type: "number",
-  unit: "",
-  is_required: false,
-  requires_evidence: false,
-  validation_rules: "{}",
-  granularity_rules: "{}",
 };
 
-const ITEM_TYPE_OPTIONS = [
-  { value: "metric", label: "Metric" },
-  { value: "attribute", label: "Attribute" },
-  { value: "narrative", label: "Narrative" },
-  { value: "document", label: "Document" },
-];
+type RequirementItemListResponse = { items: RequirementItem[]; total: number };
 
-const VALUE_TYPE_OPTIONS = [
-  { value: "number", label: "Number" },
-  { value: "text", label: "Text" },
-  { value: "boolean", label: "Boolean" },
-  { value: "date", label: "Date" },
-  { value: "enum", label: "Enum" },
-];
-
-const ITEM_TYPE_VARIANT: Record<ItemType, "default" | "secondary" | "warning" | "success"> = {
-  metric: "default",
-  attribute: "secondary",
-  narrative: "warning",
-  document: "success",
-};
-
-// ---------------------------------------------------------------------------
-// Edit / Add Dialog
-// ---------------------------------------------------------------------------
-
-function RequirementDialog({
+function AddRequirementItemDialog({
+  disclosureId,
   open,
   onOpenChange,
-  standardId,
-  item,
 }: {
+  disclosureId: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  standardId: string;
-  item: RequirementItem | null;
 }) {
   const queryClient = useQueryClient();
-  const isEdit = item !== null;
+  const [form, setForm] = useState({
+    item_code: "",
+    name: "",
+    item_type: "metric",
+    value_type: "number",
+    unit_code: "",
+    is_required: true,
+    requires_evidence: false,
+  });
 
-  const [form, setForm] = useState<RequirementFormData>(
-    item
-      ? {
-          code: item.code,
-          name: item.name,
-          description: item.description,
-          item_type: item.item_type,
-          value_type: item.value_type,
-          unit: item.unit,
-          is_required: item.is_required,
-          requires_evidence: item.requires_evidence,
-          validation_rules:
-            typeof item.validation_rules === "string"
-              ? item.validation_rules
-              : JSON.stringify(item.validation_rules, null, 2),
-          granularity_rules:
-            typeof item.granularity_rules === "string"
-              ? item.granularity_rules
-              : JSON.stringify(item.granularity_rules, null, 2),
-        }
-      : { ...EMPTY_FORM }
-  );
-
-  const createMutation = useApiMutation<RequirementItem, RequirementFormData>(
-    "/requirement-items",
-    "POST",
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: ["requirement-items", standardId],
-        });
-        onOpenChange(false);
-      },
-    }
-  );
-
-  const updateMutation = useApiMutation<RequirementItem, RequirementFormData>(
-    `/api/requirement-items/${item?.id}`,
-    "PUT",
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: ["requirement-items", standardId],
-        });
-        onOpenChange(false);
-      },
-    }
-  );
-
-  const mutation = isEdit ? updateMutation : createMutation;
-
-  function handleSave() {
-    const payload = {
-      ...form,
-      standard_id: Number(standardId),
-    } as RequirementFormData & { standard_id: number };
-    mutation.mutate(payload as unknown as RequirementFormData);
-  }
+  const mutation = useApiMutation(`/disclosures/${disclosureId}/items`, "POST", {
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["requirement-items", disclosureId] });
+      onOpenChange(false);
+      setForm({
+        item_code: "",
+        name: "",
+        item_type: "metric",
+        value_type: "number",
+        unit_code: "",
+        is_required: true,
+        requires_evidence: false,
+      });
+    },
+  });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent>
         <DialogHeader>
-          <DialogTitle>
-            {isEdit ? "Edit Requirement Item" : "Add Requirement Item"}
-          </DialogTitle>
-          <DialogDescription>
-            {isEdit
-              ? "Modify the requirement item configuration."
-              : "Define a new requirement item for this standard."}
-          </DialogDescription>
+          <DialogTitle>Add Requirement Item</DialogTitle>
+          <DialogDescription>Create a metric or narrative item inside the selected disclosure.</DialogDescription>
         </DialogHeader>
-
-        <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto pr-2">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-1.5">
-              <Label htmlFor="ri-code">Code</Label>
-              <Input
-                id="ri-code"
-                placeholder="e.g. E1-1.01"
-                value={form.code}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, code: e.target.value }))
-                }
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="ri-name">Name</Label>
-              <Input
-                id="ri-name"
-                placeholder="Requirement name"
-                value={form.name}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, name: e.target.value }))
-                }
-              />
-            </div>
-          </div>
-
+        <div className="grid gap-4 py-4">
           <div className="grid gap-1.5">
-            <Label htmlFor="ri-desc">Description</Label>
-            <Textarea
-              id="ri-desc"
-              placeholder="Describe what this requirement captures..."
-              value={form.description}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, description: e.target.value }))
-              }
-              rows={3}
+            <Label htmlFor="item-code">Item Code</Label>
+            <Input
+              id="item-code"
+              value={form.item_code}
+              onChange={(event) => setForm((current) => ({ ...current, item_code: event.target.value }))}
+              placeholder="e.g. ITEM-1"
             />
           </div>
-
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid gap-1.5">
+            <Label htmlFor="item-name">Name</Label>
+            <Input
+              id="item-name"
+              value={form.name}
+              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+              placeholder="Describe the requirement item"
+            />
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
             <Select
               label="Item Type"
               value={form.item_type}
-              onChange={(v) =>
-                setForm((f) => ({ ...f, item_type: v as ItemType }))
-              }
-              options={ITEM_TYPE_OPTIONS}
+              onChange={(value) => setForm((current) => ({ ...current, item_type: value }))}
+              options={[
+                { value: "metric", label: "Metric" },
+                { value: "attribute", label: "Attribute" },
+                { value: "narrative", label: "Narrative" },
+                { value: "document", label: "Document" },
+              ]}
             />
             <Select
               label="Value Type"
               value={form.value_type}
-              onChange={(v) =>
-                setForm((f) => ({ ...f, value_type: v as ValueType }))
-              }
-              options={VALUE_TYPE_OPTIONS}
-            />
-            <div className="grid gap-1.5">
-              <Label htmlFor="ri-unit">Unit</Label>
-              <Input
-                id="ri-unit"
-                placeholder="e.g. tCO2e, MWh"
-                value={form.unit}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, unit: e.target.value }))
-                }
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-8">
-            <Switch
-              checked={form.is_required}
-              onCheckedChange={(checked) =>
-                setForm((f) => ({ ...f, is_required: checked }))
-              }
-              label="Required"
-            />
-            <Switch
-              checked={form.requires_evidence}
-              onCheckedChange={(checked) =>
-                setForm((f) => ({ ...f, requires_evidence: checked }))
-              }
-              label="Requires Evidence"
+              onChange={(value) => setForm((current) => ({ ...current, value_type: value }))}
+              options={[
+                { value: "number", label: "Number" },
+                { value: "text", label: "Text" },
+                { value: "boolean", label: "Boolean" },
+                { value: "date", label: "Date" },
+              ]}
             />
           </div>
-
           <div className="grid gap-1.5">
-            <Label htmlFor="ri-validation">Validation Rules (JSON)</Label>
-            <Textarea
-              id="ri-validation"
-              className="font-mono text-xs"
-              value={form.validation_rules}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, validation_rules: e.target.value }))
-              }
-              rows={4}
-            />
-          </div>
-
-          <div className="grid gap-1.5">
-            <Label htmlFor="ri-granularity">Granularity Rules (JSON)</Label>
-            <Textarea
-              id="ri-granularity"
-              className="font-mono text-xs"
-              value={form.granularity_rules}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, granularity_rules: e.target.value }))
-              }
-              rows={4}
+            <Label htmlFor="item-unit">Unit Code</Label>
+            <Input
+              id="item-unit"
+              value={form.unit_code}
+              onChange={(event) => setForm((current) => ({ ...current, unit_code: event.target.value }))}
+              placeholder="e.g. tCO2e"
             />
           </div>
         </div>
-
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            onClick={handleSave}
-            disabled={mutation.isPending || !form.code || !form.name}
-          >
-            {mutation.isPending && (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            )}
-            {isEdit ? "Save Changes" : "Create Item"}
+          <Button onClick={() => mutation.mutate(form)} disabled={mutation.isPending || !form.name}>
+            {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Create Item
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -333,197 +169,189 @@ function RequirementDialog({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Main Page
-// ---------------------------------------------------------------------------
-
 export default function RequirementItemsPage() {
-  const params = useParams();
-  const standardId = params.id as string;
-
-  const [search, setSearch] = useState("");
-  const [filterType, setFilterType] = useState<string>("all");
-  const [filterRequired, setFilterRequired] = useState<string>("all");
+  const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
+  const standardId = Number(params.id);
+  const initialDisclosureId = searchParams.get("disclosureId");
+  const [selectedDisclosureId, setSelectedDisclosureId] = useState<number | null>(
+    initialDisclosureId ? Number(initialDisclosureId) : null
+  );
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editItem, setEditItem] = useState<RequirementItem | null>(null);
 
-  const { data: items, isLoading } = useApiQuery<RequirementItem[]>(
-    ["requirement-items", standardId],
-    `/api/requirement-items?standard_id=${standardId}`
+  const { data: me, isLoading: meLoading } = useApiQuery<{
+    roles: Array<{ role: string }>;
+  }>(["auth-me", "requirement-items"], "/auth/me");
+
+  const role = me?.roles?.[0]?.role ?? "";
+  const canAccess = role === "admin" || role === "platform_admin";
+  const accessDenied = Boolean(role) && !canAccess;
+
+  const { data: standard, isLoading: standardLoading } = useApiQuery<Standard>(
+    ["standard", standardId],
+    `/standards/${standardId}`,
+    { enabled: canAccess && Boolean(standardId) }
   );
 
-  const filtered = useMemo(() => {
-    if (!items) return [];
-    let result = items;
-    if (search) {
-      const q = search.toLowerCase();
-      result = result.filter(
-        (i) =>
-          i.code.toLowerCase().includes(q) ||
-          i.name.toLowerCase().includes(q)
-      );
-    }
-    if (filterType !== "all") {
-      result = result.filter((i) => i.item_type === filterType);
-    }
-    if (filterRequired === "required") {
-      result = result.filter((i) => i.is_required);
-    } else if (filterRequired === "optional") {
-      result = result.filter((i) => !i.is_required);
-    }
-    return result;
-  }, [items, search, filterType, filterRequired]);
+  const { data: disclosuresData, isLoading: disclosuresLoading } = useApiQuery<DisclosureListResponse>(
+    ["standard-disclosures", standardId, "requirements"],
+    `/standards/${standardId}/disclosures?page_size=100`,
+    { enabled: canAccess && Boolean(standardId) }
+  );
+  const disclosures = disclosuresData?.items ?? [];
 
-  function openEdit(item: RequirementItem) {
-    setEditItem(item);
-    setDialogOpen(true);
+  useEffect(() => {
+    if (!selectedDisclosureId && disclosures.length > 0) {
+      setSelectedDisclosureId(disclosures[0].id);
+    }
+  }, [selectedDisclosureId, disclosures]);
+
+  const selectedDisclosure = useMemo(
+    () => disclosures.find((disclosure) => disclosure.id === selectedDisclosureId) ?? null,
+    [disclosures, selectedDisclosureId]
+  );
+
+  const { data: itemsData, isLoading: itemsLoading } = useApiQuery<RequirementItemListResponse>(
+    ["requirement-items", selectedDisclosureId],
+    selectedDisclosureId ? `/disclosures/${selectedDisclosureId}/items?page_size=100` : "/disclosures/0/items",
+    { enabled: canAccess && Boolean(selectedDisclosureId) }
+  );
+  const items = itemsData?.items ?? [];
+
+  if (meLoading || (canAccess && (standardLoading || disclosuresLoading))) {
+    return (
+      <div className="flex min-h-[400px] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+      </div>
+    );
   }
 
-  function openAdd() {
-    setEditItem(null);
-    setDialogOpen(true);
+  if (accessDenied) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Requirement Items</h2>
+          <p className="mt-1 text-sm text-slate-500">Configure item-level metrics and narratives inside a disclosure.</p>
+        </div>
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="flex items-start gap-3 p-6 text-red-700">
+            <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" />
+            <div>
+              <p className="font-semibold">Access denied</p>
+              <p className="mt-1 text-sm">Only admin and platform admin roles can configure requirement items.</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Requirement Items</h1>
-          <p className="text-sm text-slate-500">
-            Configure requirement items for standard #{standardId}
+          <h2 className="text-2xl font-bold text-slate-900">Requirement Items</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            {standard ? `${standard.name} (${standard.code})` : "Configure requirement items for this standard."}
           </p>
         </div>
-        <Button onClick={openAdd}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Requirement Item
+        <Button variant="outline" asChild>
+          <Link href="/settings/standards">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to standards
+          </Link>
         </Button>
       </div>
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="flex items-center gap-4 py-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-            <Input
-              placeholder="Search by code or name..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-          <Select
-            value={filterType}
-            onChange={setFilterType}
-            options={[
-              { value: "all", label: "All Types" },
-              ...ITEM_TYPE_OPTIONS,
-            ]}
-          />
-          <Select
-            value={filterRequired}
-            onChange={setFilterRequired}
-            options={[
-              { value: "all", label: "All" },
-              { value: "required", label: "Required" },
-              { value: "optional", label: "Optional" },
-            ]}
-          />
-        </CardContent>
-      </Card>
+      <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle>Disclosures</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {disclosures.map((disclosure) => (
+              <button
+                key={disclosure.id}
+                type="button"
+                className={
+                  selectedDisclosureId === disclosure.id
+                    ? "w-full rounded-lg border border-slate-900 bg-slate-50 px-3 py-3 text-left"
+                    : "w-full rounded-lg border border-slate-200 px-3 py-3 text-left hover:bg-slate-50"
+                }
+                onClick={() => setSelectedDisclosureId(disclosure.id)}
+              >
+                <p className="font-mono text-xs font-semibold text-slate-600">{disclosure.code}</p>
+                <p className="mt-1 font-medium text-slate-900">{disclosure.title}</p>
+                <Badge variant="secondary" className="mt-2">
+                  {disclosure.requirement_type}
+                </Badge>
+              </button>
+            ))}
+          </CardContent>
+        </Card>
 
-      {/* Table */}
-      <Card>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-slate-500" />
+                {selectedDisclosure?.title ?? "Requirement Items"}
+              </CardTitle>
+              {selectedDisclosure && (
+                <p className="mt-1 text-sm text-slate-500">{selectedDisclosure.code}</p>
+              )}
             </div>
-          ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-              <ClipboardList className="mb-3 h-10 w-10" />
-              <p className="font-medium">No requirement items found</p>
-              <p className="text-sm">
-                {items?.length
-                  ? "Try adjusting your filters."
-                  : "Add your first requirement item to get started."}
-              </p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Code</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Value Type</TableHead>
-                  <TableHead>Unit</TableHead>
-                  <TableHead>Required</TableHead>
-                  <TableHead>Evidence</TableHead>
-                  <TableHead className="w-[60px]">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((item) => (
-                  <TableRow
-                    key={item.id}
-                    className="cursor-pointer"
-                    onClick={() => openEdit(item)}
-                  >
-                    <TableCell className="font-mono text-xs font-semibold">
-                      {item.code}
-                    </TableCell>
-                    <TableCell>{item.name}</TableCell>
-                    <TableCell>
-                      <Badge variant={ITEM_TYPE_VARIANT[item.item_type]}>
-                        {item.item_type}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{item.value_type}</Badge>
-                    </TableCell>
-                    <TableCell className="text-slate-500">
-                      {item.unit || "--"}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={item.is_required ? "destructive" : "secondary"}
-                      >
-                        {item.is_required ? "required" : "optional"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {item.requires_evidence ? (
-                        <Badge variant="warning">yes</Badge>
-                      ) : (
-                        <span className="text-sm text-slate-400">no</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openEdit(item);
-                        }}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                    </TableCell>
+            {selectedDisclosure && (
+              <Button size="sm" onClick={() => setDialogOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Item
+              </Button>
+            )}
+          </CardHeader>
+          <CardContent>
+            {itemsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+              </div>
+            ) : items.length === 0 ? (
+              <p className="text-sm text-slate-500">No requirement items yet.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Item Code</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Item Type</TableHead>
+                    <TableHead>Value Type</TableHead>
+                    <TableHead>Evidence</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+                </TableHeader>
+                <TableBody>
+                  {items.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell className="font-mono text-xs">{item.item_code ?? "-"}</TableCell>
+                      <TableCell>{item.name}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">{item.item_type}</Badge>
+                      </TableCell>
+                      <TableCell>{item.value_type}</TableCell>
+                      <TableCell>{item.requires_evidence ? "Required" : "Optional"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
-      <RequirementDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        standardId={standardId}
-        item={editItem}
-      />
+      {selectedDisclosure && (
+        <AddRequirementItemDialog
+          disclosureId={selectedDisclosure.id}
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+        />
+      )}
     </div>
   );
 }

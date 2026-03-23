@@ -167,7 +167,7 @@ export default function ProjectSettingsPage() {
 
   const { data: availableStandards } = useApiQuery<{
     items: AvailableStandard[];
-  }>(["available-standards"], "/standards");
+  }>(["available-standards"], "/standards?page_size=100");
 
   const { data: teamData } = useApiQuery<{ items: AssignmentSummary[] }>(
     ["project-team", projectId],

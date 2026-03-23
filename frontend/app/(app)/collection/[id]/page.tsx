@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -13,8 +13,10 @@ import {
   FileText,
   Info,
   Loader2,
+  ShieldAlert,
 } from "lucide-react";
 import { useApiQuery, useApiMutation } from "@/lib/hooks/use-api";
+import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,26 +26,30 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 /* ---------- Types ---------- */
 
 interface DataPointDetail {
-  id: string;
+  id: number;
+  status: string;
   element_code: string;
   element_name: string;
   element_type: "numeric" | "text" | "boolean";
-  entity_name: string;
-  facility_name: string;
+  numeric_value?: number | null;
+  text_value?: string | null;
+  unit_code?: string | null;
+  methodology?: string | null;
+  entity_name?: string | null;
+  facility_name?: string | null;
   boundary_status: string;
   consolidation_method: string;
-  standards: { code: string; name: string }[];
+  related_standards: { code: string; name: string }[];
   evidence_required: boolean;
+  evidence_count: number;
   dimensions: { scope?: boolean; gas_type?: boolean; category?: boolean };
-  previous_value?: string;
-  previous_unit?: string;
   unit_options: string[];
   methodology_options: string[];
 }
 
 interface GateCheckResult {
-  passed: boolean;
-  blockers: { message: string; code: string }[];
+  allowed: boolean;
+  failedGates: { message: string; code: string }[];
   warnings: { message: string; code: string }[];
 }
 
@@ -104,6 +110,11 @@ export default function DataEntryWizardPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const unitSelectId = useId();
+  const methodologySelectId = useId();
+  const scopeSelectId = useId();
+  const gasTypeSelectId = useId();
+  const categoryInputId = useId();
 
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormData>({
@@ -121,12 +132,19 @@ export default function DataEntryWizardPage() {
   >({});
   const [gateResult, setGateResult] = useState<GateCheckResult | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadedEvidenceIds, setUploadedEvidenceIds] = useState<number[]>([]);
 
   /* Fetch data point detail */
-  const { data: dp, isLoading } = useApiQuery<DataPointDetail>(
+  const { data: dp, isLoading, error } = useApiQuery<DataPointDetail>(
     ["data-point", id],
-    `/api/data-points/${id}`
+    `/data-points/${id}`
   );
+
+  const { data: me } = useApiQuery<{
+    roles: Array<{ role: string }>;
+  }>(["auth-me", "collection-detail"], "/auth/me");
 
   /* Gate check mutation */
   const gateCheck = useApiMutation<GateCheckResult>(
@@ -135,11 +153,6 @@ export default function DataEntryWizardPage() {
   );
 
   /* Submit mutation */
-  const submitMutation = useApiMutation(
-    `/api/data-points/${id}`,
-    "PATCH"
-  );
-
   const updateField = useCallback(
     <K extends keyof FormData>(field: K, value: FormData[K]) => {
       setForm((prev) => ({ ...prev, [field]: value }));
@@ -151,6 +164,19 @@ export default function DataEntryWizardPage() {
     },
     []
   );
+
+  useEffect(() => {
+    if (!dp) return;
+    setForm((prev) => ({
+      ...prev,
+      value:
+        dp.element_type === "numeric"
+          ? (dp.numeric_value ?? "").toString()
+          : (dp.text_value ?? ""),
+      unit: dp.unit_code ?? prev.unit ?? "",
+      methodology: dp.methodology ?? prev.methodology ?? "",
+    }));
+  }, [dp]);
 
   /* Drag-drop handlers */
   const [dragOver, setDragOver] = useState(false);
@@ -177,13 +203,62 @@ export default function DataEntryWizardPage() {
 
   const removeFile = useCallback(
     (index: number) => {
+      if (uploadedEvidenceIds.length > 0) return;
       updateField(
         "files",
         form.files.filter((_, i) => i !== index)
       );
     },
-    [form.files, updateField]
+    [form.files, updateField, uploadedEvidenceIds.length]
   );
+
+  const uploadSelectedEvidence = useCallback(async () => {
+    if (!dp || form.files.length === 0 || uploadedEvidenceIds.length > 0) {
+      return;
+    }
+    const createdIds: number[] = [];
+    for (const file of form.files) {
+      const evidence = await api.post<{ id: number }>("/evidences", {
+        type: "file",
+        title: file.name,
+        description: `Uploaded from collection wizard for ${dp.element_name}`,
+        source_type: "manual",
+        file_name: file.name,
+        file_uri: `file:///uploads/${encodeURIComponent(file.name)}`,
+        mime_type: file.type || "application/pdf",
+        file_size: file.size,
+      });
+      await api.post(`/data-points/${id}/evidences`, {
+        evidence_id: evidence.id,
+      });
+      createdIds.push(evidence.id);
+    }
+    setUploadedEvidenceIds(createdIds);
+  }, [dp, form.files, id, uploadedEvidenceIds.length]);
+
+  const persistDraftFields = useCallback(async () => {
+    if (!dp) return;
+
+    const dimensions = [
+      dp.dimensions.scope && form.scope
+        ? { dimension_type: "scope", dimension_value: form.scope }
+        : null,
+      dp.dimensions.gas_type && form.gas_type
+        ? { dimension_type: "gas_type", dimension_value: form.gas_type }
+        : null,
+      dp.dimensions.category && form.category
+        ? { dimension_type: "category", dimension_value: form.category }
+        : null,
+    ].filter(Boolean);
+
+    await api.patch(`/data-points/${id}`, {
+      numeric_value: dp.element_type === "numeric" ? Number(form.value) : undefined,
+      text_value: dp.element_type === "numeric" ? undefined : form.value,
+      unit_code: form.unit || undefined,
+      methodology: form.methodology || undefined,
+      dimensions,
+    });
+  }, [dp, form.category, form.gas_type, form.methodology, form.scope, form.unit, form.value, id]);
 
   /* Validate step 2 */
   const validateDataEntry = (): boolean => {
@@ -201,7 +276,7 @@ export default function DataEntryWizardPage() {
     if (!form.methodology) {
       errors.methodology = "Methodology is required";
     }
-    if (dp?.evidence_required && form.files.length === 0) {
+    if (dp?.evidence_required && form.files.length === 0 && (dp.evidence_count ?? 0) === 0) {
       errors.files = "Evidence is required for this data point";
     }
 
@@ -218,18 +293,17 @@ export default function DataEntryWizardPage() {
     if (step === 2 && !gateResult) {
       // Run gate check
       try {
+        await persistDraftFields();
+        await uploadSelectedEvidence();
         const result = await gateCheck.mutateAsync({
           action: "submit_data_point",
-          data_point_id: id,
-          value: form.value,
-          unit: form.unit,
-          methodology: form.methodology,
+          data_point_id: Number(id),
         });
         setGateResult(result);
       } catch {
         setGateResult({
-          passed: false,
-          blockers: [
+          allowed: false,
+          failedGates: [
             {
               message: "Gate check could not be completed",
               code: "GATE_CHECK_ERROR",
@@ -253,25 +327,34 @@ export default function DataEntryWizardPage() {
     }
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = useCallback(async () => {
+    if (!dp) return;
     try {
-      await submitMutation.mutateAsync({
-        status: "submitted",
-        value: form.value,
-        unit: form.unit,
-        methodology: form.methodology,
-        narrative: form.narrative,
-        scope: form.scope || undefined,
-        gas_type: form.gas_type || undefined,
-        category: form.category || undefined,
-      });
+      setSubmitError(null);
+      setIsSubmitting(true);
+      await persistDraftFields();
+      await uploadSelectedEvidence();
+
+      await api.post(`/data-points/${id}/submit`);
       setSubmitted(true);
-    } catch {
-      // Error handled by mutation state
+    } catch (submitErr) {
+      setSubmitError(
+        submitErr instanceof Error
+          ? submitErr.message
+          : "Submission failed. Please try again."
+      );
+    } finally {
+      setIsSubmitting(false);
     }
-  };
+  }, [dp, id, persistDraftFields, uploadSelectedEvidence]);
 
   /* ---------- Loading / Not found ---------- */
+
+  const userRoles = me?.roles?.map((binding) => binding.role) ?? [];
+  const accessDenied =
+    userRoles.length > 0 &&
+    !userRoles.some((role) => ["collector", "esg_manager", "admin", "platform_admin"].includes(role));
+  const isEditable = !!dp && ["draft", "needs_revision", "rejected"].includes(dp.status);
 
   if (isLoading) {
     return (
@@ -279,6 +362,33 @@ export default function DataEntryWizardPage() {
         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
         Loading data point...
       </div>
+    );
+  }
+
+  if (accessDenied) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center py-12">
+          <ShieldAlert className="mb-3 h-10 w-10 text-red-500" />
+          <p className="text-sm font-medium text-slate-900">Access denied</p>
+          <p className="mt-1 text-sm text-slate-500">
+            Only collectors and ESG managers can edit collection entries.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center py-12">
+          <AlertTriangle className="mb-3 h-10 w-10 text-amber-500" />
+          <p className="text-sm text-slate-500">
+            Unable to load this data point. Please try again later.
+          </p>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -312,6 +422,13 @@ export default function DataEntryWizardPage() {
 
       {/* Step indicator */}
       <StepIndicator current={step} />
+
+      {!isEditable && (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          This data point is read-only while it is in the <span className="font-medium">{dp.status}</span> status.
+        </div>
+      )}
 
       {/* ---------- Step 0: Context ---------- */}
       {step === 0 && (
@@ -375,9 +492,9 @@ export default function DataEntryWizardPage() {
                 Required by Standards
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
-                {(dp.standards ?? []).map((s) => (
+                {(dp.related_standards ?? []).map((s) => (
                   <Badge key={s.code} variant="secondary">
-                    {s.code} &mdash; {s.name}
+                    {s.code} - {s.name}
                   </Badge>
                 ))}
               </div>
@@ -417,10 +534,11 @@ export default function DataEntryWizardPage() {
 
             {/* Unit selector */}
             <div className="grid gap-1.5">
-              <label className="text-sm font-medium text-slate-700">
+              <label htmlFor={unitSelectId} className="text-sm font-medium text-slate-700">
                 Unit
               </label>
               <select
+                id={unitSelectId}
                 value={form.unit}
                 onChange={(e) => updateField("unit", e.target.value)}
                 className={cn(
@@ -444,10 +562,11 @@ export default function DataEntryWizardPage() {
 
             {/* Methodology */}
             <div className="grid gap-1.5">
-              <label className="text-sm font-medium text-slate-700">
+              <label htmlFor={methodologySelectId} className="text-sm font-medium text-slate-700">
                 Methodology
               </label>
               <select
+                id={methodologySelectId}
                 value={form.methodology}
                 onChange={(e) => updateField("methodology", e.target.value)}
                 className={cn(
@@ -496,10 +615,11 @@ export default function DataEntryWizardPage() {
                 <div className="grid grid-cols-3 gap-4">
                   {dp.dimensions.scope && (
                     <div className="grid gap-1.5">
-                      <label className="text-sm font-medium text-slate-700">
+                      <label htmlFor={scopeSelectId} className="text-sm font-medium text-slate-700">
                         Scope
                       </label>
                       <select
+                        id={scopeSelectId}
                         value={form.scope}
                         onChange={(e) => updateField("scope", e.target.value)}
                         className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-950"
@@ -513,10 +633,11 @@ export default function DataEntryWizardPage() {
                   )}
                   {dp.dimensions.gas_type && (
                     <div className="grid gap-1.5">
-                      <label className="text-sm font-medium text-slate-700">
+                      <label htmlFor={gasTypeSelectId} className="text-sm font-medium text-slate-700">
                         Gas Type
                       </label>
                       <select
+                        id={gasTypeSelectId}
                         value={form.gas_type}
                         onChange={(e) =>
                           updateField("gas_type", e.target.value)
@@ -536,10 +657,11 @@ export default function DataEntryWizardPage() {
                   )}
                   {dp.dimensions.category && (
                     <div className="grid gap-1.5">
-                      <label className="text-sm font-medium text-slate-700">
+                      <label htmlFor={categoryInputId} className="text-sm font-medium text-slate-700">
                         Category
                       </label>
                       <Input
+                        id={categoryInputId}
                         value={form.category}
                         onChange={(e) =>
                           updateField("category", e.target.value)
@@ -697,7 +819,7 @@ export default function DataEntryWizardPage() {
                   Gate Check Results
                 </h4>
 
-                {gateResult.blockers.length === 0 &&
+                {gateResult.failedGates.length === 0 &&
                   gateResult.warnings.length === 0 && (
                     <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
                       <CheckCircle2 className="h-4 w-4 shrink-0" />
@@ -705,7 +827,7 @@ export default function DataEntryWizardPage() {
                     </div>
                   )}
 
-                {gateResult.blockers.map((b, i) => (
+                {gateResult.failedGates.map((b, i) => (
                   <div
                     key={i}
                     className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
@@ -772,19 +894,19 @@ export default function DataEntryWizardPage() {
                   . This will move the data point into review.
                 </p>
 
-                {submitMutation.isError && (
+                {submitError && (
                   <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
                     <XCircle className="h-4 w-4 shrink-0" />
-                    Submission failed. Please try again.
+                    {submitError}
                   </div>
                 )}
 
                 <Button
                   onClick={handleSubmit}
-                  disabled={submitMutation.isPending}
+                  disabled={isSubmitting || !isEditable}
                   className="w-full"
                 >
-                  {submitMutation.isPending ? (
+                  {isSubmitting ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
                       Submitting...
@@ -818,10 +940,11 @@ export default function DataEntryWizardPage() {
             <Button
               onClick={goNext}
               disabled={
+                !isEditable ||
                 (step === 2 && gateCheck.isPending) ||
                 (step === 2 &&
                   gateResult !== null &&
-                  gateResult.blockers.length > 0)
+                  gateResult.failedGates.length > 0)
               }
             >
               {step === 2 && !gateResult ? (

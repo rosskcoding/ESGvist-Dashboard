@@ -1,0 +1,26 @@
+# Screen Regression Summary
+
+- Date: 2026-03-23
+- Environment:
+  - Web: http://localhost:3002
+  - API: http://127.0.0.1:8002/api
+- Demo accounts:
+  - admin@esgvist.com / Test1234
+  - manager@greentech.com / Test1234
+  - collector1@greentech.com / Test1234
+  - collector2@greentech.com / Test1234
+  - reviewer@greentech.com / Test1234
+  - auditor@greentech.com / Test1234
+- Command:
+  - `cd frontend && ./node_modules/.bin/playwright test -c playwright.screen-regression.config.ts --reporter=line`
+- Result:
+  - `127 passed`
+- Notes:
+  - Final hardening fixes in this cycle covered rule-driven completeness, report preview routing, and visibility of freshly created objects on `Standards` and `Projects` pages.
+  - `frontend/app/(app)/settings/standards/page.tsx` now fetches `page_size=100`.
+  - `frontend/app/(app)/projects/page.tsx` now fetches `page_size=100`.
+  - Runtime frontend was synced to `/private/tmp/esgdashboard-demo-frontend` for the live demo instance.
+  - Backend demo API is running on port `8002` from the updated code.
+- Artifacts:
+  - Raw Playwright outputs: `artifacts/screens/regression/test-results`
+  - Failure traces from earlier intermediate runs remain in sibling per-screen artifact folders.

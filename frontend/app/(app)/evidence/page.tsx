@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
+import { api } from "@/lib/api";
 import {
   Card,
   CardContent,
@@ -44,6 +45,7 @@ import {
   FileUp,
   Search,
   ExternalLink,
+  ShieldAlert,
 } from "lucide-react";
 
 // ---------- Types ----------
@@ -64,13 +66,14 @@ interface EvidenceItem {
   id: number;
   type: "file" | "link";
   title: string;
-  description: string;
+  description: string | null;
   url?: string;
   file_name?: string;
   file_size?: number;
   mime_type?: string;
   upload_date: string;
-  created_by: string;
+  created_by?: number | null;
+  created_by_name?: string | null;
   binding_status: "bound" | "unbound";
   linked_data_points: LinkedDataPoint[];
   linked_requirement_items: LinkedRequirement[];
@@ -100,7 +103,6 @@ function formatDate(dateStr: string): string {
 // ---------- Component ----------
 
 export default function EvidencePage() {
-  const [organizationId] = useState(1);
   const [typeFilter, setTypeFilter] = useState("");
   const [bindingFilter, setBindingFilter] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -111,25 +113,31 @@ export default function EvidencePage() {
   const [linkUrl, setLinkUrl] = useState("");
   const [linkDescription, setLinkDescription] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const { data: me } = useApiQuery<{
+    roles: Array<{ role: string }>;
+  }>(["auth-me", "evidence"], "/auth/me");
 
   const { data, isLoading, error, refetch } = useApiQuery<EvidenceResponse>(
-    ["evidence", organizationId],
-    `/evidences?organization_id=${organizationId}`
+    ["evidence"],
+    "/evidences"
   );
 
-  const deleteMutation = useApiMutation<void, void>(
-    deleteTarget ? `/evidences/${deleteTarget.id}` : "/evidences",
-    "DELETE",
+  const uploadMutation = useApiMutation<
+    EvidenceItem,
     {
-      onSuccess: () => {
-        setDeleteTarget(null);
-        refetch();
-      },
+      type: "file";
+      title: string;
+      description: string;
+      source_type: "manual";
+      file_name: string;
+      file_uri: string;
+      mime_type: string;
+      file_size: number;
     }
-  );
-
-  const uploadMutation = useApiMutation<EvidenceItem, FormData>(
-    `/evidences?organization_id=${organizationId}`,
+  >(
+    "/evidences",
     "POST",
     {
       onSuccess: () => {
@@ -141,7 +149,7 @@ export default function EvidencePage() {
   const addLinkMutation = useApiMutation<
     EvidenceItem,
     { title: string; url: string; description: string; type: "link" }
-  >(`/evidences?organization_id=${organizationId}`, "POST", {
+  >("/evidences", "POST", {
     onSuccess: () => {
       setAddLinkOpen(false);
       setLinkTitle("");
@@ -152,6 +160,11 @@ export default function EvidencePage() {
   });
 
   const items = data?.items ?? [];
+  const role = me?.roles?.[0]?.role ?? "";
+  const canManageEvidence = !["auditor", "reviewer"].includes(role);
+  const accessDenied =
+    ((error as Error & { code?: string } | null)?.code === "FORBIDDEN") ||
+    /not allowed|access denied|forbidden/i.test((error as Error | null)?.message || "");
 
   const filteredItems = useMemo(() => {
     let result = items;
@@ -169,7 +182,7 @@ export default function EvidencePage() {
       result = result.filter(
         (i) =>
           i.title.toLowerCase().includes(q) ||
-          i.description.toLowerCase().includes(q) ||
+          (i.description ?? "").toLowerCase().includes(q) ||
           (i.file_name && i.file_name.toLowerCase().includes(q))
       );
     }
@@ -190,35 +203,59 @@ export default function EvidencePage() {
     (e: React.DragEvent) => {
       e.preventDefault();
       setIsDragOver(false);
+      if (!canManageEvidence) return;
       const files = e.dataTransfer.files;
       if (files.length > 0) {
         for (let i = 0; i < files.length; i++) {
-          const formData = new FormData();
-          formData.append("file", files[i]);
-          formData.append("title", files[i].name);
-          formData.append("type", "file");
-          uploadMutation.mutate(formData);
+          uploadMutation.mutate({
+            type: "file",
+            title: files[i].name,
+            description: `Uploaded from evidence repository`,
+            source_type: "manual",
+            file_name: files[i].name,
+            file_uri: `file:///uploads/${encodeURIComponent(files[i].name)}`,
+            mime_type: files[i].type || "application/pdf",
+            file_size: files[i].size,
+          });
         }
       }
     },
-    [uploadMutation]
+    [canManageEvidence, uploadMutation]
   );
 
   const handleFileInput = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
       if (!files) return;
+      if (!canManageEvidence) return;
       for (let i = 0; i < files.length; i++) {
-        const formData = new FormData();
-        formData.append("file", files[i]);
-        formData.append("title", files[i].name);
-        formData.append("type", "file");
-        uploadMutation.mutate(formData);
+        uploadMutation.mutate({
+          type: "file",
+          title: files[i].name,
+          description: `Uploaded from evidence repository`,
+          source_type: "manual",
+          file_name: files[i].name,
+          file_uri: `file:///uploads/${encodeURIComponent(files[i].name)}`,
+          mime_type: files[i].type || "application/pdf",
+          file_size: files[i].size,
+        });
       }
       e.target.value = "";
     },
-    [uploadMutation]
+    [canManageEvidence, uploadMutation]
   );
+
+  const handleDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    try {
+      setIsDeleting(true);
+      await api.delete(`/evidence/${deleteTarget.id}`);
+      setDeleteTarget(null);
+      refetch();
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [deleteTarget, refetch]);
 
   // ---------- Render ----------
 
@@ -226,6 +263,30 @@ export default function EvidencePage() {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+      </div>
+    );
+  }
+
+  if (accessDenied) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">
+            Evidence Repository
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Manage supporting evidence for disclosures
+          </p>
+        </div>
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <ShieldAlert className="mb-3 h-10 w-10 text-red-500" />
+            <p className="text-sm font-medium text-slate-900">Access denied</p>
+            <p className="mt-1 text-sm text-slate-500">
+              Reviewers cannot access the evidence repository.
+            </p>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -269,6 +330,11 @@ export default function EvidencePage() {
       {/* Upload section */}
       <Card>
         <CardContent className="py-4">
+          {!canManageEvidence && (
+            <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              Auditor access is read-only. Upload, add link, and delete actions are disabled.
+            </div>
+          )}
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
             {/* Drag and drop zone */}
             <div
@@ -295,8 +361,9 @@ export default function EvidencePage() {
                   multiple
                   className="hidden"
                   onChange={handleFileInput}
+                  disabled={!canManageEvidence}
                 />
-                <span className="inline-flex h-8 items-center rounded-md border border-slate-200 bg-white px-3 text-xs font-medium shadow-sm hover:bg-slate-50">
+                <span className="inline-flex h-8 items-center rounded-md border border-slate-200 bg-white px-3 text-xs font-medium shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
                   <Upload className="mr-1.5 h-3 w-3" />
                   Browse Files
                 </span>
@@ -308,6 +375,7 @@ export default function EvidencePage() {
               variant="outline"
               onClick={() => setAddLinkOpen(true)}
               className="shrink-0"
+              disabled={!canManageEvidence}
             >
               <Link2 className="mr-1.5 h-4 w-4" />
               Add Link
@@ -388,7 +456,7 @@ export default function EvidencePage() {
                     colSpan={7}
                     className="py-12 text-center text-sm text-slate-400"
                   >
-                    No evidence items found.
+                    No evidence records found.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -413,7 +481,7 @@ export default function EvidencePage() {
                       {formatDate(item.upload_date)}
                     </TableCell>
                     <TableCell className="hidden text-sm text-slate-500 lg:table-cell">
-                      {item.created_by}
+                      {item.created_by_name ?? "Unknown"}
                     </TableCell>
                     <TableCell className="text-center">
                       <Badge
@@ -468,6 +536,7 @@ export default function EvidencePage() {
                           size="icon"
                           onClick={() => setDeleteTarget(item)}
                           title="Delete"
+                          disabled={!canManageEvidence}
                         >
                           <Trash2 className="h-4 w-4 text-red-500" />
                         </Button>
@@ -535,7 +604,7 @@ export default function EvidencePage() {
                   <p className="text-xs font-medium text-slate-500">
                     Created By
                   </p>
-                  <p className="mt-1 text-sm">{detailTarget.created_by}</p>
+                  <p className="mt-1 text-sm">{detailTarget.created_by_name ?? "Unknown"}</p>
                 </div>
               </div>
 
@@ -636,10 +705,10 @@ export default function EvidencePage() {
             </DialogClose>
             <Button
               variant="destructive"
-              onClick={() => deleteMutation.mutate(undefined as never)}
-              disabled={deleteMutation.isPending}
+              onClick={handleDelete}
+              disabled={isDeleting || !canManageEvidence}
             >
-              {deleteMutation.isPending ? (
+              {isDeleting ? (
                 <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
               ) : (
                 <Trash2 className="mr-1.5 h-4 w-4" />

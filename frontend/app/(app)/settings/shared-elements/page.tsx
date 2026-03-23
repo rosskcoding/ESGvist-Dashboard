@@ -1,265 +1,162 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { cn } from "@/lib/utils";
-import { useApiQuery, useApiMutation } from "@/lib/hooks/use-api";
+import { useEffect, useMemo, useState } from "react";
+import { api } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Layers, Link2, Loader2, Plus, ShieldAlert } from "lucide-react";
+
+import { useApiMutation, useApiQuery } from "@/lib/hooks/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Select } from "@/components/ui/select";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import {
   Table,
-  TableHeader,
   TableBody,
-  TableRow,
-  TableHead,
   TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "@/components/ui/table";
-import {
-  Search,
-  Plus,
-  Pencil,
-  Trash2,
-  Loader2,
-  Link2,
-  Layers,
-  ArrowRight,
-} from "lucide-react";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-type ConceptDomain =
-  | "emissions"
-  | "energy"
-  | "water"
-  | "waste"
-  | "workforce"
-  | "governance";
-
-type BindingType = "full" | "partial" | "derived";
-
-interface SharedElement {
+type SharedElement = {
   id: number;
   code: string;
   name: string;
-  concept_domain: ConceptDomain;
-  default_value_type: string;
-  default_unit: string;
-  description: string;
-  standards_count: number;
-  created_at: string;
-  updated_at: string;
-}
+  concept_domain: string | null;
+  default_value_type: string | null;
+  default_unit_code: string | null;
+};
 
-interface Mapping {
-  id: number;
+type SharedElementListResponse = {
+  items: SharedElement[];
+  total: number;
+};
+
+type CrossStandardElement = {
   shared_element_id: number;
-  requirement_item_id: number;
-  binding_type: BindingType;
   shared_element_code: string;
   shared_element_name: string;
-  requirement_item_code: string;
-  requirement_item_name: string;
-  standard_name: string;
-}
-
-interface RequirementItemOption {
-  id: number;
-  code: string;
-  name: string;
-  standard_name: string;
-}
-
-const DOMAIN_OPTIONS = [
-  { value: "emissions", label: "Emissions" },
-  { value: "energy", label: "Energy" },
-  { value: "water", label: "Water" },
-  { value: "waste", label: "Waste" },
-  { value: "workforce", label: "Workforce" },
-  { value: "governance", label: "Governance" },
-];
-
-const DOMAIN_VARIANT: Record<ConceptDomain, "default" | "secondary" | "warning" | "success" | "destructive" | "outline"> = {
-  emissions: "destructive",
-  energy: "warning",
-  water: "default",
-  waste: "secondary",
-  workforce: "success",
-  governance: "outline",
+  standards: string[];
+  mapping_count: number;
 };
 
-const BINDING_VARIANT: Record<BindingType, "default" | "secondary" | "warning"> = {
-  full: "success" as "default",
-  partial: "warning",
-  derived: "secondary",
-};
+type Standard = { id: number; code: string; name: string };
+type StandardListResponse = { items: Standard[]; total: number };
+type Disclosure = { id: number; code: string; title: string };
+type DisclosureListResponse = { items: Disclosure[]; total: number };
+type RequirementItem = { id: number; item_code: string | null; name: string };
+type RequirementItemListResponse = { items: RequirementItem[]; total: number };
 
-// ---------------------------------------------------------------------------
-// Shared Element Dialog
-// ---------------------------------------------------------------------------
+type RequirementItemOption = { value: string; label: string };
 
-function ElementDialog({
+function AddSharedElementDialog({
   open,
   onOpenChange,
-  element,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  element: SharedElement | null;
 }) {
   const queryClient = useQueryClient();
-  const isEdit = element !== null;
-
   const [form, setForm] = useState({
-    code: element?.code ?? "",
-    name: element?.name ?? "",
-    concept_domain: element?.concept_domain ?? ("emissions" as ConceptDomain),
-    default_value_type: element?.default_value_type ?? "number",
-    default_unit: element?.default_unit ?? "",
-    description: element?.description ?? "",
+    code: "",
+    name: "",
+    concept_domain: "emissions",
+    default_value_type: "number",
+    default_unit_code: "",
   });
-
-  const createMutation = useApiMutation<SharedElement, typeof form>(
-    "/shared-elements",
-    "POST",
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["shared-elements"] });
-        onOpenChange(false);
-      },
-    }
-  );
-
-  const updateMutation = useApiMutation<SharedElement, typeof form>(
-    `/api/shared-elements/${element?.id}`,
-    "PUT",
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["shared-elements"] });
-        onOpenChange(false);
-      },
-    }
-  );
-
-  const mutation = isEdit ? updateMutation : createMutation;
+  const mutation = useApiMutation("/shared-elements", "POST", {
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["shared-elements-admin"] });
+      onOpenChange(false);
+      setForm({
+        code: "",
+        name: "",
+        concept_domain: "emissions",
+        default_value_type: "number",
+        default_unit_code: "",
+      });
+    },
+  });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>
-            {isEdit ? "Edit Shared Element" : "Add Shared Element"}
-          </DialogTitle>
-          <DialogDescription>
-            {isEdit
-              ? "Modify the shared data element configuration."
-              : "Define a new shared data element that maps across standards."}
-          </DialogDescription>
+          <DialogTitle>Add Shared Element</DialogTitle>
+          <DialogDescription>Create a reusable cross-standard data element.</DialogDescription>
         </DialogHeader>
-
         <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-1.5">
-              <Label htmlFor="se-code">Code</Label>
-              <Input
-                id="se-code"
-                placeholder="e.g. GHG_SCOPE1"
-                value={form.code}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, code: e.target.value }))
-                }
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="se-name">Name</Label>
-              <Input
-                id="se-name"
-                placeholder="Element name"
-                value={form.name}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, name: e.target.value }))
-                }
-              />
-            </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="shared-element-code">Code</Label>
+            <Input
+              id="shared-element-code"
+              value={form.code}
+              onChange={(event) => setForm((current) => ({ ...current, code: event.target.value }))}
+              placeholder="e.g. DEMO_SCOPE1"
+            />
           </div>
-
-          <Select
-            label="Concept Domain"
-            value={form.concept_domain}
-            onChange={(v) =>
-              setForm((f) => ({ ...f, concept_domain: v as ConceptDomain }))
-            }
-            options={DOMAIN_OPTIONS}
-          />
-
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-1.5">
+            <Label htmlFor="shared-element-name">Name</Label>
+            <Input
+              id="shared-element-name"
+              value={form.name}
+              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+              placeholder="Scope 1 Demonstration Metric"
+            />
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Select
+              label="Concept Domain"
+              value={form.concept_domain}
+              onChange={(value) => setForm((current) => ({ ...current, concept_domain: value }))}
+              options={[
+                { value: "emissions", label: "Emissions" },
+                { value: "energy", label: "Energy" },
+                { value: "water", label: "Water" },
+                { value: "governance", label: "Governance" },
+              ]}
+            />
             <Select
               label="Default Value Type"
               value={form.default_value_type}
-              onChange={(v) =>
-                setForm((f) => ({ ...f, default_value_type: v }))
-              }
+              onChange={(value) => setForm((current) => ({ ...current, default_value_type: value }))}
               options={[
                 { value: "number", label: "Number" },
                 { value: "text", label: "Text" },
                 { value: "boolean", label: "Boolean" },
-                { value: "date", label: "Date" },
-                { value: "enum", label: "Enum" },
               ]}
             />
-            <div className="grid gap-1.5">
-              <Label htmlFor="se-unit">Default Unit</Label>
-              <Input
-                id="se-unit"
-                placeholder="e.g. tCO2e"
-                value={form.default_unit}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, default_unit: e.target.value }))
-                }
-              />
-            </div>
           </div>
-
           <div className="grid gap-1.5">
-            <Label htmlFor="se-desc">Description</Label>
-            <Textarea
-              id="se-desc"
-              placeholder="Describe this shared element..."
-              value={form.description}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, description: e.target.value }))
+            <Label htmlFor="shared-element-unit">Default Unit</Label>
+            <Input
+              id="shared-element-unit"
+              value={form.default_unit_code}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, default_unit_code: event.target.value }))
               }
-              rows={3}
+              placeholder="e.g. tCO2e"
             />
           </div>
         </div>
-
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            onClick={() => mutation.mutate(form)}
-            disabled={mutation.isPending || !form.code || !form.name}
-          >
-            {mutation.isPending && (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            )}
-            {isEdit ? "Save Changes" : "Create Element"}
+          <Button onClick={() => mutation.mutate(form)} disabled={mutation.isPending || !form.code || !form.name}>
+            {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Create Element
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -267,72 +164,102 @@ function ElementDialog({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Link Requirement Dialog
-// ---------------------------------------------------------------------------
-
-function LinkRequirementDialog({
+function LinkMappingDialog({
+  sharedElementId,
   open,
   onOpenChange,
-  elementId,
 }: {
+  sharedElementId: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  elementId: number;
 }) {
   const queryClient = useQueryClient();
-  const [requirementItemId, setRequirementItemId] = useState("");
-  const [bindingType, setBindingType] = useState<BindingType>("full");
+  const [options, setOptions] = useState<RequirementItemOption[]>([]);
+  const [loadingOptions, setLoadingOptions] = useState(false);
+  const [selectedItemId, setSelectedItemId] = useState("");
+  const [mappingType, setMappingType] = useState("full");
 
-  const { data: requirementItems } = useApiQuery<RequirementItemOption[]>(
-    ["requirement-items-options"],
-    "/requirement-items",
-    { enabled: open }
-  );
+  useEffect(() => {
+    let cancelled = false;
+    async function loadOptions() {
+      if (!open) return;
+      setLoadingOptions(true);
+      try {
+        const standards = await api.get<StandardListResponse>("/standards?page_size=100");
+        const disclosureResults = await Promise.all(
+          standards.items.map((standard) =>
+            api.get<DisclosureListResponse>(`/standards/${standard.id}/disclosures?page_size=100`).then((result) => ({
+              standard,
+              disclosures: result.items,
+            }))
+          )
+        );
+        const itemsByDisclosure = await Promise.all(
+          disclosureResults.flatMap(({ standard, disclosures }) =>
+            disclosures.map((disclosure) =>
+              api
+                .get<RequirementItemListResponse>(`/disclosures/${disclosure.id}/items?page_size=100`)
+                .then((result) => ({ standard, disclosure, items: result.items }))
+            )
+          )
+        );
+        if (!cancelled) {
+          setOptions(
+            itemsByDisclosure.flatMap(({ standard, disclosure, items }) =>
+              items.map((item) => ({
+                value: String(item.id),
+                label: `${standard.code} / ${disclosure.code} / ${item.item_code ?? item.id} - ${item.name}`,
+              }))
+            )
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingOptions(false);
+        }
+      }
+    }
+    loadOptions();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
-  const linkMutation = useApiMutation<
-    Mapping,
-    { shared_element_id: number; requirement_item_id: number; binding_type: BindingType }
-  >("/mappings", "POST", {
+  const mutation = useApiMutation("/mappings", "POST", {
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["mappings"] });
+      queryClient.invalidateQueries({ queryKey: ["cross-standard-mappings"] });
       onOpenChange(false);
-      setRequirementItemId("");
-      setBindingType("full");
+      setSelectedItemId("");
+      setMappingType("full");
     },
   });
-
-  const riOptions = useMemo(
-    () =>
-      (requirementItems ?? []).map((ri) => ({
-        value: String(ri.id),
-        label: `${ri.code} - ${ri.name} (${ri.standard_name})`,
-      })),
-    [requirementItems]
-  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Link Requirement Item</DialogTitle>
-          <DialogDescription>
-            Map a requirement item to this shared element.
-          </DialogDescription>
+          <DialogDescription>Bind the selected shared element to a requirement item.</DialogDescription>
         </DialogHeader>
-
         <div className="grid gap-4 py-4">
+          {loadingOptions ? (
+            <div className="flex items-center gap-2 text-sm text-slate-500">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading requirement items...
+            </div>
+          ) : (
+            <Select
+              label="Requirement Item"
+              value={selectedItemId}
+              onChange={setSelectedItemId}
+              options={options}
+              placeholder="Select requirement item"
+            />
+          )}
           <Select
-            label="Requirement Item"
-            value={requirementItemId}
-            onChange={setRequirementItemId}
-            options={riOptions}
-            placeholder="Select a requirement item..."
-          />
-          <Select
-            label="Binding Type"
-            value={bindingType}
-            onChange={(v) => setBindingType(v as BindingType)}
+            label="Mapping Type"
+            value={mappingType}
+            onChange={setMappingType}
             options={[
               { value: "full", label: "Full" },
               { value: "partial", label: "Partial" },
@@ -340,25 +267,22 @@ function LinkRequirementDialog({
             ]}
           />
         </div>
-
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button
             onClick={() =>
-              linkMutation.mutate({
-                shared_element_id: elementId,
-                requirement_item_id: Number(requirementItemId),
-                binding_type: bindingType,
+              mutation.mutate({
+                shared_element_id: sharedElementId,
+                requirement_item_id: Number(selectedItemId),
+                mapping_type: mappingType,
               })
             }
-            disabled={linkMutation.isPending || !requirementItemId}
+            disabled={mutation.isPending || !selectedItemId}
           >
-            {linkMutation.isPending && (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            )}
-            Link Requirement
+            {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Link Mapping
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -366,320 +290,169 @@ function LinkRequirementDialog({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Delete Element Button
-// ---------------------------------------------------------------------------
-
-function DeleteElementButton({ elementId }: { elementId: number }) {
-  const queryClient = useQueryClient();
-  const deleteMut = useApiMutation<void, void>(
-    `/api/shared-elements/${elementId}`,
-    "DELETE",
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["shared-elements"] });
-        queryClient.invalidateQueries({ queryKey: ["mappings"] });
-      },
-    }
-  );
-
-  return (
-    <Button
-      size="sm"
-      variant="ghost"
-      className="text-red-500 hover:text-red-700"
-      onClick={() => {
-        if (confirm("Delete this shared element?")) {
-          deleteMut.mutate(undefined as unknown as void);
-        }
-      }}
-      disabled={deleteMut.isPending}
-      title="Delete"
-    >
-      {deleteMut.isPending ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-      ) : (
-        <Trash2 className="h-3.5 w-3.5" />
-      )}
-    </Button>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Main Page
-// ---------------------------------------------------------------------------
-
 export default function SharedElementsPage() {
-  const queryClient = useQueryClient();
-  const [search, setSearch] = useState("");
-  const [filterDomain, setFilterDomain] = useState("all");
-  const [elementDialogOpen, setElementDialogOpen] = useState(false);
-  const [editElement, setEditElement] = useState<SharedElement | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
-  const [linkElementId, setLinkElementId] = useState<number>(0);
+  const [linkElementId, setLinkElementId] = useState<number | null>(null);
 
-  const { data: elementsData, isLoading: elementsLoading } = useApiQuery<
-    any
-  >(["shared-elements"], "/shared-elements");
-  const elements: SharedElement[] = Array.isArray(elementsData) ? elementsData : elementsData?.items ?? [];
+  const { data: me, isLoading: meLoading } = useApiQuery<{
+    roles: Array<{ role: string }>;
+  }>(["auth-me", "shared-elements-settings"], "/auth/me");
 
-  const { data: mappingsData, isLoading: mappingsLoading } = useApiQuery<any>(
-    ["mappings"],
-    "/mappings"
+  const role = me?.roles?.[0]?.role ?? "";
+  const canAccess = role === "admin" || role === "platform_admin";
+  const accessDenied = Boolean(role) && !canAccess;
+
+  const { data: elementsData, isLoading: elementsLoading } = useApiQuery<SharedElementListResponse>(
+    ["shared-elements-admin"],
+    "/shared-elements?page_size=100",
+    { enabled: canAccess }
   );
-  const mappings: Mapping[] = Array.isArray(mappingsData) ? mappingsData : mappingsData?.items ?? [];
+  const elements = elementsData?.items ?? [];
 
-  const filteredElements = useMemo(() => {
-    if (!elements.length) return [];
-    let result = elements;
-    if (search) {
-      const q = search.toLowerCase();
-      result = result.filter(
-        (e) =>
-          e.code.toLowerCase().includes(q) ||
-          e.name.toLowerCase().includes(q)
-      );
-    }
-    if (filterDomain !== "all") {
-      result = result.filter((e) => e.concept_domain === filterDomain);
-    }
-    return result;
-  }, [elements, search, filterDomain]);
+  const { data: mappings = [], isLoading: mappingsLoading } = useApiQuery<CrossStandardElement[]>(
+    ["cross-standard-mappings"],
+    "/mappings/cross-standard",
+    { enabled: canAccess }
+  );
 
-  // Group mappings by shared element
-  const mappingsByElement = useMemo(() => {
-    const map = new Map<number, Mapping[]>();
-    if (mappings.length > 0) {
-      for (const m of mappings) {
-        const arr = map.get(m.shared_element_id) ?? [];
-        arr.push(m);
-        map.set(m.shared_element_id, arr);
-      }
-    }
-    return map;
-  }, [mappings]);
+  const mappedElementIds = useMemo(() => new Set(mappings.map((item) => item.shared_element_id)), [mappings]);
 
-  function openEdit(el: SharedElement) {
-    setEditElement(el);
-    setElementDialogOpen(true);
+  if (meLoading || (canAccess && (elementsLoading || mappingsLoading))) {
+    return (
+      <div className="flex min-h-[400px] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+      </div>
+    );
   }
 
-  function openAdd() {
-    setEditElement(null);
-    setElementDialogOpen(true);
-  }
-
-  function openLink(elementId: number) {
-    setLinkElementId(elementId);
-    setLinkDialogOpen(true);
+  if (accessDenied) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Shared Elements & Mappings</h2>
+          <p className="mt-1 text-sm text-slate-500">Manage reusable data elements and bind them to requirement items.</p>
+        </div>
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="flex items-start gap-3 p-6 text-red-700">
+            <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" />
+            <div>
+              <p className="font-semibold">Access denied</p>
+              <p className="mt-1 text-sm">Only admin and platform admin roles can manage shared elements.</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-8 p-6">
-      <h1 className="text-2xl font-semibold">Shared Elements & Mappings</h1>
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Shared Elements Section                                            */}
-      {/* ------------------------------------------------------------------ */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Shared Elements</h2>
-          <Button onClick={openAdd}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Element
-          </Button>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Shared Elements & Mappings</h2>
+          <p className="mt-1 text-sm text-slate-500">Manage reusable data elements and bind them to requirement items.</p>
         </div>
+        <Button onClick={() => setDialogOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Add Element
+        </Button>
+      </div>
 
-        <Card>
-          <CardContent className="py-3">
-            <div className="flex items-center gap-4 mb-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-                <Input
-                  placeholder="Search elements..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-              <Select
-                value={filterDomain}
-                onChange={setFilterDomain}
-                options={[
-                  { value: "all", label: "All Domains" },
-                  ...DOMAIN_OPTIONS,
-                ]}
-              />
-            </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Layers className="h-5 w-5 text-slate-500" />
+            Shared Elements
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Code</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Domain</TableHead>
+                <TableHead>Value Type</TableHead>
+                <TableHead>Unit</TableHead>
+                <TableHead>Mapped</TableHead>
+                <TableHead className="text-right">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {elements.map((element) => (
+                <TableRow key={element.id}>
+                  <TableCell className="font-mono text-xs">{element.code}</TableCell>
+                  <TableCell>{element.name}</TableCell>
+                  <TableCell>
+                    <Badge variant="secondary">{element.concept_domain ?? "general"}</Badge>
+                  </TableCell>
+                  <TableCell>{element.default_value_type ?? "-"}</TableCell>
+                  <TableCell>{element.default_unit_code ?? "-"}</TableCell>
+                  <TableCell>{mappedElementIds.has(element.id) ? "Yes" : "No"}</TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setLinkElementId(element.id);
+                        setLinkDialogOpen(true);
+                      }}
+                    >
+                      <Link2 className="mr-2 h-4 w-4" />
+                      Link Mapping
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
 
-            {elementsLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
-              </div>
-            ) : filteredElements.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-slate-400">
-                <Layers className="mb-3 h-10 w-10" />
-                <p className="font-medium">No shared elements found</p>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Code</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Domain</TableHead>
-                    <TableHead>Default Value Type</TableHead>
-                    <TableHead>Default Unit</TableHead>
-                    <TableHead>Standards Count</TableHead>
-                    <TableHead className="w-[120px]">Actions</TableHead>
+      <Card>
+        <CardHeader>
+          <CardTitle>Cross-Standard Mapping Coverage</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {mappings.length === 0 ? (
+            <p className="text-sm text-slate-500">No mappings defined yet.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Shared Element</TableHead>
+                  <TableHead>Standards</TableHead>
+                  <TableHead>Mapping Count</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {mappings.map((mapping) => (
+                  <TableRow key={mapping.shared_element_id}>
+                    <TableCell>
+                      <div>
+                        <p className="font-mono text-xs">{mapping.shared_element_code}</p>
+                        <p className="text-sm text-slate-900">{mapping.shared_element_name}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell>{mapping.standards.join(", ") || "-"}</TableCell>
+                    <TableCell>{mapping.mapping_count}</TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredElements.map((el) => (
-                    <TableRow key={el.id}>
-                      <TableCell className="font-mono text-xs font-semibold">
-                        {el.code}
-                      </TableCell>
-                      <TableCell>{el.name}</TableCell>
-                      <TableCell>
-                        <Badge variant={DOMAIN_VARIANT[el.concept_domain]}>
-                          {el.concept_domain}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{el.default_value_type}</Badge>
-                      </TableCell>
-                      <TableCell className="text-slate-500">
-                        {el.default_unit || "--"}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {el.standards_count ?? 0}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => openEdit(el)}
-                            title="Edit"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => openLink(el.id)}
-                            title="Link Requirement"
-                          >
-                            <Link2 className="h-3.5 w-3.5" />
-                          </Button>
-                          <DeleteElementButton
-                            elementId={el.id}
-                          />
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-      </section>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Mappings Section                                                   */}
-      {/* ------------------------------------------------------------------ */}
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold">Mappings</h2>
-
-        <Card>
-          <CardContent className="py-3">
-            {mappingsLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
-              </div>
-            ) : !mappings || mappings.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-slate-400">
-                <Link2 className="mb-3 h-10 w-10" />
-                <p className="font-medium">No mappings defined</p>
-                <p className="text-sm">
-                  Link requirement items to shared elements above.
-                </p>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Shared Element</TableHead>
-                    <TableHead className="w-[40px]" />
-                    <TableHead>Requirement Item</TableHead>
-                    <TableHead>Standard</TableHead>
-                    <TableHead>Binding Type</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {mappings.map((m) => (
-                    <TableRow key={m.id}>
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className="font-mono text-xs font-semibold">
-                            {m.shared_element_code}
-                          </span>
-                          <span className="text-sm text-slate-500">
-                            {m.shared_element_name}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <ArrowRight className="h-4 w-4 text-slate-400" />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className="font-mono text-xs font-semibold">
-                            {m.requirement_item_code}
-                          </span>
-                          <span className="text-sm text-slate-500">
-                            {m.requirement_item_name}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{m.standard_name}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            m.binding_type === "full"
-                              ? "success"
-                              : m.binding_type === "partial"
-                              ? "warning"
-                              : "secondary"
-                          }
-                        >
-                          {m.binding_type}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-      </section>
-
-      {/* Dialogs */}
-      <ElementDialog
-        open={elementDialogOpen}
-        onOpenChange={setElementDialogOpen}
-        element={editElement}
-      />
-      <LinkRequirementDialog
-        open={linkDialogOpen}
-        onOpenChange={setLinkDialogOpen}
-        elementId={linkElementId}
-      />
+      <AddSharedElementDialog open={dialogOpen} onOpenChange={setDialogOpen} />
+      {linkElementId && (
+        <LinkMappingDialog
+          sharedElementId={linkElementId}
+          open={linkDialogOpen}
+          onOpenChange={setLinkDialogOpen}
+        />
+      )}
     </div>
   );
 }

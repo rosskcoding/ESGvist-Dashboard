@@ -3,7 +3,8 @@ from httpx import AsyncClient
 
 from tests.conftest import TestSessionLocal
 from app.db.models.data_point import DataPoint
-from sqlalchemy import update
+from app.db.models.completeness import RequirementItemStatus
+from sqlalchemy import select, update
 
 
 async def _prepare_project_lifecycle(client: AsyncClient, headers: dict, project_id: int) -> None:
@@ -160,6 +161,158 @@ async def test_publish_project(client: AsyncClient, ctx: dict):
     )
     assert resp.status_code == 200
     assert resp.json()["status"] == "published"
+
+
+@pytest.mark.asyncio
+async def test_approval_refreshes_bound_item_status_and_allows_project_review(client: AsyncClient):
+    await client.post(
+        "/api/auth/register",
+        json={"email": "review-flow@test.com", "password": "password123", "full_name": "Review Flow"},
+    )
+    login = await client.post("/api/auth/login", json={"email": "review-flow@test.com", "password": "password123"})
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    me = await client.get("/api/auth/me", headers=headers)
+    user_id = me.json()["id"]
+
+    org = await client.post("/api/organizations/setup", json={"name": "Review Flow Org"}, headers=headers)
+    headers["X-Organization-Id"] = str(org.json()["organization_id"])
+
+    standard = await client.post(
+        "/api/standards",
+        json={"code": "RF-STD", "name": "Review Flow Standard"},
+        headers=headers,
+    )
+    section = await client.post(
+        f"/api/standards/{standard.json()['id']}/sections",
+        json={"code": "RF-SEC", "title": "Review Flow Section", "sort_order": 10},
+        headers=headers,
+    )
+    disclosure = await client.post(
+        f"/api/standards/{standard.json()['id']}/disclosures",
+        json={
+            "section_id": section.json()["id"],
+            "code": "RF-DISC",
+            "title": "Review Flow Disclosure",
+            "requirement_type": "quantitative",
+            "mandatory_level": "mandatory",
+            "sort_order": 10,
+        },
+        headers=headers,
+    )
+    item = await client.post(
+        f"/api/disclosures/{disclosure.json()['id']}/items",
+        json={
+            "item_code": "RF-ITEM",
+            "name": "Review Flow Metric",
+            "item_type": "metric",
+            "value_type": "number",
+            "unit_code": "MWH",
+            "is_required": True,
+            "sort_order": 10,
+        },
+        headers=headers,
+    )
+    element = await client.post(
+        "/api/shared-elements",
+        json={"code": "RF-SE", "name": "Review Flow Shared Element"},
+        headers=headers,
+    )
+    mapping = await client.post(
+        "/api/mappings",
+        json={
+            "requirement_item_id": item.json()["id"],
+            "shared_element_id": element.json()["id"],
+            "mapping_type": "full",
+        },
+        headers=headers,
+    )
+    assert standard.status_code == 201
+    assert section.status_code == 201
+    assert disclosure.status_code == 201
+    assert item.status_code == 201
+    assert element.status_code == 201
+    assert mapping.status_code == 201
+
+    project = await client.post("/api/projects", json={"name": "Review Flow Project"}, headers=headers)
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    project_standard = await client.post(
+        f"/api/projects/{project_id}/standards",
+        json={"standard_id": standard.json()["id"]},
+        headers=headers,
+    )
+    assert project_standard.status_code == 200
+
+    boundary = await client.post(
+        "/api/boundaries",
+        json={"name": "Review Flow Boundary", "boundary_type": "operational_control"},
+        headers=headers,
+    )
+    assert boundary.status_code == 201
+    applied = await client.put(
+        f"/api/projects/{project_id}/boundary",
+        params={"boundary_id": boundary.json()["id"]},
+        headers=headers,
+    )
+    assert applied.status_code == 200
+    snapshot = await client.post(f"/api/projects/{project_id}/boundary/snapshot", headers=headers)
+    assert snapshot.status_code == 200
+
+    data_point = await client.post(
+        f"/api/projects/{project_id}/data-points",
+        json={"shared_element_id": element.json()["id"], "numeric_value": 12.5, "unit_code": "MWH"},
+        headers=headers,
+    )
+    assert data_point.status_code == 201
+
+    binding = await client.post(
+        f"/api/projects/{project_id}/bindings",
+        json={"requirement_item_id": item.json()["id"], "data_point_id": data_point.json()["id"]},
+        headers=headers,
+    )
+    assert binding.status_code == 201
+
+    submitted = await client.post(f"/api/data-points/{data_point.json()['id']}/submit", headers=headers)
+    assert submitted.status_code == 200
+
+    async with TestSessionLocal() as session:
+        await session.execute(
+            update(DataPoint)
+            .where(DataPoint.id == data_point.json()["id"])
+            .values(status="in_review")
+        )
+        await session.commit()
+
+    approved = await client.post(
+        f"/api/data-points/{data_point.json()['id']}/approve",
+        json={"comment": "Approved for review transition"},
+        headers=headers,
+    )
+    assert approved.status_code == 200
+
+    async with TestSessionLocal() as session:
+        item_status = (
+            await session.execute(
+                select(RequirementItemStatus).where(
+                    RequirementItemStatus.reporting_project_id == project_id,
+                    RequirementItemStatus.requirement_item_id == item.json()["id"],
+                )
+            )
+        )
+        item_status = item_status.scalar_one_or_none()
+        assert item_status is not None
+        assert item_status.status == "complete"
+
+    started = await client.post(f"/api/projects/{project_id}/start-review", headers=headers)
+    assert started.status_code == 422
+
+    activated = await client.post(f"/api/projects/{project_id}/start", headers=headers)
+    assert activated.status_code == 200
+
+    review = await client.post(f"/api/projects/{project_id}/start-review", headers=headers)
+    assert review.status_code == 200
+    assert review.json()["status"] == "review"
 
 
 @pytest.mark.asyncio

@@ -18,6 +18,18 @@ class EvidenceCreate(BaseModel):
     label: str | None = None
 
 
+class LinkedDataPointOut(BaseModel):
+    data_point_id: int
+    code: str
+    label: str
+
+
+class LinkedRequirementItemOut(BaseModel):
+    requirement_item_id: int
+    code: str
+    description: str
+
+
 class EvidenceOut(BaseModel):
     id: int
     organization_id: int
@@ -26,7 +38,16 @@ class EvidenceOut(BaseModel):
     description: str | None
     source_type: str
     created_by: int | None
+    created_by_name: str | None = None
     created_at: datetime
+    upload_date: datetime | None = None
+    url: str | None = None
+    file_name: str | None = None
+    file_size: int | None = None
+    mime_type: str | None = None
+    binding_status: str = "unbound"
+    linked_data_points: list[LinkedDataPointOut] = Field(default_factory=list)
+    linked_requirement_items: list[LinkedRequirementItemOut] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

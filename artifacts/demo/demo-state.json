@@ -59,6 +59,11 @@
       "role": "collector"
     }
   },
+  "pending_invitation": {
+    "email": "pending.facility@greentech.com",
+    "role": "collector",
+    "token": "6497ccb1-658d-4bb8-ab34-0f27b9defa2d"
+  },
   "entities": {
     "root": {
       "id": 1,

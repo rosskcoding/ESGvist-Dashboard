@@ -11,8 +11,11 @@ from app.repositories.refresh_token_repo import RefreshTokenRepository
 from app.repositories.role_binding_repo import RoleBindingRepository
 from app.repositories.user_repo import UserRepository
 from app.schemas.auth import (
+    ChangePasswordRequest,
     InvitationCreateRequest,
     LoginRequest,
+    OrganizationSettingsOut,
+    OrganizationSettingsUpdate,
     OrganizationAuthSettingsOut,
     OrganizationAuthSettingsUpdate,
     OrganizationUsersOut,
@@ -23,6 +26,7 @@ from app.schemas.auth import (
     TwoFactorEnableRequest,
     TwoFactorSetupOut,
     TwoFactorStatusOut,
+    UserProfileUpdateRequest,
     UserRoleUpdateRequest,
     UserStatusUpdateRequest,
     UserResponse,
@@ -92,6 +96,18 @@ async def me(
     return await service.get_me(user.id)
 
 
+@router.patch("/me", response_model=UserResponse)
+async def update_me(
+    payload: UserProfileUpdateRequest,
+    user: CurrentUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _get_auth_service(session).update_me(
+        user.id,
+        payload.model_dump(exclude_unset=True),
+    )
+
+
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(
     user: CurrentUser = Depends(get_current_user),
@@ -99,6 +115,41 @@ async def logout(
 ):
     service = _get_auth_service(session)
     await service.logout(user.id)
+
+
+@router.post("/change-password")
+async def change_password(
+    payload: ChangePasswordRequest,
+    user: CurrentUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _get_auth_service(session).change_password(
+        user.id,
+        current_password=payload.current_password,
+        new_password=payload.new_password,
+    )
+
+
+@router.get("/me/organization", response_model=OrganizationSettingsOut)
+async def get_my_organization_settings(
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    AuthPolicy.require_role(ctx, ["admin", "platform_admin"])
+    return await _get_auth_service(session).get_my_organization_settings(ctx)
+
+
+@router.patch("/me/organization", response_model=OrganizationSettingsOut)
+async def update_my_organization_settings(
+    payload: OrganizationSettingsUpdate,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    AuthPolicy.require_role(ctx, ["admin", "platform_admin"])
+    return await _get_auth_service(session).update_my_organization_settings(
+        ctx,
+        payload.model_dump(exclude_unset=True),
+    )
 
 
 @router.get("/2fa/status", response_model=TwoFactorStatusOut)
@@ -172,7 +223,7 @@ async def create_auth_invitation(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    AuthPolicy.require_manager_or_admin(ctx)
+    AuthPolicy.require_role(ctx, ["admin", "platform_admin"])
     return await InvitationService(session).create_invitation(
         org_id=ctx.organization_id,
         email=payload.email,
@@ -187,7 +238,7 @@ async def resend_auth_invitation(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    AuthPolicy.require_manager_or_admin(ctx)
+    AuthPolicy.require_role(ctx, ["admin", "platform_admin"])
     return await InvitationService(session).resend_invitation(
         invitation_id=invitation_id,
         org_id=ctx.organization_id,
@@ -201,7 +252,7 @@ async def cancel_auth_invitation(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    AuthPolicy.require_manager_or_admin(ctx)
+    AuthPolicy.require_role(ctx, ["admin", "platform_admin"])
     return await InvitationService(session).cancel_invitation(
         invitation_id=invitation_id,
         org_id=ctx.organization_id,

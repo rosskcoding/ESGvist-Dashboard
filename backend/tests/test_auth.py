@@ -4,6 +4,25 @@ from httpx import AsyncClient
 from app.core.security import generate_totp_code
 
 
+async def _setup_org_context(client: AsyncClient, *, email: str = "org-admin@example.com") -> dict:
+    await client.post(
+        "/api/auth/register",
+        json={"email": email, "password": "password123", "full_name": "Org Admin"},
+    )
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": email, "password": "password123"},
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    org = await client.post(
+        "/api/organizations/setup",
+        json={"name": "Settings Org", "country": "GB"},
+        headers=headers,
+    )
+    headers["X-Organization-Id"] = str(org.json()["organization_id"])
+    return headers
+
+
 @pytest.mark.asyncio
 async def test_register_creates_user(client: AsyncClient):
     resp = await client.post(
@@ -85,6 +104,71 @@ async def test_me_with_token_returns_user(client: AsyncClient, auth_headers: dic
     data = resp.json()
     assert data["email"] == "test@example.com"
     assert data["full_name"] == "Test User"
+
+
+@pytest.mark.asyncio
+async def test_update_me_and_change_password(client: AsyncClient):
+    headers = await _setup_org_context(client, email="profile@example.com")
+
+    updated = await client.patch(
+        "/api/auth/me",
+        json={"full_name": "Updated Profile User"},
+        headers=headers,
+    )
+    assert updated.status_code == 200
+    assert updated.json()["full_name"] == "Updated Profile User"
+    assert updated.json()["organization_name"] == "Settings Org"
+
+    changed = await client.post(
+        "/api/auth/change-password",
+        json={"current_password": "password123", "new_password": "newpassword123"},
+        headers=headers,
+    )
+    assert changed.status_code == 200
+    assert changed.json()["changed"] is True
+
+    relogin = await client.post(
+        "/api/auth/login",
+        json={"email": "profile@example.com", "password": "newpassword123"},
+    )
+    assert relogin.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_get_and_update_my_organization_settings(client: AsyncClient):
+    headers = await _setup_org_context(client, email="settings@example.com")
+
+    original = await client.get("/api/auth/me/organization", headers=headers)
+    assert original.status_code == 200
+    assert original.json()["name"] == "Settings Org"
+    assert original.json()["default_boundary_id"] is not None
+
+    second_boundary = await client.post(
+        "/api/boundaries",
+        json={"name": "Secondary Boundary", "boundary_type": "custom"},
+        headers=headers,
+    )
+    assert second_boundary.status_code == 201
+
+    updated = await client.patch(
+        "/api/auth/me/organization",
+        json={
+            "name": "Settings Org Updated",
+            "country": "DE",
+            "industry": "energy",
+            "currency": "EUR",
+            "reporting_year": 2026,
+            "default_boundary_id": second_boundary.json()["id"],
+        },
+        headers=headers,
+    )
+    assert updated.status_code == 200
+    assert updated.json()["name"] == "Settings Org Updated"
+    assert updated.json()["country"] == "DE"
+    assert updated.json()["industry"] == "energy"
+    assert updated.json()["currency"] == "EUR"
+    assert updated.json()["reporting_year"] == 2026
+    assert updated.json()["default_boundary_id"] == second_boundary.json()["id"]
 
 
 @pytest.mark.asyncio

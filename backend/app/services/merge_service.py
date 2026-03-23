@@ -1,15 +1,21 @@
+from collections import defaultdict
+
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.access import get_project_for_ctx
 from app.core.dependencies import RequestContext
-from app.policies.auth_policy import AuthPolicy
+from app.db.models.boundary import BoundaryMembership
+from app.db.models.company_entity import CompanyEntity
 from app.db.models.completeness import RequirementItemStatus
+from app.db.models.data_point import DataPoint
+from app.db.models.evidence import DataPointEvidence
 from app.db.models.mapping import RequirementItemSharedElement
-from app.db.models.project import ReportingProjectStandard
+from app.db.models.project import ReportingProject, ReportingProjectStandard
 from app.db.models.requirement_item import RequirementItem
 from app.db.models.shared_element import SharedElement
 from app.db.models.standard import DisclosureRequirement, Standard
+from app.policies.auth_policy import AuthPolicy
 
 
 class MergeService:
@@ -17,148 +23,372 @@ class MergeService:
         self.session = session
 
     async def get_merged_view(self, project_id: int, ctx: RequestContext | None = None) -> dict:
-        """
-        5-step merge algorithm:
-        1. Collect all requirement_items from standards linked to project
-        2. Group by shared_element_id
-        3. Classify: common (2+ standards), unique, orphans
-        4. Attach statuses
-        5. Build response
-        """
         if ctx:
             AuthPolicy.require_role(
-                ctx, ["admin", "esg_manager", "reviewer", "auditor", "platform_admin"]
+                ctx, ["admin", "esg_manager", "auditor"]
             )
             await get_project_for_ctx(
                 self.session,
                 project_id,
                 ctx,
                 allow_collectors=False,
-                allow_reviewers=True,
+                allow_reviewers=False,
             )
 
-        # Step 1: Get project standards
-        ps_q = select(ReportingProjectStandard).where(
-            ReportingProjectStandard.reporting_project_id == project_id
-        )
-        ps_result = await self.session.execute(ps_q)
-        project_standards = list(ps_result.scalars().all())
-        standard_ids = [ps.standard_id for ps in project_standards]
+        project = await self._get_project(project_id)
+        standards = await self._get_project_standards(project_id)
+        if not standards:
+            return {
+                "standards": [],
+                "elements": [],
+                "summary": {
+                    "common_elements": 0,
+                    "unique_elements": 0,
+                    "delta_count": 0,
+                    "total": 0,
+                    "common": 0,
+                    "unique": 0,
+                    "orphans": 0,
+                    "standards": [],
+                },
+                "orphans": [],
+            }
 
-        if not standard_ids:
-            return {"elements": [], "summary": {"total": 0, "common": 0, "unique": 0, "orphans": 0}}
+        matrix_rows = await self._get_matrix_rows(project_id, [std["standard_id"] for std in standards])
+        latest_points = await self._get_latest_data_points(project_id)
+        evidence_counts = await self._get_evidence_counts(list(latest_points.values()))
+        boundary_scope = await self._get_boundary_scope(project)
+        orphans = await self._get_orphans(project_id, [std["standard_id"] for std in standards])
 
-        # Get standard names
-        std_q = select(Standard).where(Standard.id.in_(standard_ids))
-        std_result = await self.session.execute(std_q)
-        standards_map = {s.id: s.code for s in std_result.scalars().all()}
-
-        # Step 1: Collect requirement items
-        items_q = (
-            select(RequirementItem, DisclosureRequirement.standard_id)
-            .join(DisclosureRequirement)
-            .where(DisclosureRequirement.standard_id.in_(standard_ids))
-        )
-        items_result = await self.session.execute(items_q)
-        items_with_std = [(row[0], row[1]) for row in items_result.all()]
-
-        # Step 2: Get mappings to shared elements
-        item_ids = [item.id for item, _ in items_with_std]
-        if not item_ids:
-            return {"elements": [], "summary": {"total": 0, "common": 0, "unique": 0, "orphans": 0}}
-
-        mappings_q = select(RequirementItemSharedElement).where(
-            RequirementItemSharedElement.requirement_item_id.in_(item_ids)
-        )
-        mappings_result = await self.session.execute(mappings_q)
-        mappings = list(mappings_result.scalars().all())
-
-        # Build item→standard and item→shared_element maps
-        item_to_std: dict[int, int] = {item.id: std_id for item, std_id in items_with_std}
-        se_to_items: dict[int, list[int]] = {}
-        mapped_items = set()
-
-        for m in mappings:
-            se_to_items.setdefault(m.shared_element_id, []).append(m.requirement_item_id)
-            mapped_items.add(m.requirement_item_id)
-
-        # Get shared element details
-        se_ids = list(se_to_items.keys())
-        if se_ids:
-            se_q = select(SharedElement).where(SharedElement.id.in_(se_ids))
-            se_result = await self.session.execute(se_q)
-            se_map = {se.id: se for se in se_result.scalars().all()}
-        else:
-            se_map = {}
-
-        # Step 3: Classify
-        elements = []
+        elements: list[dict] = []
         common_count = 0
         unique_count = 0
 
-        for se_id, item_ids_list in se_to_items.items():
-            se = se_map.get(se_id)
-            if not se:
-                continue
-
-            required_by = list(set(
-                standards_map.get(item_to_std.get(iid, 0), "")
-                for iid in item_ids_list
-                if item_to_std.get(iid)
-            ))
-            is_common = len(required_by) > 1
-
-            if is_common:
+        for shared_element_id, element_rows in matrix_rows.items():
+            first_row = element_rows[0]
+            cells = [
+                self._build_cell(row, latest_points.get(shared_element_id), evidence_counts)
+                for row in element_rows
+            ]
+            reuse_count = len(cells)
+            if reuse_count > 1:
                 common_count += 1
             else:
                 unique_count += 1
+            required_by = [row["standard_code"] for row in element_rows]
 
-            elements.append({
-                "shared_element_id": se.id,
-                "code": se.code,
-                "name": se.name,
-                "concept_domain": se.concept_domain,
-                "required_by": required_by,
-                "is_common": is_common,
-                "requirement_item_ids": item_ids_list,
-            })
+            elements.append(
+                {
+                    "element_id": shared_element_id,
+                    "code": first_row["element_code"],
+                    "name": first_row["element_name"],
+                    "domain": first_row["domain"] or "general",
+                    "reuse_count": reuse_count,
+                    "is_common": reuse_count > 1,
+                    "required_by": required_by,
+                    "is_orphan": False,
+                    "has_delta": False,
+                    "delta_description": None,
+                    "cells": cells,
+                    "boundary_scope": boundary_scope,
+                }
+            )
 
-        # Step 4: Orphans (items without shared element mapping)
-        orphan_ids = [item.id for item, _ in items_with_std if item.id not in mapped_items]
-        orphans = []
-        for item, std_id in items_with_std:
-            if item.id in mapped_items:
-                continue
-            orphans.append({
-                "requirement_item_id": item.id,
-                "name": item.name,
-                "standard": standards_map.get(std_id, ""),
-            })
+        elements.sort(key=lambda element: (element["code"], element["name"]))
+        summary = {
+            "common_elements": common_count,
+            "unique_elements": unique_count,
+            "delta_count": 0,
+            "total": len(elements),
+            "common": common_count,
+            "unique": unique_count,
+            "orphans": len(orphans),
+            "standards": [standard["code"] for standard in standards],
+        }
+        return {
+            "standards": standards,
+            "elements": elements,
+            "summary": summary,
+            "orphans": orphans,
+        }
+
+    async def _get_project(self, project_id: int) -> ReportingProject:
+        result = await self.session.execute(
+            select(ReportingProject).where(ReportingProject.id == project_id)
+        )
+        return result.scalar_one()
+
+    async def _get_project_standards(self, project_id: int) -> list[dict]:
+        coverage = await self.get_coverage(project_id)
+        coverage_map = coverage["coverage"]
+
+        rows = (
+            await self.session.execute(
+                select(Standard.id, Standard.code, Standard.name)
+                .select_from(ReportingProjectStandard)
+                .join(Standard, Standard.id == ReportingProjectStandard.standard_id)
+                .where(ReportingProjectStandard.reporting_project_id == project_id)
+                .order_by(Standard.code)
+            )
+        ).all()
+
+        return [
+            {
+                "standard_id": standard_id,
+                "code": code,
+                "name": name,
+                "coverage_pct": coverage_map.get(code, {}).get("completion_percent", 0.0),
+            }
+            for standard_id, code, name in rows
+        ]
+
+    async def _get_matrix_rows(self, project_id: int, standard_ids: list[int]) -> dict[int, list[dict]]:
+        rows = (
+            await self.session.execute(
+                select(
+                    Standard.id,
+                    Standard.code,
+                    Standard.name,
+                    RequirementItem.id,
+                    RequirementItem.item_code,
+                    RequirementItem.name,
+                    RequirementItemSharedElement.shared_element_id,
+                    SharedElement.code,
+                    SharedElement.name,
+                    SharedElement.concept_domain,
+                    RequirementItemStatus.status,
+                )
+                .select_from(ReportingProjectStandard)
+                .join(Standard, Standard.id == ReportingProjectStandard.standard_id)
+                .join(DisclosureRequirement, DisclosureRequirement.standard_id == Standard.id)
+                .join(RequirementItem, RequirementItem.disclosure_requirement_id == DisclosureRequirement.id)
+                .join(
+                    RequirementItemSharedElement,
+                    RequirementItemSharedElement.requirement_item_id == RequirementItem.id,
+                )
+                .join(SharedElement, SharedElement.id == RequirementItemSharedElement.shared_element_id)
+                .outerjoin(
+                    RequirementItemStatus,
+                    and_(
+                        RequirementItemStatus.reporting_project_id == project_id,
+                        RequirementItemStatus.requirement_item_id == RequirementItem.id,
+                    ),
+                )
+                .where(
+                    ReportingProjectStandard.reporting_project_id == project_id,
+                    Standard.id.in_(standard_ids),
+                )
+                .order_by(SharedElement.code, Standard.code, RequirementItem.id)
+            )
+        ).all()
+
+        grouped: dict[tuple[int, int], dict] = {}
+        element_rows: dict[int, list[dict]] = defaultdict(list)
+
+        for (
+            standard_id,
+            standard_code,
+            standard_name,
+            requirement_item_id,
+            item_code,
+            item_name,
+            shared_element_id,
+            element_code,
+            element_name,
+            domain,
+            item_status,
+        ) in rows:
+            key = (shared_element_id, standard_id)
+            if key not in grouped:
+                grouped[key] = {
+                    "standard_id": standard_id,
+                    "standard_code": standard_code,
+                    "standard_name": standard_name,
+                    "shared_element_id": shared_element_id,
+                    "element_code": element_code,
+                    "element_name": element_name,
+                    "domain": domain,
+                    "statuses": [],
+                    "requirements": [],
+                }
+                element_rows[shared_element_id].append(grouped[key])
+
+            grouped[key]["statuses"].append(item_status or "missing")
+            grouped[key]["requirements"].append(
+                f"{item_code or f'ITEM-{requirement_item_id}'} — {item_name}"
+            )
+
+        return element_rows
+
+    async def _get_latest_data_points(self, project_id: int) -> dict[int, DataPoint]:
+        rows = (
+            await self.session.execute(
+                select(DataPoint)
+                .where(DataPoint.reporting_project_id == project_id)
+                .order_by(DataPoint.shared_element_id, DataPoint.updated_at.desc(), DataPoint.id.desc())
+            )
+        ).scalars().all()
+
+        latest: dict[int, DataPoint] = {}
+        for data_point in rows:
+            latest.setdefault(data_point.shared_element_id, data_point)
+        return latest
+
+    async def _get_evidence_counts(self, data_points: list[DataPoint]) -> dict[int, int]:
+        if not data_points:
+            return {}
+        rows = (
+            await self.session.execute(
+                select(DataPointEvidence.data_point_id).where(
+                    DataPointEvidence.data_point_id.in_([data_point.id for data_point in data_points])
+                )
+            )
+        ).all()
+        counts: dict[int, int] = defaultdict(int)
+        for (data_point_id,) in rows:
+            counts[data_point_id] += 1
+        return counts
+
+    async def _get_orphans(self, project_id: int, standard_ids: list[int]) -> list[dict]:
+        rows = (
+            await self.session.execute(
+                select(
+                    RequirementItem.id,
+                    RequirementItem.item_code,
+                    RequirementItem.name,
+                    Standard.code,
+                    Standard.name,
+                    DisclosureRequirement.code,
+                    DisclosureRequirement.title,
+                )
+                .select_from(ReportingProjectStandard)
+                .join(Standard, Standard.id == ReportingProjectStandard.standard_id)
+                .join(DisclosureRequirement, DisclosureRequirement.standard_id == Standard.id)
+                .join(RequirementItem, RequirementItem.disclosure_requirement_id == DisclosureRequirement.id)
+                .outerjoin(
+                    RequirementItemSharedElement,
+                    RequirementItemSharedElement.requirement_item_id == RequirementItem.id,
+                )
+                .where(
+                    ReportingProjectStandard.reporting_project_id == project_id,
+                    Standard.id.in_(standard_ids),
+                    RequirementItemSharedElement.shared_element_id.is_(None),
+                )
+                .order_by(Standard.code, DisclosureRequirement.code, RequirementItem.id)
+            )
+        ).all()
+
+        return [
+            {
+                "requirement_item_id": item_id,
+                "item_code": item_code or f"ITEM-{item_id}",
+                "name": item_name,
+                "standard_code": standard_code,
+                "standard_name": standard_name,
+                "disclosure_code": disclosure_code,
+                "disclosure_title": disclosure_title,
+            }
+            for (
+                item_id,
+                item_code,
+                item_name,
+                standard_code,
+                standard_name,
+                disclosure_code,
+                disclosure_title,
+            ) in rows
+        ]
+
+    async def _get_boundary_scope(self, project: ReportingProject) -> dict | None:
+        if not project.boundary_definition_id:
+            return None
+
+        rows = (
+            await self.session.execute(
+                select(
+                    BoundaryMembership.entity_id,
+                    CompanyEntity.name,
+                    BoundaryMembership.included,
+                    BoundaryMembership.consolidation_method,
+                )
+                .join(CompanyEntity, CompanyEntity.id == BoundaryMembership.entity_id)
+                .where(BoundaryMembership.boundary_definition_id == project.boundary_definition_id)
+                .order_by(CompanyEntity.name)
+            )
+        ).all()
+
+        methods = {method for *_rest, method in rows if method}
+        consolidation_method = methods.pop() if len(methods) == 1 else "mixed"
+        return {
+            "entities": [
+                {
+                    "entity_id": entity_id,
+                    "name": name,
+                    "included": included,
+                }
+                for entity_id, name, included, _method in rows
+            ],
+            "consolidation_method": consolidation_method,
+        }
+
+    def _build_cell(self, row: dict, data_point: DataPoint | None, evidence_counts: dict[int, int]) -> dict:
+        statuses = row["statuses"]
+        status = self._collapse_status(statuses)
+        evidence_status = "none"
+        current_value = None
+        entity_scope = None
+
+        if data_point is not None:
+            if data_point.numeric_value is not None:
+                current_value = f"{float(data_point.numeric_value):g} {data_point.unit_code or ''}".strip()
+            elif data_point.text_value:
+                current_value = data_point.text_value
+            if evidence_counts.get(data_point.id, 0) > 0:
+                evidence_status = "attached"
+            else:
+                evidence_status = "pending"
+            entity_scope = f"Entity #{data_point.entity_id}" if data_point.entity_id else None
+
+        if len(set(statuses)) == 1:
+            binding_type = "full"
+        elif status == "partial":
+            binding_type = "partial"
+        else:
+            binding_type = "derived"
 
         return {
-            "elements": elements,
-            "orphans": orphans,
-            "summary": {
-                "total": len(elements) + len(orphans),
-                "common": common_count,
-                "unique": unique_count,
-                "orphans": len(orphans),
-                "standards": list(standards_map.values()),
-            },
+            "standard_id": row["standard_id"],
+            "status": status,
+            "binding_type": binding_type,
+            "requirement_details": "\n".join(row["requirements"]),
+            "current_value": current_value,
+            "evidence_status": evidence_status,
+            "entity_scope": entity_scope,
         }
+
+    @staticmethod
+    def _collapse_status(statuses: list[str]) -> str:
+        normalized = [status for status in statuses if status != "not_applicable"]
+        if not normalized:
+            return "missing"
+        if all(status == "complete" for status in normalized):
+            return "complete"
+        if all(status == "missing" for status in normalized):
+            return "missing"
+        return "partial"
 
     async def get_coverage(self, project_id: int, ctx: RequestContext | None = None) -> dict:
         """Coverage per standard."""
         if ctx:
             AuthPolicy.require_role(
-                ctx, ["admin", "esg_manager", "reviewer", "auditor", "platform_admin"]
+                ctx, ["admin", "esg_manager", "auditor"]
             )
             await get_project_for_ctx(
                 self.session,
                 project_id,
                 ctx,
                 allow_collectors=False,
-                allow_reviewers=True,
+                allow_reviewers=False,
             )
 
         rows = (

@@ -12,6 +12,7 @@ from app.schemas.entities import (
     EntityCreate,
     EntityListOut,
     EntityOut,
+    EntityUpdate,
     OrgSetupRequest,
     OwnershipLinkCreate,
     OwnershipLinkOut,
@@ -55,6 +56,16 @@ async def create_entity(
     session: AsyncSession = Depends(get_session),
 ):
     return await _get_service(session).create_entity(payload, ctx)
+
+
+@router.patch("/api/entities/{entity_id}", response_model=EntityOut)
+async def update_entity(
+    entity_id: int,
+    payload: EntityUpdate,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _get_service(session).update_entity(entity_id, payload, ctx)
 
 
 @router.post("/api/ownership-links", response_model=OwnershipLinkOut, status_code=status.HTTP_201_CREATED)

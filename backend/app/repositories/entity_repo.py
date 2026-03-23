@@ -58,6 +58,13 @@ class EntityRepository:
         await self.session.flush()
         return e
 
+    async def update_entity(self, entity_id: int, **kwargs) -> CompanyEntity:
+        entity = await self.get_or_raise(entity_id)
+        for key, value in kwargs.items():
+            setattr(entity, key, value)
+        await self.session.flush()
+        return entity
+
     # --- Ownership ---
     async def create_ownership(self, **kwargs) -> OwnershipLink:
         link = OwnershipLink(**kwargs)

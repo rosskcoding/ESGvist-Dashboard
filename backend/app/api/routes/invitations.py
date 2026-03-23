@@ -54,6 +54,17 @@ async def accept_invitation(
     return await service.accept_invitation(payload.token, user.id)
 
 
+@router.post("/accept/{token}")
+async def accept_invitation_by_path(
+    token: str,
+    user: CurrentUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    # Backward-compatible alias for existing clients and tests.
+    service = InvitationService(session)
+    return await service.accept_invitation(token, user.id)
+
+
 @router.post("/decline")
 async def decline_invitation(
     payload: InvitationTokenRequest,
@@ -61,6 +72,15 @@ async def decline_invitation(
 ):
     service = InvitationService(session)
     return await service.decline_invitation(payload.token)
+
+
+@router.post("/decline/{token}")
+async def decline_invitation_by_path(
+    token: str,
+    session: AsyncSession = Depends(get_session),
+):
+    service = InvitationService(session)
+    return await service.decline_invitation(token)
 
 
 @router.get("")

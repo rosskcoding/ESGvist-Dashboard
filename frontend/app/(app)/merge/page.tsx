@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   Card,
   CardContent,
@@ -35,10 +35,11 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronRight,
+  Eye,
   Layers,
   GitMerge,
   RefreshCw,
-  Search,
+  ShieldAlert,
 } from "lucide-react";
 
 // ---------- Types ----------
@@ -136,9 +137,19 @@ export default function MergePage() {
     standard: MergeStandard;
   } | null>(null);
 
+  const { data: me, isLoading: meLoading } = useApiQuery<{
+    roles: Array<{ role: string }>;
+  }>(["auth-me", "merge"], "/auth/me");
+
+  const roles = me?.roles?.map((binding) => binding.role) ?? [];
+  const canAccess = roles.some((role) => ["admin", "esg_manager", "auditor"].includes(role));
+  const accessDenied = roles.length > 0 && !canAccess;
+  const isAuditor = roles.includes("auditor");
+
   const { data, isLoading, error } = useApiQuery<MergeData>(
     ["merge", projectId],
-    `/projects/${projectId}/merge`
+    `/projects/${projectId}/merge`,
+    { enabled: canAccess }
   );
 
   const standards = data?.standards ?? [];
@@ -200,10 +211,37 @@ export default function MergePage() {
 
   // ---------- Renders ----------
 
-  if (isLoading) {
+  if (meLoading || (canAccess && isLoading)) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+      </div>
+    );
+  }
+
+  if (accessDenied) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
+            <GitMerge className="h-6 w-6" />
+            Merge View
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Cross-standard data element coverage matrix
+          </p>
+        </div>
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="flex items-start gap-3 p-6 text-red-700">
+            <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" />
+            <div>
+              <p className="font-semibold">Access denied</p>
+              <p className="mt-1 text-sm">
+                Only admin, ESG manager, and auditor roles can access merge analysis.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -243,6 +281,20 @@ export default function MergePage() {
           </p>
         </div>
       </div>
+
+      {isAuditor && (
+        <Card className="border-amber-200 bg-amber-50">
+          <CardContent className="flex items-start gap-3 p-4 text-amber-800">
+            <Eye className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <p className="font-medium">Auditor access is read-only.</p>
+              <p className="text-sm">
+                Merge analysis is available for inspection, but editing remains disabled elsewhere.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Filters */}
       <Card>
@@ -562,6 +614,7 @@ function ElementRows({
                 type="button"
                 className="inline-flex items-center gap-1.5 rounded px-1.5 py-1 hover:bg-slate-100"
                 onClick={() => onCellClick(cell, std)}
+                aria-label={`Open ${element.code} coverage for ${std.code}`}
               >
                 <StatusDot status={cell.status} />
                 <Badge

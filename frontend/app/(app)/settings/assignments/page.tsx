@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useId } from "react";
 import { cn } from "@/lib/utils";
 import { useApiQuery, useApiMutation } from "@/lib/hooks/use-api";
 import { useQueryClient } from "@tanstack/react-query";
@@ -42,6 +42,7 @@ import {
   Clock,
   CheckCircle2,
   AlertCircle,
+  ShieldAlert,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -126,6 +127,11 @@ function getSLAColor(deadline: string | null): {
   if (diffDays <= 7)
     return { color: "bg-yellow-100 text-yellow-700", label: `${diffDays}d left` };
   return { color: "bg-green-100 text-green-700", label: `${diffDays}d left` };
+}
+
+function isForbidden(error: Error | null) {
+  const code = (error as Error & { code?: string } | null)?.code;
+  return code === "FORBIDDEN" || /not allowed|access denied|forbidden/i.test(error?.message || "");
 }
 
 // ---------------------------------------------------------------------------
@@ -232,6 +238,9 @@ function AddAssignmentDialog({
   projectId: number;
 }) {
   const queryClient = useQueryClient();
+  const elementCodeId = useId();
+  const elementNameId = useId();
+  const deadlineId = useId();
   const [form, setForm] = useState({
     shared_element_code: "",
     shared_element_name: "",
@@ -289,8 +298,9 @@ function AddAssignmentDialog({
         <div className="mt-4 space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label>Element Code</Label>
+              <Label htmlFor={elementCodeId}>Element Code</Label>
               <Input
+                id={elementCodeId}
                 value={form.shared_element_code}
                 onChange={(e) =>
                   setForm({ ...form, shared_element_code: e.target.value })
@@ -299,8 +309,9 @@ function AddAssignmentDialog({
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Element Name</Label>
+              <Label htmlFor={elementNameId}>Element Name</Label>
               <Input
+                id={elementNameId}
                 value={form.shared_element_name}
                 onChange={(e) =>
                   setForm({ ...form, shared_element_name: e.target.value })
@@ -349,8 +360,9 @@ function AddAssignmentDialog({
             </div>
           )}
           <div className="space-y-1.5">
-            <Label>Deadline</Label>
+            <Label htmlFor={deadlineId}>Deadline</Label>
             <Input
+              id={deadlineId}
               type="date"
               value={form.deadline}
               onChange={(e) => setForm({ ...form, deadline: e.target.value })}
@@ -479,10 +491,18 @@ export default function AssignmentsPage() {
   const [bulkAction, setBulkAction] = useState<
     "collector" | "reviewer" | "deadline" | null
   >(null);
+  const { data: me, isLoading: meLoading } = useApiQuery<{
+    roles: Array<{ role: string }>;
+  }>(["auth-me", "assignments"], "/auth/me");
+  const roles = me?.roles?.map((binding) => binding.role) ?? [];
+  const canAccess = roles.some((role) =>
+    ["admin", "esg_manager", "platform_admin"].includes(role)
+  );
 
   const { data, isLoading, error } = useApiQuery<AssignmentsResponse>(
     ["assignments", projectId],
-    `/projects/${projectId}/assignments`
+    `/projects/${projectId}/assignments`,
+    { enabled: canAccess }
   );
 
   const updateMutation = useApiMutation<
@@ -638,10 +658,30 @@ export default function AssignmentsPage() {
     [users]
   );
 
-  if (isLoading) {
+  if (meLoading || isLoading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+      </div>
+    );
+  }
+
+  if ((Boolean(me) && !canAccess) || (error && isForbidden(error))) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Assignments</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Manage data collection assignments
+          </p>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-12 text-center">
+          <ShieldAlert className="mx-auto mb-3 h-10 w-10 text-red-500" />
+          <p className="text-sm font-medium text-slate-900">Access denied</p>
+          <p className="mt-1 text-sm text-slate-500">
+            Only admin and ESG manager roles can manage assignments.
+          </p>
+        </div>
       </div>
     );
   }

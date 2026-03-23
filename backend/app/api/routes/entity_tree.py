@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import RequestContext, get_current_context
 from app.db.session import get_session
+from app.policies.auth_policy import AuthPolicy
 from app.services.entity_tree_service import EntityTreeService
 
 router = APIRouter(tags=["Entity Tree"])
@@ -13,6 +14,7 @@ async def get_entity_tree(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
+    AuthPolicy.require_manager_or_admin(ctx)
     service = EntityTreeService(session)
     return await service.get_tree(ctx.organization_id)
 
@@ -23,5 +25,6 @@ async def get_effective_ownership(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
+    AuthPolicy.require_manager_or_admin(ctx)
     service = EntityTreeService(session)
     return await service.calculate_effective_ownership(ctx.organization_id, entity_id)

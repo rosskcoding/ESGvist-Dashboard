@@ -15,7 +15,12 @@ from app.repositories.audit_repo import AuditRepository
 from app.repositories.data_point_repo import DataPointRepository
 from app.repositories.evidence_repo import EvidenceRepository
 from app.repositories.project_repo import ProjectRepository
-from app.schemas.data_points import DataPointCreate, DataPointListOut, DataPointOut
+from app.schemas.data_points import (
+    DataPointCreate,
+    DataPointListOut,
+    DataPointOut,
+    DataPointUpdate,
+)
 from app.schemas.evidence import (
     EvidenceCreate,
     EvidenceLinkRequest,
@@ -91,6 +96,17 @@ async def get_data_point(
     return await _dp_service(session).get(dp_id, ctx)
 
 
+@router.patch("/api/data-points/{dp_id}", response_model=DataPointOut)
+async def update_data_point(
+    dp_id: int,
+    payload: DataPointUpdate,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    AuthPolicy.require_write_access(ctx)
+    return await _dp_service(session).update(dp_id, payload, ctx)
+
+
 # --- Evidence ---
 @router.post("/api/evidences", response_model=EvidenceOut, status_code=status.HTTP_201_CREATED)
 async def create_evidence(
@@ -122,6 +138,7 @@ async def list_evidences(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
+    AuthPolicy.require_role(ctx, ["admin", "platform_admin", "esg_manager", "collector", "auditor"])
     return await _ev_service(session).list_evidences(ctx, page, page_size)
 
 

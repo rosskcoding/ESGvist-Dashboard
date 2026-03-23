@@ -40,9 +40,19 @@ class UserResponse(BaseModel):
     email: str
     full_name: str
     is_active: bool
+    organization_name: str | None = None
     roles: list[RoleBindingOut] = []
 
     model_config = {"from_attributes": True}
+
+
+class UserProfileUpdateRequest(BaseModel):
+    full_name: str = Field(min_length=1, max_length=200)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=8)
 
 
 class InvitationCreateRequest(BaseModel):
@@ -124,3 +134,23 @@ class TwoFactorEnableRequest(BaseModel):
 class TwoFactorDisableRequest(BaseModel):
     code: str | None = None
     backup_code: str | None = None
+
+
+class OrganizationSettingsOut(BaseModel):
+    id: int
+    name: str
+    country: str | None = None
+    industry: str | None = None
+    currency: str
+    reporting_year: int | None = None
+    logo_url: str | None = None
+    default_boundary_id: int | None = None
+
+
+class OrganizationSettingsUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=500)
+    country: str | None = None
+    industry: str | None = None
+    currency: str | None = Field(default=None, min_length=3, max_length=10)
+    reporting_year: int | None = None
+    default_boundary_id: int | None = None

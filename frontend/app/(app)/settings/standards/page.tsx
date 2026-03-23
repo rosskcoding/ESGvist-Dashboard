@@ -1,185 +1,131 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
-import { cn } from "@/lib/utils";
-import { useApiQuery, useApiMutation } from "@/lib/hooks/use-api";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  BookOpen,
+  FileText,
+  Layers,
+  Loader2,
+  Plus,
+  ShieldAlert,
+} from "lucide-react";
+
+import { useApiMutation, useApiQuery } from "@/lib/hooks/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Select } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import {
   Table,
-  TableHeader,
   TableBody,
-  TableRow,
-  TableHead,
   TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import {
-  Search,
-  Plus,
-  ChevronRight,
-  ChevronDown,
-  Save,
-  Loader2,
-  BookOpen,
-  FileText,
-  ListTree,
-} from "lucide-react";
+import { cn } from "@/lib/utils";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface Standard {
+type Standard = {
   id: number;
   code: string;
   name: string;
-  version: string;
-  status: "active" | "inactive";
-  description: string;
-  created_at: string;
-  updated_at: string;
-}
+  version: string | null;
+  is_active: boolean;
+};
 
-interface Section {
+type Section = {
   id: number;
-  standard_id: number;
-  parent_id: number | null;
-  code: string;
-  name: string;
-  order: number;
-  children: Section[];
-  disclosure_requirements: DisclosureRequirement[];
-}
+  code: string | null;
+  title: string;
+  sort_order: number;
+};
 
-interface DisclosureRequirement {
+type Disclosure = {
   id: number;
+  section_id: number | null;
   code: string;
-  name: string;
-  type: "quantitative" | "qualitative" | "mixed";
-  is_mandatory: boolean;
-  section_id: number;
-  section_name?: string;
-}
+  title: string;
+  requirement_type: "quantitative" | "qualitative" | "mixed";
+  mandatory_level: "mandatory" | "conditional" | "optional";
+  sort_order: number;
+};
 
-// ---------------------------------------------------------------------------
-// Add Standard Dialog
-// ---------------------------------------------------------------------------
+type StandardListResponse = { items: Standard[]; total: number };
+type DisclosureListResponse = { items: Disclosure[]; total: number };
 
 function AddStandardDialog({
   open,
   onOpenChange,
+  onCreated,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onCreated: (standardId: number) => void;
 }) {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState({
-    code: "",
-    name: "",
-    version: "",
-    description: "",
-    status: "active" as "active" | "inactive",
+  const [form, setForm] = useState({ code: "", name: "", version: "2026" });
+  const mutation = useApiMutation<Standard, typeof form>("/standards", "POST", {
+    onSuccess: (standard) => {
+      queryClient.invalidateQueries({ queryKey: ["standards-admin"] });
+      onOpenChange(false);
+      onCreated(standard.id);
+      setForm({ code: "", name: "", version: "2026" });
+    },
   });
-
-  const createMutation = useApiMutation<Standard, typeof form>(
-    "/standards",
-    "POST",
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["standards"] });
-        onOpenChange(false);
-        setForm({ code: "", name: "", version: "", description: "", status: "active" });
-      },
-    }
-  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Add Standard</DialogTitle>
-          <DialogDescription>
-            Create a new reporting standard for your organization.
-          </DialogDescription>
+          <DialogDescription>Create a reporting standard and open it for configuration.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid gap-1.5">
-            <Label htmlFor="std-code">Code</Label>
+            <Label htmlFor="standard-code">Code</Label>
             <Input
-              id="std-code"
-              placeholder="e.g. ESRS, GRI, IFRS-S"
+              id="standard-code"
               value={form.code}
-              onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
+              onChange={(event) => setForm((current) => ({ ...current, code: event.target.value }))}
+              placeholder="e.g. DEMO-ESG"
             />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="std-name">Name</Label>
+            <Label htmlFor="standard-name">Name</Label>
             <Input
-              id="std-name"
-              placeholder="Standard name"
+              id="standard-name"
               value={form.name}
-              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-1.5">
-              <Label htmlFor="std-version">Version</Label>
-              <Input
-                id="std-version"
-                placeholder="e.g. 2024"
-                value={form.version}
-                onChange={(e) => setForm((f) => ({ ...f, version: e.target.value }))}
-              />
-            </div>
-            <Select
-              label="Status"
-              value={form.status}
-              onChange={(v) => setForm((f) => ({ ...f, status: v as "active" | "inactive" }))}
-              options={[
-                { value: "active", label: "Active" },
-                { value: "inactive", label: "Inactive" },
-              ]}
+              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+              placeholder="Demo ESG Standard"
             />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="std-desc">Description</Label>
-            <Textarea
-              id="std-desc"
-              placeholder="Describe this standard..."
-              value={form.description}
-              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-              rows={3}
+            <Label htmlFor="standard-version">Version</Label>
+            <Input
+              id="standard-version"
+              value={form.version}
+              onChange={(event) => setForm((current) => ({ ...current, version: event.target.value }))}
             />
           </div>
         </div>
         <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-          >
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            onClick={() => createMutation.mutate(form)}
-            disabled={createMutation.isPending || !form.code || !form.name}
-          >
-            {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          <Button onClick={() => mutation.mutate(form)} disabled={mutation.isPending || !form.code || !form.name}>
+            {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Create Standard
           </Button>
         </DialogFooter>
@@ -188,487 +134,448 @@ function AddStandardDialog({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Section Tree Node
-// ---------------------------------------------------------------------------
-
-function SectionNode({
-  section,
-  depth = 0,
+function AddSectionDialog({
+  standardId,
+  open,
+  onOpenChange,
 }: {
-  section: Section;
-  depth?: number;
+  standardId: number;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const hasChildren = (section.children ?? []).length > 0;
-  const hasDisclosures = (section.disclosure_requirements ?? []).length > 0;
-
-  return (
-    <div>
-      <button
-        type="button"
-        className={cn(
-          "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800",
-        )}
-        style={{ paddingLeft: `${depth * 20 + 8}px` }}
-        onClick={() => setExpanded(!expanded)}
-      >
-        {(hasChildren || hasDisclosures) ? (
-          expanded ? (
-            <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
-          ) : (
-            <ChevronRight className="h-4 w-4 shrink-0 text-slate-500" />
-          )
-        ) : (
-          <span className="h-4 w-4 shrink-0" />
-        )}
-        <span className="font-medium text-slate-600 dark:text-slate-400">
-          {section.code}
-        </span>
-        <span className="truncate">{section.name}</span>
-      </button>
-
-      {expanded && hasDisclosures && (
-        <div
-          className="border-l border-slate-200 ml-4 dark:border-slate-700"
-          style={{ marginLeft: `${depth * 20 + 24}px` }}
-        >
-          {(section.disclosure_requirements ?? []).map((dr) => (
-            <div
-              key={dr.id}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm"
-            >
-              <FileText className="h-3.5 w-3.5 text-slate-400" />
-              <span className="font-mono text-xs text-slate-500">{dr.code}</span>
-              <span className="truncate text-slate-700 dark:text-slate-300">
-                {dr.name}
-              </span>
-              <Badge
-                variant={
-                  dr.type === "quantitative"
-                    ? "default"
-                    : dr.type === "qualitative"
-                    ? "secondary"
-                    : "warning"
-                }
-                className="ml-auto text-[10px]"
-              >
-                {dr.type}
-              </Badge>
-              <Badge
-                variant={dr.is_mandatory ? "destructive" : "outline"}
-                className="text-[10px]"
-              >
-                {dr.is_mandatory ? "mandatory" : "optional"}
-              </Badge>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {expanded &&
-        hasChildren &&
-        (section.children ?? []).map((child) => (
-          <SectionNode key={child.id} section={child} depth={depth + 1} />
-        ))}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Details Tab
-// ---------------------------------------------------------------------------
-
-function DetailsTab({ standard }: { standard: Standard }) {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState({
-    name: standard.name,
-    code: standard.code,
-    version: standard.version,
-    description: standard.description,
-    status: standard.status,
+  const [form, setForm] = useState({ code: "", title: "", sort_order: 0 });
+  const mutation = useApiMutation(`/standards/${standardId}/sections`, "POST", {
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["standard-sections", standardId] });
+      onOpenChange(false);
+      setForm({ code: "", title: "", sort_order: 0 });
+    },
   });
 
-  const updateMutation = useApiMutation<Standard, typeof form>(
-    `/api/standards/${standard.id}`,
-    "PUT",
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["standards"] });
-        queryClient.invalidateQueries({ queryKey: ["standard", standard.id] });
-      },
-    }
-  );
-
-  // Reset form when standard changes
-  // Note: intentionally not adding setForm to deps to avoid loops
-  useEffect(() => {
-    setForm({
-      name: standard.name,
-      code: standard.code,
-      version: standard.version,
-      description: standard.description,
-      status: standard.status,
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [standard.id]);
-
   return (
-    <div className="space-y-4">
-      <div className="grid gap-4">
-        <div className="grid grid-cols-2 gap-4">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add Section</DialogTitle>
+          <DialogDescription>Create a section bucket for disclosures in this standard.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 py-4">
           <div className="grid gap-1.5">
-            <Label htmlFor="detail-name">Name</Label>
+            <Label htmlFor="section-code">Code</Label>
             <Input
-              id="detail-name"
-              value={form.name}
-              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="detail-code">Code</Label>
-            <Input
-              id="detail-code"
+              id="section-code"
               value={form.code}
-              onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
+              onChange={(event) => setForm((current) => ({ ...current, code: event.target.value }))}
+              placeholder="e.g. GOV"
             />
           </div>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
           <div className="grid gap-1.5">
-            <Label htmlFor="detail-version">Version</Label>
+            <Label htmlFor="section-title">Title</Label>
             <Input
-              id="detail-version"
-              value={form.version}
-              onChange={(e) => setForm((f) => ({ ...f, version: e.target.value }))}
-            />
-          </div>
-          <div className="pt-6">
-            <Switch
-              checked={form.status === "active"}
-              onCheckedChange={(checked) =>
-                setForm((f) => ({ ...f, status: checked ? "active" : "inactive" }))
-              }
-              label={form.status === "active" ? "Active" : "Inactive"}
+              id="section-title"
+              value={form.title}
+              onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
+              placeholder="Governance"
             />
           </div>
         </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="detail-desc">Description</Label>
-          <Textarea
-            id="detail-desc"
-            value={form.description}
-            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-            rows={4}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={() => mutation.mutate(form)} disabled={mutation.isPending || !form.title}>
+            {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Create Section
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AddDisclosureDialog({
+  standardId,
+  sections,
+  open,
+  onOpenChange,
+}: {
+  standardId: number;
+  sections: Section[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState({
+    section_id: "",
+    code: "",
+    title: "",
+    requirement_type: "quantitative",
+    mandatory_level: "mandatory",
+    sort_order: 0,
+  });
+  const mutation = useApiMutation(`/standards/${standardId}/disclosures`, "POST", {
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["standard-disclosures", standardId] });
+      onOpenChange(false);
+      setForm({
+        section_id: "",
+        code: "",
+        title: "",
+        requirement_type: "quantitative",
+        mandatory_level: "mandatory",
+        sort_order: 0,
+      });
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add Disclosure</DialogTitle>
+          <DialogDescription>Create a disclosure requirement under the selected standard.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 py-4">
+          <Select
+            label="Section"
+            value={form.section_id}
+            onChange={(value) => setForm((current) => ({ ...current, section_id: value }))}
+            options={[
+              { value: "", label: "No section" },
+              ...sections.map((section) => ({
+                value: String(section.id),
+                label: `${section.code ?? "SEC"} - ${section.title}`,
+              })),
+            ]}
           />
+          <div className="grid gap-1.5">
+            <Label htmlFor="disclosure-code">Code</Label>
+            <Input
+              id="disclosure-code"
+              value={form.code}
+              onChange={(event) => setForm((current) => ({ ...current, code: event.target.value }))}
+              placeholder="e.g. GOV-1"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="disclosure-title">Title</Label>
+            <Input
+              id="disclosure-title"
+              value={form.title}
+              onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
+              placeholder="Describe board oversight"
+            />
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Select
+              label="Requirement Type"
+              value={form.requirement_type}
+              onChange={(value) => setForm((current) => ({ ...current, requirement_type: value }))}
+              options={[
+                { value: "quantitative", label: "Quantitative" },
+                { value: "qualitative", label: "Qualitative" },
+                { value: "mixed", label: "Mixed" },
+              ]}
+            />
+            <Select
+              label="Mandatory Level"
+              value={form.mandatory_level}
+              onChange={(value) => setForm((current) => ({ ...current, mandatory_level: value }))}
+              options={[
+                { value: "mandatory", label: "Mandatory" },
+                { value: "conditional", label: "Conditional" },
+                { value: "optional", label: "Optional" },
+              ]}
+            />
+          </div>
         </div>
-      </div>
-      <div className="flex justify-end">
-        <Button
-          onClick={() => updateMutation.mutate(form)}
-          disabled={updateMutation.isPending}
-        >
-          {updateMutation.isPending ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <Save className="mr-2 h-4 w-4" />
-          )}
-          Save Changes
-        </Button>
-      </div>
-    </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() =>
+              mutation.mutate({
+                ...form,
+                section_id: form.section_id ? Number(form.section_id) : null,
+              })
+            }
+            disabled={mutation.isPending || !form.code || !form.title}
+          >
+            {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Create Disclosure
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Sections Tab
-// ---------------------------------------------------------------------------
-
-function SectionsTab({ standardId }: { standardId: number }) {
-  const { data: sections, isLoading } = useApiQuery<Section[]>(
-    ["standard-sections", standardId],
-    `/api/standards/${standardId}/sections`
-  );
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
-      </div>
-    );
-  }
-
-  if (!sections || sections.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 text-slate-500">
-        <ListTree className="mb-2 h-8 w-8" />
-        <p className="text-sm">No sections defined for this standard.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-500">
-          {sections.length} top-level section{sections.length !== 1 && "s"}
-        </p>
-        <Button size="sm" variant="outline">
-          <Plus className="mr-1 h-3.5 w-3.5" />
-          Add Section
-        </Button>
-      </div>
-      <Card>
-        <CardContent className="p-2">
-          {sections.map((section) => (
-            <SectionNode key={section.id} section={section} />
-          ))}
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Disclosures Tab
-// ---------------------------------------------------------------------------
-
-function DisclosuresTab({ standardId }: { standardId: number }) {
-  const { data: sections, isLoading } = useApiQuery<Section[]>(
-    ["standard-sections", standardId],
-    `/api/standards/${standardId}/sections`
-  );
-
-  const disclosures = useMemo(() => {
-    if (!sections) return [];
-    const result: (DisclosureRequirement & { section_name: string })[] = [];
-    function walk(secs: Section[]) {
-      for (const sec of secs) {
-        if (sec.disclosure_requirements) {
-          for (const dr of sec.disclosure_requirements) {
-            result.push({ ...dr, section_name: sec.name });
-          }
-        }
-        if (sec.children) walk(sec.children);
-      }
-    }
-    walk(sections);
-    return result;
-  }, [sections]);
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
-      </div>
-    );
-  }
-
-  if (disclosures.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 text-slate-500">
-        <FileText className="mb-2 h-8 w-8" />
-        <p className="text-sm">No disclosure requirements found.</p>
-      </div>
-    );
-  }
-
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Code</TableHead>
-          <TableHead>Name</TableHead>
-          <TableHead>Type</TableHead>
-          <TableHead>Section</TableHead>
-          <TableHead>Required</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {disclosures.map((dr) => (
-          <TableRow key={dr.id}>
-            <TableCell className="font-mono text-xs">{dr.code}</TableCell>
-            <TableCell>{dr.name}</TableCell>
-            <TableCell>
-              <Badge
-                variant={
-                  dr.type === "quantitative"
-                    ? "default"
-                    : dr.type === "qualitative"
-                    ? "secondary"
-                    : "warning"
-                }
-              >
-                {dr.type}
-              </Badge>
-            </TableCell>
-            <TableCell className="text-slate-500">{dr.section_name}</TableCell>
-            <TableCell>
-              <Badge variant={dr.is_mandatory ? "destructive" : "outline"}>
-                {dr.is_mandatory ? "mandatory" : "optional"}
-              </Badge>
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Main Page
-// ---------------------------------------------------------------------------
 
 export default function StandardsPage() {
-  const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [addOpen, setAddOpen] = useState(false);
+  const [standardDialogOpen, setStandardDialogOpen] = useState(false);
+  const [sectionDialogOpen, setSectionDialogOpen] = useState(false);
+  const [disclosureDialogOpen, setDisclosureDialogOpen] = useState(false);
 
-  const { data: standardsData, isLoading } = useApiQuery<{ items: Standard[]; total: number } | Standard[]>(
-    ["standards"],
-    "/standards"
+  const { data: me, isLoading: meLoading } = useApiQuery<{
+    roles: Array<{ role: string }>;
+  }>(["auth-me", "standards-settings"], "/auth/me");
+
+  const role = me?.roles?.[0]?.role ?? "";
+  const canAccess = role === "admin" || role === "platform_admin";
+  const accessDenied = Boolean(role) && !canAccess;
+
+  const { data: standardsData, isLoading: standardsLoading } = useApiQuery<StandardListResponse>(
+    ["standards-admin"],
+    "/standards?page_size=100",
+    { enabled: canAccess }
   );
-  const standards = Array.isArray(standardsData) ? standardsData : standardsData?.items ?? [];
+  const standards = standardsData?.items ?? [];
+
+  useEffect(() => {
+    if (!selectedId && standards.length > 0) {
+      setSelectedId(standards[0].id);
+    }
+  }, [selectedId, standards]);
 
   const selectedStandard = useMemo(
-    () => standards.find((s) => s.id === selectedId) ?? null,
-    [standards, selectedId]
+    () => standards.find((standard) => standard.id === selectedId) ?? null,
+    [selectedId, standards]
   );
 
-  const filtered = useMemo(() => {
-    if (!standards.length) return [];
-    if (!search) return standards;
-    const q = search.toLowerCase();
-    return standards.filter(
-      (s) =>
-        s.code.toLowerCase().includes(q) ||
-        s.name.toLowerCase().includes(q) ||
-        s.version.toLowerCase().includes(q)
+  const { data: sections = [], isLoading: sectionsLoading } = useApiQuery<Section[]>(
+    ["standard-sections", selectedId],
+    selectedId ? `/standards/${selectedId}/sections` : "/standards/0/sections",
+    { enabled: canAccess && Boolean(selectedId) }
+  );
+
+  const { data: disclosuresData, isLoading: disclosuresLoading } = useApiQuery<DisclosureListResponse>(
+    ["standard-disclosures", selectedId],
+    selectedId ? `/standards/${selectedId}/disclosures?page_size=100` : "/standards/0/disclosures",
+    { enabled: canAccess && Boolean(selectedId) }
+  );
+  const disclosures = disclosuresData?.items ?? [];
+
+  if (meLoading || (canAccess && standardsLoading)) {
+    return (
+      <div className="flex min-h-[400px] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+      </div>
     );
-  }, [standards, search]);
+  }
+
+  if (accessDenied) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Standards Management</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Configure standards, disclosures, and requirement-item entry points.
+          </p>
+        </div>
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="flex items-start gap-3 p-6 text-red-700">
+            <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" />
+            <div>
+              <p className="font-semibold">Access denied</p>
+              <p className="mt-1 text-sm">Only admin and platform admin roles can manage standards.</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex h-full gap-6 p-6">
-      {/* Left Panel */}
-      <div className="flex w-[300px] shrink-0 flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Standards</h2>
-          <Button size="sm" onClick={() => setAddOpen(true)}>
-            <Plus className="mr-1 h-3.5 w-3.5" />
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-slate-900">Standards Management</h2>
+        <p className="mt-1 text-sm text-slate-500">Configure standards, disclosures, and requirement-item entry points.</p>
+      </div>
+      <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <CardTitle>Standards</CardTitle>
+          <Button size="sm" onClick={() => setStandardDialogOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
             Add Standard
           </Button>
-        </div>
-
-        <div className="relative">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-          <Input
-            placeholder="Search standards..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-
-        <div className="flex-1 space-y-1 overflow-y-auto">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
-            </div>
-          ) : filtered.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-500">
-              No standards found.
-            </p>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {standards.length === 0 ? (
+            <p className="text-sm text-slate-500">No standards configured yet.</p>
           ) : (
-            filtered.map((std) => (
+            standards.map((standard) => (
               <button
-                key={std.id}
+                key={standard.id}
                 type="button"
                 className={cn(
-                  "flex w-full flex-col gap-0.5 rounded-md border px-3 py-2 text-left transition-colors",
-                  selectedId === std.id
-                    ? "border-slate-900 bg-slate-50 dark:border-slate-100 dark:bg-slate-800"
-                    : "border-transparent hover:bg-slate-100 dark:hover:bg-slate-800"
+                  "w-full rounded-lg border px-3 py-3 text-left transition-colors",
+                  selectedId === standard.id
+                    ? "border-slate-900 bg-slate-50"
+                    : "border-slate-200 hover:bg-slate-50"
                 )}
-                onClick={() => setSelectedId(std.id)}
+                onClick={() => setSelectedId(standard.id)}
               >
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs font-semibold text-slate-600 dark:text-slate-300">
-                    {std.code}
-                  </span>
-                  <Badge
-                    variant={std.status === "active" ? "success" : "secondary"}
-                    className="text-[10px]"
-                  >
-                    {std.status}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-xs font-semibold text-slate-600">{standard.code}</span>
+                  <Badge variant={standard.is_active ? "success" : "secondary"}>
+                    {standard.is_active ? "active" : "inactive"}
                   </Badge>
                 </div>
-                <span className="text-sm">{std.name}</span>
-                <span className="text-xs text-slate-400">v{std.version}</span>
+                <p className="mt-2 font-medium text-slate-900">{standard.name}</p>
+                <p className="mt-1 text-sm text-slate-500">Version {standard.version ?? "n/a"}</p>
               </button>
             ))
           )}
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
-      {/* Right Panel */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="space-y-6">
         {selectedStandard ? (
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <BookOpen className="h-5 w-5 text-slate-500" />
+          <>
+            <Card>
+              <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
                 <div>
-                  <CardTitle>
-                    {selectedStandard.name}{" "}
-                    <span className="text-sm font-normal text-slate-500">
-                      ({selectedStandard.code} v{selectedStandard.version})
-                    </span>
+                  <CardTitle className="flex items-center gap-2">
+                    <BookOpen className="h-5 w-5 text-slate-500" />
+                    {selectedStandard.name}
                   </CardTitle>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {selectedStandard.code} • Version {selectedStandard.version ?? "n/a"}
+                  </p>
                 </div>
-                <Badge
-                  variant={
-                    selectedStandard.status === "active" ? "success" : "secondary"
-                  }
-                  className="ml-auto"
-                >
-                  {selectedStandard.status}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <Tabs defaultValue="details">
-                <TabsList>
-                  <TabsTrigger value="details">Details</TabsTrigger>
-                  <TabsTrigger value="sections">Sections</TabsTrigger>
-                  <TabsTrigger value="disclosures">Disclosures</TabsTrigger>
-                </TabsList>
+                <Button variant="outline" asChild>
+                  <Link href={`/settings/standards/${selectedStandard.id}/requirements`}>
+                    Open Requirement Items
+                  </Link>
+                </Button>
+              </CardHeader>
+            </Card>
 
-                <TabsContent value="details" className="pt-4">
-                  <DetailsTab standard={selectedStandard} />
-                </TabsContent>
+            <div className="grid gap-6 xl:grid-cols-2">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                  <CardTitle className="flex items-center gap-2">
+                    <Layers className="h-5 w-5 text-slate-500" />
+                    Sections
+                  </CardTitle>
+                  <Button size="sm" variant="outline" onClick={() => setSectionDialogOpen(true)}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Section
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  {sectionsLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+                    </div>
+                  ) : sections.length === 0 ? (
+                    <p className="text-sm text-slate-500">No sections defined yet.</p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Code</TableHead>
+                          <TableHead>Title</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {sections.map((section) => (
+                          <TableRow key={section.id}>
+                            <TableCell className="font-mono text-xs">{section.code ?? "-"}</TableCell>
+                            <TableCell>{section.title}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
 
-                <TabsContent value="sections" className="pt-4">
-                  <SectionsTab standardId={selectedStandard.id} />
-                </TabsContent>
-
-                <TabsContent value="disclosures" className="pt-4">
-                  <DisclosuresTab standardId={selectedStandard.id} />
-                </TabsContent>
-              </Tabs>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5 text-slate-500" />
+                    Disclosures
+                  </CardTitle>
+                  <Button size="sm" variant="outline" onClick={() => setDisclosureDialogOpen(true)}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Disclosure
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  {disclosuresLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+                    </div>
+                  ) : disclosures.length === 0 ? (
+                    <p className="text-sm text-slate-500">No disclosures configured yet.</p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Code</TableHead>
+                          <TableHead>Title</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Items</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {disclosures.map((disclosure) => (
+                          <TableRow key={disclosure.id}>
+                            <TableCell className="font-mono text-xs">{disclosure.code}</TableCell>
+                            <TableCell>{disclosure.title}</TableCell>
+                            <TableCell>
+                              <Badge variant="secondary">{disclosure.requirement_type}</Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Button variant="ghost" size="sm" asChild>
+                                <Link href={`/settings/standards/${selectedStandard.id}/requirements?disclosureId=${disclosure.id}`}>
+                                  Manage Items
+                                </Link>
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </>
+        ) : (
+          <Card>
+            <CardContent className="flex min-h-[300px] items-center justify-center text-slate-500">
+              Select a standard to configure sections and disclosures.
             </CardContent>
           </Card>
-        ) : (
-          <div className="flex h-full flex-col items-center justify-center text-slate-400">
-            <BookOpen className="mb-3 h-12 w-12" />
-            <p className="text-lg font-medium">Select a standard</p>
-            <p className="text-sm">
-              Choose a standard from the left panel to view its details.
-            </p>
-          </div>
         )}
       </div>
+      </div>
 
-      <AddStandardDialog open={addOpen} onOpenChange={setAddOpen} />
+      <AddStandardDialog
+        open={standardDialogOpen}
+        onOpenChange={setStandardDialogOpen}
+        onCreated={(standardId) => setSelectedId(standardId)}
+      />
+      {selectedStandard && (
+        <>
+          <AddSectionDialog
+            standardId={selectedStandard.id}
+            open={sectionDialogOpen}
+            onOpenChange={setSectionDialogOpen}
+          />
+          <AddDisclosureDialog
+            standardId={selectedStandard.id}
+            sections={sections}
+            open={disclosureDialogOpen}
+            onOpenChange={setDisclosureDialogOpen}
+          />
+        </>
+      )}
     </div>
   );
 }

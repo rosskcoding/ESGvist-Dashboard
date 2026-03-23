@@ -166,6 +166,16 @@ async def test_assignment_matrix_supports_frontend_contract_and_inline_updates(c
     assert updated_backup.json()["backup_collector_id"] == replacement_collector["id"]
     assert updated_backup.json()["backup_collector_name"] == "Collector Two"
 
+    collector_list = await client.get(
+        f"/api/projects/{project.json()['id']}/assignments",
+        headers=collector["headers"],
+    )
+    assert collector_list.status_code == 200
+    collector_rows = collector_list.json()["assignments"]
+    assert len(collector_rows) == 1
+    assert collector_rows[0]["shared_element_code"] == "E1-1"
+    assert collector_rows[0]["collector_name"] == "Collector One"
+
 
 @pytest.mark.asyncio
 async def test_assignment_bulk_update_updates_multiple_rows(client: AsyncClient):

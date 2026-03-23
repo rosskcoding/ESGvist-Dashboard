@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useMutation } from "@tanstack/react-query";
 import {
   Card,
   CardContent,
@@ -31,6 +32,7 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
 import { useApiQuery, useApiMutation } from "@/lib/hooks/use-api";
 import {
   Loader2,
@@ -39,6 +41,7 @@ import {
   UserPlus,
   Mail,
   Shield,
+  ShieldAlert,
   MoreHorizontal,
   Pencil,
   UserX,
@@ -128,6 +131,11 @@ function formatDate(dateStr: string): string {
   });
 }
 
+function isForbidden(error: Error | null) {
+  const code = (error as Error & { code?: string } | null)?.code;
+  return code === "FORBIDDEN" || /not allowed|access denied|forbidden/i.test(error?.message || "");
+}
+
 // ---------- Component ----------
 
 export default function UsersPage() {
@@ -184,10 +192,14 @@ export default function UsersPage() {
     }
   );
 
-  const toggleStatusMutation = useApiMutation<
+  const toggleStatusMutation = useMutation<
     void,
-    { status: UserStatus }
-  >("", "PATCH", {
+    Error,
+    { userId: number; status: UserStatus }
+  >({
+    mutationFn: async ({ userId, status }) => {
+      await api.patch(`/auth/users/${userId}/status`, { status });
+    },
     onSuccess: () => refetch(),
   });
 
@@ -202,17 +214,19 @@ export default function UsersPage() {
     }
   );
 
-  const resendInviteMutation = useApiMutation<void, void>(
-    "",
-    "POST",
-    { onSuccess: () => refetch() }
-  );
+  const resendInviteMutation = useMutation<void, Error, number>({
+    mutationFn: async (invitationId) => {
+      await api.post(`/auth/invitations/${invitationId}/resend`, {});
+    },
+    onSuccess: () => refetch(),
+  });
 
-  const cancelInviteMutation = useApiMutation<void, void>(
-    "",
-    "DELETE",
-    { onSuccess: () => refetch() }
-  );
+  const cancelInviteMutation = useMutation<void, Error, number>({
+    mutationFn: async (invitationId) => {
+      await api.delete(`/auth/invitations/${invitationId}`);
+    },
+    onSuccess: () => refetch(),
+  });
 
   const users = data?.users ?? [];
   const pendingInvitations = data?.pending_invitations ?? [];
@@ -243,16 +257,7 @@ export default function UsersPage() {
   const handleToggleStatus = (user: OrgUser) => {
     const newStatus: UserStatus =
       user.status === "active" ? "inactive" : "active";
-    toggleStatusMutation.mutate(
-      { status: newStatus },
-      {
-        // @ts-expect-error - dynamic path override
-        mutationFn: async (vars: { status: UserStatus }) => {
-          const { api } = await import("@/lib/api");
-          return api.patch(`/auth/users/${user.id}/status`, vars);
-        },
-      }
-    );
+    toggleStatusMutation.mutate({ userId: user.id, status: newStatus });
   };
 
   // ---------- Render ----------
@@ -261,6 +266,28 @@ export default function UsersPage() {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+      </div>
+    );
+  }
+
+  if (error && isForbidden(error)) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">User Management</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Manage users and invitations for your organization
+          </p>
+        </div>
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <ShieldAlert className="mb-3 h-10 w-10 text-red-500" />
+            <p className="text-sm font-medium text-slate-900">Access denied</p>
+            <p className="mt-1 text-sm text-slate-500">
+              Only admin roles can manage organization users.
+            </p>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -495,18 +522,7 @@ export default function UsersPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() =>
-                        resendInviteMutation.mutate(undefined as never, {
-                          // @ts-expect-error - dynamic path override
-                          mutationFn: async () => {
-                            const { api } = await import("@/lib/api");
-                            return api.post(
-                              `/auth/invitations/${inv.id}/resend`,
-                              {}
-                            );
-                          },
-                        })
-                      }
+                      onClick={() => resendInviteMutation.mutate(inv.id)}
                     >
                       <RefreshCw className="mr-1 h-3 w-3" />
                       Resend
@@ -514,15 +530,7 @@ export default function UsersPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() =>
-                        cancelInviteMutation.mutate(undefined as never, {
-                          // @ts-expect-error - dynamic path override
-                          mutationFn: async () => {
-                            const { api } = await import("@/lib/api");
-                            return api.delete(`/auth/invitations/${inv.id}`);
-                          },
-                        })
-                      }
+                      onClick={() => cancelInviteMutation.mutate(inv.id)}
                     >
                       <X className="mr-1 h-3 w-3 text-red-500" />
                       Cancel

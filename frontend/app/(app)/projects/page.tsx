@@ -78,10 +78,18 @@ export default function ProjectsPage() {
   const router = useRouter();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
+  const { data: me, isLoading: meLoading } = useApiQuery<{
+    roles: Array<{ role: string }>;
+  }>(["auth-me", "projects"], "/auth/me");
+  const roles = me?.roles?.map((binding) => binding.role) ?? [];
+  const canAccess = roles.some((role) =>
+    ["admin", "esg_manager", "platform_admin"].includes(role)
+  );
 
   const { data, isLoading, error, refetch } = useApiQuery<ProjectsResponse>(
     ["projects"],
-    "/projects"
+    "/projects?page_size=100",
+    { enabled: canAccess }
   );
 
   const createMutation = useApiMutation<Project, CreateProjectPayload>(
@@ -102,7 +110,7 @@ export default function ProjectsPage() {
   };
 
   const projects = data?.items ?? [];
-  const accessDenied = !!error && isForbidden(error);
+  const accessDenied = (Boolean(me) && !canAccess) || (!!error && isForbidden(error));
 
   return (
     <div className="space-y-6">
@@ -123,7 +131,7 @@ export default function ProjectsPage() {
       </div>
 
       {/* Content */}
-      {isLoading ? (
+      {meLoading || isLoading ? (
         <div className="flex min-h-[300px] items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
         </div>

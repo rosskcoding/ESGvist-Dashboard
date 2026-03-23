@@ -41,14 +41,51 @@ export interface ButtonProps
   asChild?: boolean;
 }
 
+function composeEventHandlers<E>(
+  originalHandler?: (event: E) => void,
+  nextHandler?: (event: E) => void
+) {
+  return (event: E) => {
+    originalHandler?.(event);
+    nextHandler?.(event);
+  };
+}
+
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, ...props }, ref) => {
+  ({ className, variant, size, asChild = false, children, disabled, onClick, ...props }, ref) => {
+    const classes = cn(buttonVariants({ variant, size, className }));
+
+    if (asChild && React.isValidElement(children)) {
+      const child = children as React.ReactElement<{
+        className?: string;
+        onClick?: React.MouseEventHandler;
+        tabIndex?: number;
+        "aria-disabled"?: boolean;
+      }>;
+
+      return React.cloneElement(child, {
+        ...props,
+        className: cn(classes, disabled && "pointer-events-none opacity-50", child.props.className),
+        "aria-disabled": disabled ? true : child.props["aria-disabled"],
+        tabIndex: disabled ? -1 : child.props.tabIndex,
+        onClick: disabled
+          ? (event: React.MouseEvent) => {
+              event.preventDefault();
+            }
+          : composeEventHandlers(child.props.onClick, onClick),
+      });
+    }
+
     return (
       <button
-        className={cn(buttonVariants({ variant, size, className }))}
+        className={classes}
         ref={ref}
+        disabled={disabled}
+        onClick={onClick}
         {...props}
-      />
+      >
+        {children}
+      </button>
     );
   }
 );

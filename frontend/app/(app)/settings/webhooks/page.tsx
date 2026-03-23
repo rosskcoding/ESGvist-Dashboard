@@ -1,181 +1,203 @@
 "use client";
 
-import { useState } from "react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { useEffect, useMemo, useState } from "react";
+import { CheckCircle2, Loader2, Plus, Send, ShieldAlert, Trash2, Webhook, XCircle } from "lucide-react";
+
+import { api } from "@/lib/api";
+import { useApiQuery } from "@/lib/hooks/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
-import { useApiQuery, useApiMutation } from "@/lib/hooks/use-api";
-import {
-  Loader2,
-  Plus,
-  MoreHorizontal,
-  Webhook,
-  Pencil,
-  Trash2,
-  Zap,
-  CheckCircle2,
-  XCircle,
-  RotateCcw,
-  Clock,
-} from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 
-interface WebhookEntry {
+type RoleBinding = { role: string };
+
+type WebhookEndpoint = {
   id: number;
   url: string;
-  status: "active" | "inactive";
   events: string[];
-  created_at: string;
-}
+  is_active: boolean;
+  secret_last4: string;
+  created_at: string | null;
+  updated_at: string | null;
+};
 
-interface DeliveryEntry {
+type WebhookListResponse = {
+  items: WebhookEndpoint[];
+  total: number;
+};
+
+type WebhookDelivery = {
   id: number;
-  webhook_id: number;
-  status: "success" | "failed";
-  http_code: number | null;
-  timestamp: string;
-  retry_count: number;
   event_type: string;
-}
+  status: string;
+  http_status: number | null;
+  attempt: number;
+  max_attempts: number;
+  delivered_at: string | null;
+  created_at: string | null;
+};
 
-interface WebhooksResponse {
-  webhooks: WebhookEntry[];
-  deliveries: DeliveryEntry[];
-}
+type WebhookDeliveryResponse = {
+  items: WebhookDelivery[];
+  total: number;
+};
 
-const allEvents = [
-  { value: "data_point.created", label: "Data Point Created" },
-  { value: "data_point.updated", label: "Data Point Updated" },
-  { value: "data_point.approved", label: "Data Point Approved" },
-  { value: "assignment.created", label: "Assignment Created" },
-  { value: "assignment.completed", label: "Assignment Completed" },
-  { value: "project.published", label: "Project Published" },
-  { value: "boundary.locked", label: "Boundary Locked" },
-  { value: "export.completed", label: "Export Completed" },
-  { value: "user.invited", label: "User Invited" },
+const supportedEvents = [
+  "data_point.submitted",
+  "data_point.approved",
+  "data_point.rejected",
+  "data_point.needs_revision",
+  "data_point.rolled_back",
+  "project.started",
+  "project.in_review",
+  "project.published",
+  "evidence.created",
+  "boundary.changed",
+  "completeness.updated",
 ];
 
 export default function WebhooksPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingWebhook, setEditingWebhook] = useState<WebhookEntry | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [editing, setEditing] = useState<WebhookEndpoint | null>(null);
   const [formUrl, setFormUrl] = useState("");
   const [formSecret, setFormSecret] = useState("");
   const [formEvents, setFormEvents] = useState<string[]>([]);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [formIsActive, setFormIsActive] = useState(true);
+  const [generatedSecret, setGeneratedSecret] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { data, isLoading, refetch } = useApiQuery<WebhooksResponse>(
-    ["webhooks"],
-    "/webhooks"
+  const { data: me, isLoading: meLoading } = useApiQuery<{ roles: RoleBinding[] }>(
+    ["auth-me", "webhooks-settings"],
+    "/auth/me"
+  );
+  const canAccess = (me?.roles ?? []).some((binding) => ["admin", "platform_admin"].includes(binding.role));
+  const accessDenied = Boolean(me) && !canAccess;
+
+  const { data, isLoading, refetch } = useApiQuery<WebhookListResponse>(["webhooks"], "/webhooks", {
+    enabled: canAccess,
+  });
+
+  useEffect(() => {
+    const firstId = data?.items?.[0]?.id ?? null;
+    setSelectedId((current) => (current && data?.items?.some((item) => item.id === current) ? current : firstId));
+  }, [data?.items]);
+
+  const selectedEndpoint = useMemo(
+    () => data?.items?.find((item) => item.id === selectedId) ?? null,
+    [data?.items, selectedId]
   );
 
-  const createMutation = useApiMutation("/webhooks", "POST");
-  const updateMutation = useApiMutation("", "PATCH");
-  const deleteMutation = useApiMutation("", "DELETE");
-  const testMutation = useApiMutation("", "POST");
+  const { data: deliveries, refetch: refetchDeliveries } = useApiQuery<WebhookDeliveryResponse>(
+    ["webhook-deliveries", selectedId],
+    selectedId ? `/webhooks/${selectedId}/deliveries?page_size=20` : "/webhooks/0/deliveries",
+    { enabled: Boolean(selectedId) && canAccess }
+  );
 
-  const webhooks = data?.webhooks ?? [];
-  const deliveries = data?.deliveries ?? [];
-
-  const openCreateDialog = () => {
-    setEditingWebhook(null);
+  function openCreateDialog() {
+    setEditing(null);
     setFormUrl("");
     setFormSecret("");
     setFormEvents([]);
+    setFormIsActive(true);
+    setGeneratedSecret(null);
+    setActionError("");
     setDialogOpen(true);
-  };
+  }
 
-  const openEditDialog = (webhook: WebhookEntry) => {
-    setEditingWebhook(webhook);
-    setFormUrl(webhook.url);
+  function openEditDialog(endpoint: WebhookEndpoint) {
+    setEditing(endpoint);
+    setFormUrl(endpoint.url);
     setFormSecret("");
-    setFormEvents(webhook.events);
+    setFormEvents(endpoint.events);
+    setFormIsActive(endpoint.is_active);
+    setGeneratedSecret(null);
+    setActionError("");
     setDialogOpen(true);
-  };
+  }
 
-  const toggleEvent = (event: string) => {
-    setFormEvents((prev) =>
-      prev.includes(event)
-        ? prev.filter((e) => e !== event)
-        : [...prev, event]
+  function toggleEvent(eventType: string) {
+    setFormEvents((current) =>
+      current.includes(eventType)
+        ? current.filter((value) => value !== eventType)
+        : [...current, eventType]
     );
-  };
+  }
 
-  const handleSave = async () => {
-    const payload = {
-      url: formUrl,
-      secret: formSecret || undefined,
-      events: formEvents,
-    };
-
-    if (editingWebhook) {
-      await updateMutation.mutateAsync({
-        ...payload,
-        path: `/webhooks/${editingWebhook.id}`,
-      } as never);
-    } else {
-      await createMutation.mutateAsync(payload as never);
+  async function submitWebhook() {
+    if (!formUrl.trim() || formEvents.length === 0) return;
+    setActionError("");
+    setActionMessage("");
+    setIsSubmitting(true);
+    try {
+      if (editing) {
+        await api.patch(`/webhooks/${editing.id}`, {
+          url: formUrl,
+          secret: formSecret || undefined,
+          events: formEvents,
+          is_active: formIsActive,
+        });
+        setActionMessage("Webhook updated.");
+      } else {
+        const created = await api.post<{ secret: string }>("/webhooks", {
+          url: formUrl,
+          secret: formSecret || undefined,
+          events: formEvents,
+          is_active: formIsActive,
+        });
+        setGeneratedSecret(created.secret);
+        setActionMessage("Webhook created.");
+      }
+      setDialogOpen(false);
+      await refetch();
+      if (selectedId) {
+        await refetchDeliveries();
+      }
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Failed to save webhook.");
+    } finally {
+      setIsSubmitting(false);
     }
+  }
 
-    setDialogOpen(false);
-    refetch();
-  };
-
-  const handleTest = async (webhookId: number) => {
-    await testMutation.mutateAsync({
-      path: `/webhooks/${webhookId}/test`,
-    } as never);
-    refetch();
-  };
-
-  const handleDelete = async () => {
-    if (deletingId) {
-      await deleteMutation.mutateAsync({
-        path: `/webhooks/${deletingId}`,
-      } as never);
-      setDeleteDialogOpen(false);
-      setDeletingId(null);
-      refetch();
+  async function triggerTest(endpointId: number) {
+    setActionError("");
+    setActionMessage("");
+    try {
+      await api.post(`/webhooks/${endpointId}/test`);
+      await refetchDeliveries();
+      setActionMessage("Webhook test delivery queued.");
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Failed to test webhook.");
     }
-  };
+  }
 
-  const confirmDelete = (id: number) => {
-    setDeletingId(id);
-    setDeleteDialogOpen(true);
-  };
+  async function deleteEndpoint(endpointId: number) {
+    setActionError("");
+    setActionMessage("");
+    try {
+      await api.delete(`/webhooks/${endpointId}`);
+      await refetch();
+      setActionMessage("Webhook deleted.");
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Failed to delete webhook.");
+    }
+  }
 
-  if (isLoading) {
+  if (meLoading || (canAccess && isLoading)) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
@@ -183,14 +205,33 @@ export default function WebhooksPage() {
     );
   }
 
+  if (accessDenied) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Webhooks</h2>
+          <p className="mt-1 text-sm text-slate-500">Manage outbound webhook endpoints for workflow events.</p>
+        </div>
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="flex items-start gap-3 p-6 text-red-700">
+            <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" />
+            <div>
+              <p className="font-semibold">Access denied</p>
+              <p className="mt-1 text-sm">Only admin and platform admin roles can manage webhooks.</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      {/* Page header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Webhooks</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Manage webhook endpoints for event notifications
+            Manage outbound webhook endpoints for workflow, boundary, evidence, and completeness events.
           </p>
         </div>
         <Button onClick={openCreateDialog}>
@@ -199,286 +240,206 @@ export default function WebhooksPage() {
         </Button>
       </div>
 
-      {/* Webhooks Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Webhook className="h-4 w-4" />
-            Endpoints
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {webhooks.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12">
-              <Webhook className="mb-3 h-10 w-10 text-slate-300" />
-              <p className="text-sm text-slate-500">No webhooks configured</p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-3"
-                onClick={openCreateDialog}
-              >
-                Add your first webhook
-              </Button>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>URL</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Events</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead className="w-12" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {webhooks.map((webhook) => (
-                  <TableRow key={webhook.id}>
-                    <TableCell className="max-w-[300px] truncate font-mono text-sm">
-                      {webhook.url}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        className={
-                          webhook.status === "active"
-                            ? "bg-green-100 text-green-700"
-                            : "bg-slate-100 text-slate-600"
-                        }
-                      >
-                        {webhook.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm text-slate-600">
-                        {(webhook.events ?? []).length} event
-                        {(webhook.events ?? []).length !== 1 ? "s" : ""}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-sm text-slate-600">
-                      {new Date(webhook.created_at).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => openEditDialog(webhook)}
-                          >
-                            <Pencil className="mr-2 h-4 w-4" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleTest(webhook.id)}
-                          >
-                            <Zap className="mr-2 h-4 w-4" />
-                            Test
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => confirmDelete(webhook.id)}
-                            className="text-red-600"
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      {actionError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</div>
+      )}
+      {actionMessage && (
+        <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{actionMessage}</div>
+      )}
+      {generatedSecret && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+          Save this webhook secret now: <span className="font-mono">{generatedSecret}</span>
+        </div>
+      )}
 
-      {/* Delivery History */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Clock className="h-4 w-4" />
-            Delivery History
-          </CardTitle>
-          <CardDescription>Recent webhook delivery attempts</CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          {deliveries.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12">
-              <Clock className="mb-3 h-10 w-10 text-slate-300" />
-              <p className="text-sm text-slate-500">No deliveries yet</p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Event</TableHead>
-                  <TableHead>HTTP Code</TableHead>
-                  <TableHead>Timestamp</TableHead>
-                  <TableHead>Retries</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {deliveries.map((delivery) => (
-                  <TableRow key={delivery.id}>
-                    <TableCell>
+      <div className="grid gap-6 xl:grid-cols-[1fr_1.35fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Webhook className="h-4 w-4" />
+              Endpoints
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {(data?.items ?? []).length === 0 ? (
+              <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+                No webhooks configured yet.
+              </div>
+            ) : (
+              data?.items.map((endpoint) => (
+                <button
+                  key={endpoint.id}
+                  className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
+                    selectedId === endpoint.id ? "border-blue-200 bg-blue-50" : "border-slate-200 hover:bg-slate-50"
+                  }`}
+                  onClick={() => setSelectedId(endpoint.id)}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-900">{endpoint.url}</p>
+                      <p className="mt-1 text-xs text-slate-500">Events: {endpoint.events.length}</p>
+                      <p className="mt-1 text-xs text-slate-400">Secret ending: {endpoint.secret_last4}</p>
+                    </div>
+                    <Badge variant={endpoint.is_active ? "success" : "secondary"}>
+                      {endpoint.is_active ? "Active" : "Inactive"}
+                    </Badge>
+                  </div>
+                </button>
+              ))
+            )}
+          </CardContent>
+        </Card>
+
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Endpoint Details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {selectedEndpoint ? (
+                <>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <p className="text-xs font-medium uppercase text-slate-400">URL</p>
+                      <p className="mt-1 break-all text-sm text-slate-700">{selectedEndpoint.url}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium uppercase text-slate-400">Created</p>
+                      <p className="mt-1 text-sm text-slate-700">
+                        {selectedEndpoint.created_at ? new Date(selectedEndpoint.created_at).toLocaleString() : "-"}
+                      </p>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium uppercase text-slate-400">Subscribed Events</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {selectedEndpoint.events.map((eventType) => (
+                        <Badge key={eventType} variant="secondary">{eventType}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <Button variant="outline" onClick={() => openEditDialog(selectedEndpoint)}>
+                      Edit Endpoint
+                    </Button>
+                    <Button variant="outline" onClick={() => void triggerTest(selectedEndpoint.id)}>
+                      <Send className="mr-2 h-4 w-4" />
+                      Send Test Event
+                    </Button>
+                    <Button variant="destructive" onClick={() => void deleteEndpoint(selectedEndpoint.id)}>
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete Endpoint
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+                  Select a webhook endpoint to inspect deliveries and actions.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Delivery History</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {selectedEndpoint == null ? (
+                <p className="text-sm text-slate-500">Choose an endpoint to load its deliveries.</p>
+              ) : (deliveries?.items ?? []).length === 0 ? (
+                <p className="text-sm text-slate-500">No deliveries recorded for this endpoint yet.</p>
+              ) : (
+                deliveries?.items.map((delivery) => (
+                  <div key={delivery.id} className="rounded-lg border border-slate-200 px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-slate-900">{delivery.event_type}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Attempt {delivery.attempt} / {delivery.max_attempts}
+                        </p>
+                      </div>
                       {delivery.status === "success" ? (
-                        <Badge className="bg-green-100 text-green-700">
+                        <Badge variant="success">
                           <CheckCircle2 className="mr-1 h-3 w-3" />
                           Success
                         </Badge>
                       ) : (
                         <Badge variant="destructive">
                           <XCircle className="mr-1 h-3 w-3" />
-                          Failed
+                          {delivery.status}
                         </Badge>
                       )}
-                    </TableCell>
-                    <TableCell className="text-sm font-mono">
-                      {delivery.event_type}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {delivery.http_code ?? "N/A"}
-                    </TableCell>
-                    <TableCell className="text-sm text-slate-600">
-                      {new Date(delivery.timestamp).toLocaleString()}
-                    </TableCell>
-                    <TableCell>
-                      {delivery.retry_count > 0 && (
-                        <div className="flex items-center gap-1 text-sm text-slate-600">
-                          <RotateCcw className="h-3 w-3" />
-                          {delivery.retry_count}
-                        </div>
-                      )}
-                      {delivery.retry_count === 0 && (
-                        <span className="text-sm text-slate-400">-</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-4 text-xs text-slate-500">
+                      <span>HTTP: {delivery.http_status ?? "-"}</span>
+                      <span>
+                        Created: {delivery.created_at ? new Date(delivery.created_at).toLocaleString() : "-"}
+                      </span>
+                      <span>
+                        Delivered: {delivery.delivered_at ? new Date(delivery.delivered_at).toLocaleString() : "-"}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
 
-      {/* Add/Edit Webhook Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              {editingWebhook ? "Edit Webhook" : "Add Webhook"}
-            </DialogTitle>
+            <DialogTitle>{editing ? "Edit Webhook" : "Add Webhook"}</DialogTitle>
             <DialogDescription>
-              {editingWebhook
-                ? "Update webhook endpoint configuration"
-                : "Configure a new webhook endpoint"}
+              Configure endpoint URL, secret rotation, active state, and subscribed events.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
+          <div className="space-y-4 py-2">
+            <div className="grid gap-1.5">
               <Label htmlFor="webhook-url">URL</Label>
               <Input
                 id="webhook-url"
                 value={formUrl}
-                onChange={(e) => setFormUrl(e.target.value)}
-                placeholder="https://example.com/webhook"
+                onChange={(event) => setFormUrl(event.target.value)}
+                placeholder="https://example.com/hooks/esg"
               />
             </div>
-            <div className="space-y-2">
+            <div className="grid gap-1.5">
               <Label htmlFor="webhook-secret">Secret</Label>
               <Input
                 id="webhook-secret"
-                type="password"
                 value={formSecret}
-                onChange={(e) => setFormSecret(e.target.value)}
-                placeholder={
-                  editingWebhook
-                    ? "Leave blank to keep current"
-                    : "Signing secret"
-                }
+                onChange={(event) => setFormSecret(event.target.value)}
+                placeholder={editing ? "Leave blank to keep existing secret" : "Optional secret override"}
               />
-              <p className="text-xs text-slate-400">
-                Used to sign webhook payloads for verification
-              </p>
+            </div>
+            <div className="rounded-lg border border-slate-200 p-4">
+              <Switch checked={formIsActive} onCheckedChange={setFormIsActive} label="Endpoint active" />
             </div>
             <div className="space-y-2">
               <Label>Events</Label>
-              <div className="max-h-48 space-y-2 overflow-y-auto rounded-lg border border-slate-200 p-3">
-                {allEvents.map((event) => (
-                  <div
-                    key={event.value}
-                    className="flex items-center gap-2"
-                  >
-                    <Checkbox
-                      checked={formEvents.includes(event.value)}
-                      onCheckedChange={() => toggleEvent(event.value)}
-                    />
-                    <span className="text-sm">{event.label}</span>
-                  </div>
-                ))}
+              <div className="grid max-h-64 gap-2 overflow-y-auto rounded-lg border border-slate-200 p-3">
+                {supportedEvents.map((eventType) => {
+                  const checked = formEvents.includes(eventType);
+                  return (
+                    <label key={eventType} className="flex items-center gap-2 text-sm text-slate-700">
+                      <input type="checkbox" checked={checked} onChange={() => toggleEvent(eventType)} />
+                      <span>{eventType}</span>
+                    </label>
+                  );
+                })}
               </div>
             </div>
           </div>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDialogOpen(false)}
-            >
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
               Cancel
             </Button>
-            <Button
-              onClick={handleSave}
-              disabled={
-                !formUrl.trim() ||
-                formEvents.length === 0 ||
-                createMutation.isPending ||
-                updateMutation.isPending
-              }
-            >
-              {(createMutation.isPending || updateMutation.isPending) && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              {editingWebhook ? "Update" : "Create"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Webhook</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete this webhook? This action cannot
-              be undone and all delivery history will be lost.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="mt-4">
-            <Button
-              variant="outline"
-              onClick={() => setDeleteDialogOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDelete}
-              disabled={deleteMutation.isPending}
-            >
-              {deleteMutation.isPending && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              Delete
+            <Button onClick={() => void submitWebhook()} disabled={isSubmitting || !formUrl.trim() || formEvents.length === 0}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {editing ? "Save Changes" : "Create Webhook"}
             </Button>
           </DialogFooter>
         </DialogContent>
