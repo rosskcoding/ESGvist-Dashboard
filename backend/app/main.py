@@ -9,6 +9,7 @@ from app.api.routes import (
     entities,
     health,
     mappings,
+    notifications,
     projects,
     requirement_items,
     reuse,
@@ -62,6 +63,7 @@ def create_app() -> FastAPI:
     app.include_router(workflow.router)
     app.include_router(completeness.router)
     app.include_router(reuse.router)
+    app.include_router(notifications.router)
 
     return app
 

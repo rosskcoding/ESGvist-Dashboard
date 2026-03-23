@@ -10,6 +10,7 @@ from app.db.models.completeness import (
 from app.db.models.data_point import DataPoint, DataPointDimension
 from app.db.models.evidence import DataPointEvidence, Evidence, EvidenceFile, EvidenceLink
 from app.db.models.mapping import RequirementItemSharedElement
+from app.db.models.notification import Notification
 from app.db.models.organization import Organization
 from app.db.models.project import MetricAssignment, ReportingProject, ReportingProjectStandard
 from app.db.models.refresh_token import RefreshToken
@@ -30,4 +31,5 @@ __all__ = [
     "DataPoint", "DataPointDimension",
     "Evidence", "EvidenceFile", "EvidenceLink", "DataPointEvidence",
     "RequirementItemDataPoint", "RequirementItemStatus", "DisclosureRequirementStatus",
+    "Notification",
 ]
