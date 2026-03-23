@@ -1,4 +1,6 @@
-from sqlalchemy import func, select
+from datetime import datetime, timezone
+
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError
@@ -52,11 +54,21 @@ class ExportRepository:
         )
         return list(result.scalars().all()), total
 
-    async def list_queued_jobs(self, limit: int = 25) -> list[ExportJob]:
+    async def list_due_jobs(self, limit: int = 25) -> list[ExportJob]:
+        now = datetime.now(timezone.utc)
         result = await self.session.execute(
             select(ExportJob)
-            .where(ExportJob.status == "queued")
-            .order_by(ExportJob.id)
+            .where(
+                or_(
+                    ExportJob.status == "queued",
+                    ExportJob.status == "retry_scheduled",
+                ),
+                or_(
+                    ExportJob.next_retry_at.is_(None),
+                    ExportJob.next_retry_at <= now,
+                ),
+            )
+            .order_by(ExportJob.next_retry_at, ExportJob.id)
             .limit(limit)
         )
         return list(result.scalars().all())
@@ -65,7 +77,27 @@ class ExportRepository:
         result = await self.session.execute(
             select(func.count()).select_from(ExportJob).where(
                 ExportJob.reporting_project_id == project_id,
-                ExportJob.status.in_(("queued", "running")),
+                ExportJob.status.in_(("queued", "running", "retry_scheduled")),
+            )
+        )
+        return result.scalar_one()
+
+    async def count_statuses(self) -> dict[str, int]:
+        rows = (
+            await self.session.execute(
+                select(ExportJob.status, func.count())
+                .group_by(ExportJob.status)
+            )
+        ).all()
+        return {status: count for status, count in rows}
+
+    async def count_due_retries(self) -> int:
+        now = datetime.now(timezone.utc)
+        result = await self.session.execute(
+            select(func.count()).select_from(ExportJob).where(
+                ExportJob.status == "retry_scheduled",
+                ExportJob.next_retry_at.is_not(None),
+                ExportJob.next_retry_at <= now,
             )
         )
         return result.scalar_one()

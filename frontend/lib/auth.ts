@@ -29,6 +29,18 @@ export async function login(
   });
   localStorage.setItem("access_token", data.access_token);
   localStorage.setItem("refresh_token", data.refresh_token);
+
+  // Auto-set organization_id from user's first org role
+  try {
+    const me = await api.get<UserResponse>("/auth/me");
+    const orgRole = me.roles.find((r) => r.scope_type === "organization" && r.scope_id);
+    if (orgRole?.scope_id) {
+      localStorage.setItem("organization_id", String(orgRole.scope_id));
+    }
+  } catch {
+    // Ignore — org will be set later
+  }
+
   return data;
 }
 

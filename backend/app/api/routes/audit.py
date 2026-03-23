@@ -1,47 +1,78 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import RequestContext, get_current_context
-from app.db.models.audit_log import AuditLog
 from app.db.session import get_session
+from app.repositories.audit_repo import AuditRepository
+from app.schemas.audit import AuditLogExportOut, AuditLogListOut
+from app.services.audit_service import AuditService
 
 router = APIRouter(prefix="/api/audit-log", tags=["Audit"])
 
 
-@router.get("")
+def _get_service(session: AsyncSession) -> AuditService:
+    return AuditService(AuditRepository(session))
+
+
+@router.get("", response_model=AuditLogListOut)
 async def list_audit_log(
+    organization_id: int | None = None,
     entity_type: str | None = None,
+    entity_id: int | None = None,
+    action: str | None = None,
     user_id: int | None = None,
+    request_id: str | None = None,
+    performed_by_platform_admin: bool | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    q = select(AuditLog).order_by(AuditLog.created_at.desc())
+    return await _get_service(session).list_logs(
+        ctx=ctx,
+        organization_id=organization_id,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        action=action,
+        user_id=user_id,
+        request_id=request_id,
+        performed_by_platform_admin=performed_by_platform_admin,
+        date_from=date_from,
+        date_to=date_to,
+        page=page,
+        page_size=page_size,
+    )
 
-    if ctx.organization_id:
-        q = q.where(AuditLog.organization_id == ctx.organization_id)
-    if entity_type:
-        q = q.where(AuditLog.entity_type == entity_type)
-    if user_id:
-        q = q.where(AuditLog.user_id == user_id)
 
-    q = q.offset((page - 1) * page_size).limit(page_size)
-    result = await session.execute(q)
-    items = result.scalars().all()
-
-    return {
-        "items": [
-            {
-                "id": a.id,
-                "entity_type": a.entity_type,
-                "entity_id": a.entity_id,
-                "action": a.action,
-                "user_id": a.user_id,
-                "changes": a.changes,
-                "created_at": a.created_at.isoformat() if a.created_at else None,
-            }
-            for a in items
-        ]
-    }
+@router.get("/export", response_model=AuditLogExportOut)
+async def export_audit_log(
+    format: str = Query("csv", pattern=r"^(csv|json)$"),
+    organization_id: int | None = None,
+    entity_type: str | None = None,
+    entity_id: int | None = None,
+    action: str | None = None,
+    user_id: int | None = None,
+    request_id: str | None = None,
+    performed_by_platform_admin: bool | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _get_service(session).export_logs(
+        export_format=format,
+        ctx=ctx,
+        organization_id=organization_id,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        action=action,
+        user_id=user_id,
+        request_id=request_id,
+        performed_by_platform_admin=performed_by_platform_admin,
+        date_from=date_from,
+        date_to=date_to,
+    )

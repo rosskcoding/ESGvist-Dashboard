@@ -84,9 +84,17 @@ export default function LoginPage() {
           </Button>
 
           <div className="rounded-md bg-slate-50 border border-slate-200 p-3 text-xs text-slate-500">
-            <p className="font-medium text-slate-600 mb-1">Dev credentials:</p>
-            <p>Email: <span className="font-mono text-slate-700">admin@esgvist.com</span></p>
-            <p>Password: <span className="font-mono text-slate-700">Admin12345</span></p>
+            <p className="font-medium text-slate-600 mb-2">Dev accounts (password: <span className="font-mono text-slate-700">Test1234</span>)</p>
+            <table className="w-full text-left">
+              <tbody className="divide-y divide-slate-200">
+                <tr><td className="py-0.5 font-mono text-slate-700">admin@esgvist.com</td><td className="py-0.5 text-slate-400">platform_admin</td></tr>
+                <tr><td className="py-0.5 font-mono text-slate-700">manager@greentech.com</td><td className="py-0.5 text-slate-400">esg_manager</td></tr>
+                <tr><td className="py-0.5 font-mono text-slate-700">collector1@greentech.com</td><td className="py-0.5 text-slate-400">collector</td></tr>
+                <tr><td className="py-0.5 font-mono text-slate-700">collector2@greentech.com</td><td className="py-0.5 text-slate-400">collector</td></tr>
+                <tr><td className="py-0.5 font-mono text-slate-700">reviewer@greentech.com</td><td className="py-0.5 text-slate-400">reviewer</td></tr>
+                <tr><td className="py-0.5 font-mono text-slate-700">auditor@greentech.com</td><td className="py-0.5 text-slate-400">auditor</td></tr>
+              </tbody>
+            </table>
           </div>
         </form>
       </CardContent>

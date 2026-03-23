@@ -131,8 +131,16 @@ async def test_merged_view_summary(client: AsyncClient, ctx: dict):
 async def test_coverage(client: AsyncClient, ctx: dict):
     resp = await client.get(f"/api/projects/{ctx['project_id']}/merge/coverage", headers=ctx["headers"])
     assert resp.status_code == 200
-    assert "GRI" in resp.json()["coverage"]
-    assert "IFRS_S2" in resp.json()["coverage"]
+    coverage = resp.json()["coverage"]
+    assert "GRI" in coverage
+    assert "IFRS_S2" in coverage
+    assert coverage["GRI"]["total_items"] == 1
+    assert coverage["GRI"]["complete_items"] == 0
+    assert coverage["GRI"]["missing_items"] == 1
+    assert coverage["GRI"]["completion_percent"] == 0.0
+    assert coverage["IFRS_S2"]["total_items"] == 2
+    assert coverage["IFRS_S2"]["missing_items"] == 2
+    assert coverage["IFRS_S2"]["completion_percent"] == 0.0
 
 
 @pytest.mark.asyncio

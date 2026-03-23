@@ -29,6 +29,7 @@ from app.db.models.sso import ExternalIdentity, SSOLoginState, SSOProvider
 from app.db.models.unit_reference import BoundaryApproach, Methodology, UnitReference
 from app.db.models.comment import Comment
 from app.db.models.webhook import WebhookDelivery, WebhookEndpoint
+from app.db.models.worker_lease import WorkerLease
 from app.db.models.user import User
 
 __all__ = [
@@ -46,5 +47,5 @@ __all__ = [
     "UserInvitation", "RequirementItemEvidence", "AIInteraction",
     "Comment", "UnitReference", "Methodology", "BoundaryApproach",
     "WebhookEndpoint", "WebhookDelivery", "ExportJob", "IdempotencyRecord",
-    "SSOProvider", "ExternalIdentity", "SSOLoginState",
+    "SSOProvider", "ExternalIdentity", "SSOLoginState", "WorkerLease",
 ]

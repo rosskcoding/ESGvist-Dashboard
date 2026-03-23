@@ -90,3 +90,22 @@ class WebhookRepository:
             .limit(limit)
         )
         return list(result.scalars().all())
+
+    async def count_delivery_statuses(self) -> dict[str, int]:
+        rows = (
+            await self.session.execute(
+                select(WebhookDelivery.status, func.count())
+                .group_by(WebhookDelivery.status)
+            )
+        ).all()
+        return {status: count for status, count in rows}
+
+    async def count_due_retries(self, now: datetime) -> int:
+        result = await self.session.execute(
+            select(func.count()).select_from(WebhookDelivery).where(
+                WebhookDelivery.status == "failed",
+                WebhookDelivery.next_retry_at.is_not(None),
+                WebhookDelivery.next_retry_at <= now,
+            )
+        )
+        return result.scalar_one()

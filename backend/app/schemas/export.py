@@ -4,8 +4,11 @@ from pydantic import BaseModel, Field
 
 
 class ExportJobCreate(BaseModel):
-    export_format: str = Field(default="json", pattern=r"^(json|csv)$")
-    report_type: str = Field(default="project_report", pattern=r"^(project_report|readiness_snapshot)$")
+    export_format: str = Field(default="json", pattern=r"^(json|csv|pdf|xlsx|xml)$")
+    report_type: str = Field(
+        default="project_report",
+        pattern=r"^(project_report|readiness_snapshot|gri_content_index|xbrl_instance)$",
+    )
 
 
 class ExportJobOut(BaseModel):
@@ -18,9 +21,13 @@ class ExportJobOut(BaseModel):
     status: str
     content_type: str | None = None
     artifact_name: str | None = None
+    artifact_encoding: str | None = None
     artifact_size_bytes: int | None = None
     checksum: str | None = None
     error_message: str | None = None
+    attempt: int = 0
+    max_attempts: int = 3
+    next_retry_at: datetime | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
     started_at: datetime | None = None
@@ -36,6 +43,7 @@ class ExportArtifactOut(BaseModel):
     job_id: int
     export_format: str
     content_type: str
+    artifact_encoding: str
     artifact_name: str
     content: dict | str
     checksum: str | None = None

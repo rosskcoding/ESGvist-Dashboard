@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.access import get_project_for_ctx
@@ -149,13 +149,73 @@ class MergeService:
 
     async def get_coverage(self, project_id: int, ctx: RequestContext | None = None) -> dict:
         """Coverage per standard."""
-        merged = await self.get_merged_view(project_id, ctx)
-        standards = merged["summary"].get("standards", [])
+        if ctx:
+            AuthPolicy.require_role(
+                ctx, ["admin", "esg_manager", "reviewer", "auditor", "platform_admin"]
+            )
+            await get_project_for_ctx(
+                self.session,
+                project_id,
+                ctx,
+                allow_collectors=False,
+                allow_reviewers=True,
+            )
 
-        coverage = {}
-        for std in standards:
-            total = sum(1 for e in merged["elements"] if std in e["required_by"])
-            # Simplified: count elements assigned to this standard
-            coverage[std] = {"total_elements": total}
+        rows = (
+            await self.session.execute(
+                select(
+                    Standard.id,
+                    Standard.code,
+                    RequirementItem.id,
+                    RequirementItemStatus.status,
+                )
+                .select_from(ReportingProjectStandard)
+                .join(Standard, Standard.id == ReportingProjectStandard.standard_id)
+                .join(DisclosureRequirement, DisclosureRequirement.standard_id == Standard.id)
+                .join(RequirementItem, RequirementItem.disclosure_requirement_id == DisclosureRequirement.id)
+                .outerjoin(
+                    RequirementItemStatus,
+                    and_(
+                        RequirementItemStatus.reporting_project_id == project_id,
+                        RequirementItemStatus.requirement_item_id == RequirementItem.id,
+                    ),
+                )
+                .where(
+                    ReportingProjectStandard.reporting_project_id == project_id,
+                    RequirementItem.is_required == True,
+                )
+                .order_by(Standard.id, RequirementItem.id)
+            )
+        ).all()
+
+        coverage: dict[str, dict] = {}
+        for standard_id, standard_code, _item_id, item_status in rows:
+            bucket = coverage.setdefault(
+                standard_code,
+                {
+                    "standard_id": standard_id,
+                    "total_items": 0,
+                    "complete_items": 0,
+                    "partial_items": 0,
+                    "missing_items": 0,
+                    "completion_percent": 0.0,
+                },
+            )
+            status = item_status or "missing"
+            if status == "not_applicable":
+                continue
+            bucket["total_items"] += 1
+            if status == "complete":
+                bucket["complete_items"] += 1
+            elif status == "partial":
+                bucket["partial_items"] += 1
+            else:
+                bucket["missing_items"] += 1
+
+        for bucket in coverage.values():
+            total_items = bucket["total_items"]
+            bucket["completion_percent"] = round(
+                (bucket["complete_items"] / total_items) * 100, 1
+            ) if total_items else 0.0
 
         return {"project_id": project_id, "coverage": coverage}

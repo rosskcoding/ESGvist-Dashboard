@@ -17,6 +17,7 @@ from app.repositories.webhook_repo import WebhookRepository
 from app.services.export_service import ExportService
 from app.services.sla_service import SLAService
 from app.services.webhook_service import WebhookService
+from app.workers.job_runner import JobRunner
 
 router = APIRouter(prefix="/api/platform", tags=["Platform Admin"])
 
@@ -341,6 +342,15 @@ async def assign_admin(
         changes={"user_id": payload.user_id, "role": "admin"},
     )
     return {"user_id": payload.user_id, "tenant_id": tenant_id, "role": "admin"}
+
+
+@router.get("/jobs/status")
+async def get_job_status(
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    _require_platform(ctx)
+    return await JobRunner().collect_status_from_session(session)
 
 
 @router.post("/jobs/sla-check")

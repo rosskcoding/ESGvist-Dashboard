@@ -41,6 +41,8 @@ EVENT_ROUTING: dict[str, dict] = {
     "completeness_recalculated": {"roles": ["esg_manager"], "severity": "info", "channel": "in_app"},
     "completeness_100_percent": {"roles": ["esg_manager"], "severity": "important", "channel": "both"},
     "webhook_dead_letter": {"roles": ["admin"], "severity": "critical", "channel": "both"},
+    "export_retry_scheduled": {"roles": ["esg_manager", "admin"], "severity": "warning", "channel": "both"},
+    "export_dead_letter": {"roles": ["esg_manager", "admin"], "severity": "critical", "channel": "both"},
 }
 
 DEFAULT_NOTIFICATION_PREFS = {

@@ -1,3 +1,8 @@
+import base64
+import io
+import zipfile
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
@@ -7,9 +12,12 @@ from app.db.models.boundary import BoundaryDefinition
 from app.db.models.boundary_snapshot import BoundarySnapshot
 from app.db.models.completeness import RequirementItemStatus
 from app.db.models.data_point import DataPoint
+from app.db.models.export_job import ExportJob
 from app.db.models.requirement_item import RequirementItem
+from app.db.models.mapping import RequirementItemSharedElement
 from app.db.models.shared_element import SharedElement
 from app.db.models.standard import DisclosureRequirement, Standard
+from app.services.export_service import ExportService
 from app.db.models.project import ReportingProject
 from app.workers.job_runner import JobRunner
 from tests.conftest import TestSessionLocal
@@ -106,6 +114,15 @@ async def _make_project_export_ready(*, organization_id: int, project_id: int, u
         session.add(item)
         await session.flush()
 
+        session.add(
+            RequirementItemSharedElement(
+                requirement_item_id=item.id,
+                shared_element_id=shared_element.id,
+                mapping_type="full",
+            )
+        )
+        await session.flush()
+
         data_point = DataPoint(
             reporting_project_id=project_id,
             shared_element_id=shared_element.id,
@@ -160,7 +177,14 @@ async def test_job_runner_processes_json_export_jobs(client: AsyncClient):
     assert listed.json()["items"][0]["status"] == "queued"
 
     result = await JobRunner(session_factory=TestSessionLocal).run_export_jobs()
-    assert result == {"checked": 1, "processed": 1, "completed": 1, "failed": 0}
+    assert result == {
+        "checked": 1,
+        "processed": 1,
+        "completed": 1,
+        "failed": 0,
+        "retried": 0,
+        "dead_letter": 0,
+    }
 
     job_id = queued.json()["id"]
     job = await client.get(f"/api/exports/{job_id}", headers=ctx["tenant_headers"])
@@ -197,7 +221,14 @@ async def test_platform_job_endpoint_processes_csv_export_jobs_and_audits(client
 
     run = await client.post("/api/platform/jobs/exports", headers=ctx["platform_headers"])
     assert run.status_code == 200
-    assert run.json() == {"checked": 1, "processed": 1, "completed": 1, "failed": 0}
+    assert run.json() == {
+        "checked": 1,
+        "processed": 1,
+        "completed": 1,
+        "failed": 0,
+        "retried": 0,
+        "dead_letter": 0,
+    }
 
     artifact = await client.get(
         f"/api/exports/{queued.json()['id']}/artifact",
@@ -333,3 +364,205 @@ async def test_gate_check_supports_start_export_and_reports_active_export(client
     assert blocked.status_code == 200
     assert blocked.json()["allowed"] is False
     assert any(gate["code"] == "EXPORT_IN_PROGRESS" for gate in blocked.json()["failedGates"])
+
+
+@pytest.mark.asyncio
+async def test_gri_index_pdf_export_returns_base64_pdf_artifact(client: AsyncClient):
+    ctx = await _setup_project(
+        client,
+        email="export-gri@test.com",
+        org_name="Export GRI Org",
+        project_name="GRI Export Project",
+    )
+
+    queued = await client.post(
+        f"/api/projects/{ctx['project_id']}/export/gri-index?export_format=pdf",
+        headers=ctx["tenant_headers"],
+    )
+    assert queued.status_code == 201
+    assert queued.json()["report_type"] == "gri_content_index"
+    assert queued.json()["export_format"] == "pdf"
+
+    run = await client.post("/api/platform/jobs/exports", headers=ctx["platform_headers"])
+    assert run.status_code == 200
+
+    artifact = await client.get(
+        f"/api/exports/{queued.json()['id']}/artifact",
+        headers=ctx["tenant_headers"],
+    )
+    assert artifact.status_code == 200
+    payload = artifact.json()
+    assert payload["content_type"] == "application/pdf"
+    assert payload["artifact_encoding"] == "base64"
+    assert payload["artifact_name"].endswith(".pdf")
+    pdf_bytes = base64.b64decode(payload["content"])
+    assert pdf_bytes.startswith(b"%PDF-")
+    assert b"GRI Content Index" in pdf_bytes
+
+
+@pytest.mark.asyncio
+async def test_project_report_xlsx_export_returns_valid_workbook(client: AsyncClient):
+    ctx = await _setup_project(
+        client,
+        email="export-xlsx@test.com",
+        org_name="Export XLSX Org",
+        project_name="Workbook Export Project",
+    )
+
+    queued = await client.post(
+        f"/api/projects/{ctx['project_id']}/export/report?export_format=xlsx",
+        headers=ctx["tenant_headers"],
+    )
+    assert queued.status_code == 201
+    assert queued.json()["export_format"] == "xlsx"
+
+    run = await client.post("/api/platform/jobs/exports", headers=ctx["platform_headers"])
+    assert run.status_code == 200
+
+    artifact = await client.get(
+        f"/api/exports/{queued.json()['id']}/artifact",
+        headers=ctx["tenant_headers"],
+    )
+    assert artifact.status_code == 200
+    payload = artifact.json()
+    assert payload["content_type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    assert payload["artifact_encoding"] == "base64"
+    workbook_bytes = base64.b64decode(payload["content"])
+    with zipfile.ZipFile(io.BytesIO(workbook_bytes), "r") as archive:
+        names = set(archive.namelist())
+        assert "[Content_Types].xml" in names
+        assert "xl/workbook.xml" in names
+        sheet_xml = archive.read("xl/worksheets/sheet1.xml").decode("utf-8")
+    assert "Workbook Export Project" in sheet_xml
+    assert "completion_percent" in sheet_xml
+
+
+@pytest.mark.asyncio
+async def test_xbrl_export_generates_xml_instance(client: AsyncClient):
+    ctx = await _setup_project(
+        client,
+        email="export-xbrl@test.com",
+        org_name="Export XBRL Org",
+        project_name="XBRL Export Project",
+    )
+
+    queued = await client.post(
+        f"/api/projects/{ctx['project_id']}/export/xbrl",
+        headers=ctx["tenant_headers"],
+    )
+    assert queued.status_code == 201
+    assert queued.json()["report_type"] == "xbrl_instance"
+    assert queued.json()["export_format"] == "xml"
+
+    run = await client.post("/api/platform/jobs/exports", headers=ctx["platform_headers"])
+    assert run.status_code == 200
+
+    artifact = await client.get(
+        f"/api/exports/{queued.json()['id']}/artifact",
+        headers=ctx["tenant_headers"],
+    )
+    assert artifact.status_code == 200
+    payload = artifact.json()
+    assert payload["content_type"] == "application/xml"
+    assert payload["artifact_encoding"] == "utf-8"
+    assert payload["artifact_name"].endswith(".xml")
+    assert "<xbrli:xbrl" in payload["content"]
+    assert "EXPORT_SE" in payload["content"] or "EXPORT_SE_" in payload["content"]
+
+
+@pytest.mark.asyncio
+async def test_export_job_failure_schedules_retry_and_then_completes(client: AsyncClient, monkeypatch: pytest.MonkeyPatch):
+    ctx = await _setup_project(
+        client,
+        email="export-retry@test.com",
+        org_name="Export Retry Org",
+        project_name="Retry Export Project",
+    )
+
+    queued = await client.post(
+        f"/api/projects/{ctx['project_id']}/exports",
+        json={"export_format": "json", "report_type": "project_report"},
+        headers=ctx["tenant_headers"],
+    )
+    assert queued.status_code == 201
+    job_id = queued.json()["id"]
+
+    original = ExportService._build_export_payload
+    state = {"calls": 0}
+
+    async def flaky_payload(self, project_id: int, report_type: str):
+        state["calls"] += 1
+        if state["calls"] == 1:
+            raise RuntimeError("temporary export failure")
+        return await original(self, project_id, report_type)
+
+    monkeypatch.setattr(ExportService, "_build_export_payload", flaky_payload)
+
+    first = await JobRunner(session_factory=TestSessionLocal).run_export_jobs()
+    assert first["retried"] == 1
+    assert first["dead_letter"] == 0
+
+    job = await client.get(f"/api/exports/{job_id}", headers=ctx["tenant_headers"])
+    assert job.status_code == 200
+    assert job.json()["status"] == "retry_scheduled"
+    assert job.json()["attempt"] == 1
+    assert job.json()["next_retry_at"] is not None
+
+    notifications = await client.get("/api/notifications", headers=ctx["tenant_headers"])
+    assert notifications.status_code == 200
+    assert any(item["type"] == "export_retry_scheduled" for item in notifications.json()["items"])
+
+    async with TestSessionLocal() as session:
+        db_job = await session.get(ExportJob, job_id)
+        db_job.next_retry_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        await session.commit()
+
+    second = await JobRunner(session_factory=TestSessionLocal).run_export_jobs()
+    assert second["completed"] == 1
+    assert second["retried"] == 0
+
+    completed = await client.get(f"/api/exports/{job_id}", headers=ctx["tenant_headers"])
+    assert completed.status_code == 200
+    assert completed.json()["status"] == "completed"
+    assert completed.json()["attempt"] == 2
+
+
+@pytest.mark.asyncio
+async def test_export_job_dead_letter_notifies_requester(client: AsyncClient, monkeypatch: pytest.MonkeyPatch):
+    ctx = await _setup_project(
+        client,
+        email="export-dead-letter@test.com",
+        org_name="Export Dead Letter Org",
+        project_name="Dead Letter Export Project",
+    )
+
+    queued = await client.post(
+        f"/api/projects/{ctx['project_id']}/exports",
+        json={"export_format": "json", "report_type": "project_report"},
+        headers=ctx["tenant_headers"],
+    )
+    assert queued.status_code == 201
+    job_id = queued.json()["id"]
+
+    async with TestSessionLocal() as session:
+        db_job = await session.get(ExportJob, job_id)
+        db_job.max_attempts = 1
+        await session.commit()
+
+    async def always_fail(self, project_id: int, report_type: str):
+        raise RuntimeError("permanent export failure")
+
+    monkeypatch.setattr(ExportService, "_build_export_payload", always_fail)
+
+    result = await JobRunner(session_factory=TestSessionLocal).run_export_jobs()
+    assert result["dead_letter"] == 1
+
+    job = await client.get(f"/api/exports/{job_id}", headers=ctx["tenant_headers"])
+    assert job.status_code == 200
+    assert job.json()["status"] == "dead_letter"
+    assert job.json()["attempt"] == 1
+    assert job.json()["error_message"] == "permanent export failure"
+
+    notifications = await client.get("/api/notifications", headers=ctx["tenant_headers"])
+    assert notifications.status_code == 200
+    assert any(item["type"] == "export_dead_letter" for item in notifications.json()["items"])

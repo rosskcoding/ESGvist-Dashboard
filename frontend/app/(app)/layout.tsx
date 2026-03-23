@@ -128,7 +128,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       return;
     }
     getMe()
-      .then(setUser)
+      .then((u) => {
+        setUser(u);
+        // Auto-set organization_id if not already set
+        if (!localStorage.getItem("organization_id")) {
+          const orgRole = u.roles?.find((r: { scope_type: string; scope_id: number | null }) => r.scope_type === "organization" && r.scope_id);
+          if (orgRole?.scope_id) {
+            localStorage.setItem("organization_id", String(orgRole.scope_id));
+          }
+        }
+      })
       .catch(() => router.push("/login"));
   }, [router]);
 

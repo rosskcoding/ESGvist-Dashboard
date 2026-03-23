@@ -25,48 +25,35 @@ import {
 
 interface StandardProgress {
   standard_id: number;
+  standard: string;
   standard_name: string;
-  code: string;
-  total_disclosures: number;
-  completed_disclosures: number;
-  completion_percentage: number;
+  completion_percent: number;
+  complete_items: number;
+  partial_items: number;
+  missing_items: number;
+  total_items: number;
 }
 
 interface BoundarySummary {
-  boundary_id: number | null;
-  boundary_name: string;
+  selected: string;
+  boundary_type: string;
   entities_in_scope: number;
   excluded_entities: number;
-  snapshot_status: "locked" | "draft" | "not_created";
-}
-
-interface AuditLogEntry {
-  id: number;
-  action: string;
-  user_name: string;
-  created_at: string;
-  details: string;
-}
-
-interface PriorityTask {
-  id: number;
-  title: string;
-  due_date: string;
-  status: "overdue" | "upcoming";
-  assignee: string;
-  disclosure_code: string;
+  manual_overrides: number;
+  snapshot_status: string;
+  snapshot_date: string | null;
 }
 
 interface DashboardProgress {
-  overall_completion: number;
-  data_points_submitted: number;
-  data_points_total: number;
+  project_id: number;
+  overall_completion_percent: number;
   overdue_assignments: number;
-  pending_reviews: number;
-  standards: StandardProgress[];
-  boundary: BoundarySummary;
-  recent_activity: AuditLogEntry[];
-  priority_tasks: PriorityTask[];
+  item_statuses: { complete: number; partial: number; missing: number; total: number };
+  data_point_statuses: Record<string, number>;
+  standards_progress: StandardProgress[];
+  boundary_summary: BoundarySummary;
+  priority_tasks: Array<{ id: number; title: string; due_date: string; status: string; assignee: string; disclosure_code: string }>;
+  coverage_by_user: Array<{ user_id: number; name: string; role: string; total_assignments: number; completed_assignments: number; completion_percent: number }>;
 }
 
 export default function DashboardPage() {
@@ -124,10 +111,10 @@ export default function DashboardPage() {
     priority_tasks: [],
   };
 
-  const overdueTasks = progress.priority_tasks.filter(
+  const overdueTasks = (progress.priority_tasks || []).filter(
     (t) => t.status === "overdue"
   );
-  const upcomingTasks = progress.priority_tasks.filter(
+  const upcomingTasks = (progress.priority_tasks || []).filter(
     (t) => t.status === "upcoming"
   );
 
@@ -153,10 +140,10 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">
-              {Math.round(progress.overall_completion)}%
+              {Math.round(progress.overall_completion_percent)}%
             </div>
             <Progress
-              value={progress.overall_completion}
+              value={progress.overall_completion_percent}
               className="mt-3"
               indicatorClassName="bg-blue-600"
             />
@@ -173,10 +160,10 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">
-              {progress.data_points_submitted}
+              {(progress.data_point_statuses?.submitted || 0)}
               <span className="text-lg font-normal text-slate-400">
                 {" "}
-                / {progress.data_points_total}
+                / {(progress.item_statuses?.total || 0)}
               </span>
             </div>
             <p className="mt-1 text-xs text-slate-500">submitted</p>
@@ -227,7 +214,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">
-              {progress.pending_reviews}
+              {(progress.data_point_statuses?.submitted || 0)}
             </div>
             <p className="mt-1 text-xs text-slate-500">awaiting review</p>
           </CardContent>
@@ -245,39 +232,39 @@ export default function DashboardPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {progress.standards.length === 0 ? (
+            {(progress.standards_progress || []).length === 0 ? (
               <p className="py-6 text-center text-sm text-slate-400">
                 No standards attached to this project yet.
               </p>
             ) : (
               <div className="space-y-5">
-                {progress.standards.map((std) => (
+                {(progress.standards_progress || []).map((std) => (
                   <div key={std.standard_id} className="space-y-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium">
-                          {std.code}
+                          {std.standard}
                         </span>
                         <span className="text-sm text-slate-500">
                           {std.standard_name}
                         </span>
                       </div>
                       <span className="text-sm font-semibold">
-                        {Math.round(std.completion_percentage)}%
+                        {Math.round(std.completion_percent)}%
                       </span>
                     </div>
                     <Progress
-                      value={std.completion_percentage}
+                      value={std.completion_percent}
                       indicatorClassName={cn(
-                        std.completion_percentage >= 80
+                        std.completion_percent >= 80
                           ? "bg-green-500"
-                          : std.completion_percentage >= 50
+                          : std.completion_percent >= 50
                             ? "bg-amber-500"
                             : "bg-blue-600"
                       )}
                     />
                     <p className="text-xs text-slate-400">
-                      {std.completed_disclosures} / {std.total_disclosures}{" "}
+                      {std.complete_items} / {std.total_items}{" "}
                       disclosures complete
                     </p>
                   </div>
@@ -300,33 +287,33 @@ export default function DashboardPage() {
               <p className="text-sm text-slate-500">Selected Boundary</p>
               <div className="mt-1 flex items-center gap-2">
                 <span className="font-medium">
-                  {progress.boundary.boundary_name}
+                  {(progress.boundary_summary || {} as BoundarySummary).selected}
                 </span>
                 <Badge
                   variant={
-                    progress.boundary.snapshot_status === "locked"
+                    (progress.boundary_summary || {} as BoundarySummary).snapshot_status === "locked"
                       ? "default"
-                      : progress.boundary.snapshot_status === "draft"
+                      : (progress.boundary_summary || {} as BoundarySummary).snapshot_status === "draft"
                         ? "warning"
                         : "secondary"
                   }
                 >
-                  {progress.boundary.snapshot_status === "not_created"
+                  {(progress.boundary_summary || {} as BoundarySummary).snapshot_status === "not_created"
                     ? "No Snapshot"
-                    : progress.boundary.snapshot_status}
+                    : (progress.boundary_summary || {} as BoundarySummary).snapshot_status}
                 </Badge>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="rounded-lg border border-slate-100 p-3">
                 <p className="text-2xl font-bold">
-                  {progress.boundary.entities_in_scope}
+                  {(progress.boundary_summary || {} as BoundarySummary).entities_in_scope}
                 </p>
                 <p className="text-xs text-slate-500">In scope</p>
               </div>
               <div className="rounded-lg border border-slate-100 p-3">
                 <p className="text-2xl font-bold">
-                  {progress.boundary.excluded_entities}
+                  {(progress.boundary_summary || {} as BoundarySummary).excluded_entities}
                 </p>
                 <p className="text-xs text-slate-500">Excluded</p>
               </div>
@@ -347,13 +334,13 @@ export default function DashboardPage() {
             <CardDescription>Last 5 audit log entries</CardDescription>
           </CardHeader>
           <CardContent>
-            {progress.recent_activity.length === 0 ? (
+            {([] as Array<{id:number;action:string;user_name:string;created_at:string;details:string}>).length === 0 ? (
               <p className="py-4 text-center text-sm text-slate-400">
                 No recent activity.
               </p>
             ) : (
               <div className="space-y-3">
-                {progress.recent_activity.slice(0, 5).map((entry) => (
+                {([] as Array<{id:number;action:string;user_name:string;created_at:string;details:string}>).slice(0, 5).map((entry) => (
                   <div
                     key={entry.id}
                     className="flex items-start gap-3 rounded-lg border border-slate-100 p-3"

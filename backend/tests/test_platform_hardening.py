@@ -334,3 +334,15 @@ async def test_platform_can_trigger_project_deadline_job(client: AsyncClient, pl
         log.action == "platform_project_deadline_check_triggered" and log.performed_by_platform_admin
         for log in logs
     )
+
+
+@pytest.mark.asyncio
+async def test_platform_can_view_job_status(client: AsyncClient, platform_ctx: dict):
+    status = await client.get("/api/platform/jobs/status", headers=platform_ctx["platform_headers"])
+    assert status.status_code == 200
+    payload = status.json()
+    assert "exports" in payload["queues"]
+    assert "webhooks" in payload["queues"]
+    assert "statuses" in payload["queues"]["exports"]
+    assert "queue_depth" in payload["queues"]["exports"]
+    assert payload["worker"]["lease_name"] == "primary"
