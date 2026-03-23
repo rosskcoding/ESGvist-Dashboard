@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, Fragment } from "react";
 import {
   Card,
   CardContent,
@@ -272,9 +272,8 @@ export default function AuditPage() {
               </TableHeader>
               <TableBody>
                 {auditLog.items.map((entry) => (
-                  <>
+                  <Fragment key={entry.id}>
                     <TableRow
-                      key={entry.id}
                       className="cursor-pointer hover:bg-slate-50"
                       onClick={() =>
                         setExpandedRow(
@@ -326,7 +325,7 @@ export default function AuditPage() {
                       </TableCell>
                     </TableRow>
                     {expandedRow === entry.id && (
-                      <TableRow key={`${entry.id}-expanded`}>
+                      <TableRow>
                         <TableCell colSpan={7} className="bg-slate-50 p-4">
                           <div className="space-y-3">
                             <div className="grid grid-cols-2 gap-4 text-sm">
@@ -355,7 +354,7 @@ export default function AuditPage() {
                         </TableCell>
                       </TableRow>
                     )}
-                  </>
+                  </Fragment>
                 ))}
               </TableBody>
             </Table>

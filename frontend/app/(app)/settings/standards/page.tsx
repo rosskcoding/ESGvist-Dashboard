@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { useApiQuery, useApiMutation } from "@/lib/hooks/use-api";
 import { useQueryClient } from "@tanstack/react-query";
@@ -200,8 +200,8 @@ function SectionNode({
   depth?: number;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const hasChildren = section.children?.length > 0;
-  const hasDisclosures = section.disclosure_requirements?.length > 0;
+  const hasChildren = (section.children ?? []).length > 0;
+  const hasDisclosures = (section.disclosure_requirements ?? []).length > 0;
 
   return (
     <div>
@@ -233,7 +233,7 @@ function SectionNode({
           className="border-l border-slate-200 ml-4 dark:border-slate-700"
           style={{ marginLeft: `${depth * 20 + 24}px` }}
         >
-          {section.disclosure_requirements.map((dr) => (
+          {(section.disclosure_requirements ?? []).map((dr) => (
             <div
               key={dr.id}
               className="flex items-center gap-2 px-3 py-1.5 text-sm"
@@ -268,7 +268,7 @@ function SectionNode({
 
       {expanded &&
         hasChildren &&
-        section.children.map((child) => (
+        (section.children ?? []).map((child) => (
           <SectionNode key={child.id} section={child} depth={depth + 1} />
         ))}
     </div>
@@ -301,7 +301,8 @@ function DetailsTab({ standard }: { standard: Standard }) {
   );
 
   // Reset form when standard changes
-  useState(() => {
+  // Note: intentionally not adding setForm to deps to avoid loops
+  useEffect(() => {
     setForm({
       name: standard.name,
       code: standard.code,
@@ -309,7 +310,8 @@ function DetailsTab({ standard }: { standard: Standard }) {
       description: standard.description,
       status: standard.status,
     });
-  });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [standard.id]);
 
   return (
     <div className="space-y-4">

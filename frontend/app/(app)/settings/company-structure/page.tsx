@@ -1267,13 +1267,8 @@ export default function CompanyStructurePage() {
     controlLinks,
   ]);
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(flowNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(flowEdges);
-
-  useEffect(() => {
-    setNodes(flowNodes);
-    setEdges(flowEdges);
-  }, [flowNodes, flowEdges, setNodes, setEdges]);
+  const [nodes, , onNodesChange] = useNodesState(flowNodes);
+  const [edges, , onEdgesChange] = useEdgesState(flowEdges);
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {

@@ -465,15 +465,15 @@ export default function ValidationPage() {
                 {/* Evidence */}
                 <div>
                   <h4 className="mb-2 text-xs font-semibold uppercase text-slate-400">
-                    Evidence ({selectedItem.evidence.length})
+                    Evidence ({(selectedItem.evidence ?? []).length})
                   </h4>
-                  {selectedItem.evidence.length === 0 ? (
+                  {(selectedItem.evidence ?? []).length === 0 ? (
                     <p className="text-sm text-slate-400">
                       No evidence attached.
                     </p>
                   ) : (
                     <ul className="space-y-2">
-                      {selectedItem.evidence.map((ev) => (
+                      {(selectedItem.evidence ?? []).map((ev) => (
                         <li
                           key={ev.id}
                           className="flex items-center justify-between rounded-md border border-slate-100 bg-slate-50 px-3 py-2"
@@ -512,7 +512,7 @@ export default function ValidationPage() {
                       <div>
                         <p className="text-xs text-slate-400">Entity</p>
                         <p className="font-medium text-slate-900">
-                          {selectedItem.boundary_context.entity_name}
+                          {selectedItem.boundary_context?.entity_name}
                         </p>
                       </div>
                       <div>
@@ -520,7 +520,7 @@ export default function ValidationPage() {
                           Inclusion Status
                         </p>
                         <p className="font-medium text-slate-900">
-                          {selectedItem.boundary_context.inclusion_status}
+                          {selectedItem.boundary_context?.inclusion_status}
                         </p>
                       </div>
                       <div>
@@ -528,7 +528,7 @@ export default function ValidationPage() {
                           Consolidation Method
                         </p>
                         <p className="font-medium text-slate-900">
-                          {selectedItem.boundary_context.consolidation_method}
+                          {selectedItem.boundary_context?.consolidation_method}
                         </p>
                       </div>
                       <div>
@@ -536,7 +536,7 @@ export default function ValidationPage() {
                           Snapshot Version
                         </p>
                         <p className="font-medium text-slate-900">
-                          {selectedItem.boundary_context.snapshot_version}
+                          {selectedItem.boundary_context?.snapshot_version}
                         </p>
                       </div>
                     </CardContent>
@@ -547,12 +547,12 @@ export default function ValidationPage() {
                 <div>
                   <h4 className="mb-2 text-xs font-semibold uppercase text-slate-400">
                     <MessageSquare className="mr-1 inline h-3.5 w-3.5" />
-                    Comments ({selectedItem.comments.length})
+                    Comments ({(selectedItem.comments ?? []).length})
                   </h4>
 
-                  {selectedItem.comments.length > 0 && (
+                  {(selectedItem.comments ?? []).length > 0 && (
                     <div className="space-y-3 mb-4">
-                      {selectedItem.comments.map((comment) => (
+                      {(selectedItem.comments ?? []).map((comment) => (
                         <CommentThread
                           key={comment.id}
                           comment={comment}

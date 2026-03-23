@@ -1,0 +1,174 @@
+{
+  "base_url": "http://localhost:3002",
+  "api_url": "http://localhost:8002/api",
+  "password": "DemoPass123!",
+  "organization": {
+    "id": 1,
+    "name": "Northwind Renewables Group"
+  },
+  "project": {
+    "id": 1,
+    "name": "FY2025 Sustainability Reporting",
+    "reporting_year": 2025
+  },
+  "boundaries": {
+    "default": {
+      "id": 1,
+      "name": "Financial Reporting Default"
+    },
+    "sustainability": {
+      "id": 2,
+      "name": "FY2025 Sustainability Boundary"
+    }
+  },
+  "users": {
+    "platform_admin": {
+      "id": 1,
+      "email": "platform.admin@northwind-demo.example.com",
+      "full_name": "Paula Platform",
+      "role": "platform_admin"
+    },
+    "admin": {
+      "id": 2,
+      "email": "admin@northwind-demo.example.com",
+      "full_name": "Alice Admin",
+      "role": "admin"
+    },
+    "esg_manager": {
+      "id": 3,
+      "email": "esg.manager@northwind-demo.example.com",
+      "full_name": "Ethan ESG Manager",
+      "role": "esg_manager"
+    },
+    "reviewer": {
+      "id": 4,
+      "email": "reviewer@northwind-demo.example.com",
+      "full_name": "Rita Reviewer",
+      "role": "reviewer"
+    },
+    "auditor": {
+      "id": 5,
+      "email": "auditor@northwind-demo.example.com",
+      "full_name": "Ava Auditor",
+      "role": "auditor"
+    },
+    "collector_energy": {
+      "id": 6,
+      "email": "collector.energy@northwind-demo.example.com",
+      "full_name": "Cole Energy Collector",
+      "role": "collector"
+    },
+    "collector_climate": {
+      "id": 7,
+      "email": "collector.climate@northwind-demo.example.com",
+      "full_name": "Clara Climate Collector",
+      "role": "collector"
+    }
+  },
+  "entities": {
+    "root": {
+      "id": 1,
+      "name": "Northwind Renewables Group plc"
+    },
+    "generation": {
+      "id": 2,
+      "name": "Northwind Generation Ltd"
+    },
+    "grid": {
+      "id": 3,
+      "name": "Northwind Grid Services GmbH"
+    },
+    "iberia": {
+      "id": 4,
+      "name": "Northwind Solar Iberia Branch"
+    },
+    "hamburg": {
+      "id": 5,
+      "name": "Hamburg Wind Farm"
+    },
+    "leeds": {
+      "id": 6,
+      "name": "Leeds Service Operations"
+    },
+    "baltic_jv": {
+      "id": 7,
+      "name": "Baltic Storage JV"
+    }
+  },
+  "shared_elements": {
+    "energy_total_mwh": {
+      "id": 1,
+      "code": "ENERGY_TOTAL_MWH"
+    },
+    "scope1_tco2e": {
+      "id": 2,
+      "code": "SCOPE1_TCO2E"
+    },
+    "scope2_tco2e": {
+      "id": 3,
+      "code": "SCOPE2_TCO2E"
+    },
+    "governance_narrative": {
+      "id": 4,
+      "code": "SUSTAINABILITY_GOVERNANCE_NARRATIVE"
+    }
+  },
+  "standards": {
+    "gri": {
+      "id": 1,
+      "code": "GRI",
+      "disclosures": {
+        "gri_302_1": {
+          "id": 1,
+          "items": {
+            "energy_total_mwh": 1
+          }
+        },
+        "gri_305_1": {
+          "id": 2,
+          "items": {
+            "scope1_tco2e": 2
+          }
+        }
+      }
+    },
+    "ifrs_s1": {
+      "id": 2,
+      "code": "IFRS-S1",
+      "disclosures": {
+        "gov_1": {
+          "id": 3,
+          "items": {
+            "governance_narrative": 3
+          }
+        }
+      }
+    },
+    "ifrs_s2": {
+      "id": 3,
+      "code": "IFRS-S2",
+      "disclosures": {
+        "met_4": {
+          "id": 4,
+          "items": {
+            "scope1_tco2e": 4,
+            "scope2_tco2e": 5
+          }
+        }
+      }
+    },
+    "esrs": {
+      "id": 4,
+      "code": "ESRS",
+      "disclosures": {
+        "e1_6": {
+          "id": 5,
+          "items": {
+            "scope1_tco2e": 6,
+            "scope2_tco2e": 7
+          }
+        }
+      }
+    }
+  }
+}

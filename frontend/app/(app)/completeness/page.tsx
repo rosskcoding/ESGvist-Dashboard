@@ -293,7 +293,7 @@ export default function CompletenessPage() {
                         </TableCell>
                         <TableCell>
                           <span className="text-sm text-green-600">
-                            {disclosure.covered_entities.length}
+                            {(disclosure.covered_entities ?? []).length}
                           </span>
                         </TableCell>
                         <TableCell>
@@ -305,7 +305,7 @@ export default function CompletenessPage() {
                                 : "text-slate-400"
                             )}
                           >
-                            {disclosure.missing_entities.length}
+                            {(disclosure.missing_entities ?? []).length}
                           </span>
                         </TableCell>
                       </TableRow>
@@ -328,11 +328,11 @@ export default function CompletenessPage() {
                                 <div>
                                   <p className="mb-1 text-xs font-medium text-green-700">
                                     Covered Entities (
-                                    {disclosure.covered_entities.length})
+                                    {(disclosure.covered_entities ?? []).length})
                                   </p>
                                   {disclosure.covered_entities.length > 0 ? (
                                     <div className="flex flex-wrap gap-1">
-                                      {disclosure.covered_entities.map(
+                                      {(disclosure.covered_entities ?? []).map(
                                         (entity) => (
                                           <Badge
                                             key={entity}
@@ -355,11 +355,11 @@ export default function CompletenessPage() {
                                 <div>
                                   <p className="mb-1 text-xs font-medium text-red-700">
                                     Missing Entities (
-                                    {disclosure.missing_entities.length})
+                                    {(disclosure.missing_entities ?? []).length})
                                   </p>
                                   {disclosure.missing_entities.length > 0 ? (
                                     <div className="flex flex-wrap gap-1">
-                                      {disclosure.missing_entities.map(
+                                      {(disclosure.missing_entities ?? []).map(
                                         (entity) => (
                                           <Badge
                                             key={entity}

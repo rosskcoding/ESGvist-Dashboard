@@ -251,8 +251,8 @@ export default function WebhooksPage() {
                     </TableCell>
                     <TableCell>
                       <span className="text-sm text-slate-600">
-                        {webhook.events.length} event
-                        {webhook.events.length !== 1 ? "s" : ""}
+                        {(webhook.events ?? []).length} event
+                        {(webhook.events ?? []).length !== 1 ? "s" : ""}
                       </span>
                     </TableCell>
                     <TableCell className="text-sm text-slate-600">

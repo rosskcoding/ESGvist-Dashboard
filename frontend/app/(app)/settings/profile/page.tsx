@@ -164,7 +164,7 @@ export default function ProfilePage() {
           <div className="space-y-2">
             <Label>Role</Label>
             <div className="flex items-center gap-2">
-              {profile?.roles.map((r) => (
+              {(profile?.roles ?? []).map((r) => (
                 <Badge key={r.id} variant="secondary">
                   {r.role}
                 </Badge>

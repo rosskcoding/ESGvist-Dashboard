@@ -375,7 +375,7 @@ export default function DataEntryWizardPage() {
                 Required by Standards
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
-                {dp.standards.map((s) => (
+                {(dp.standards ?? []).map((s) => (
                   <Badge key={s.code} variant="secondary">
                     {s.code} &mdash; {s.name}
                   </Badge>

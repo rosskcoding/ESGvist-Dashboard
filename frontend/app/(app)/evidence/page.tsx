@@ -571,13 +571,13 @@ export default function EvidencePage() {
               {/* Linked data points */}
               <div>
                 <p className="text-xs font-medium text-slate-500">
-                  Linked Data Points ({detailTarget.linked_data_points.length})
+                  Linked Data Points ({(detailTarget.linked_data_points ?? []).length})
                 </p>
-                {detailTarget.linked_data_points.length === 0 ? (
+                {(detailTarget.linked_data_points ?? []).length === 0 ? (
                   <p className="mt-1 text-xs text-slate-400">None</p>
                 ) : (
                   <div className="mt-1.5 flex flex-wrap gap-1">
-                    {detailTarget.linked_data_points.map((dp) => (
+                    {(detailTarget.linked_data_points ?? []).map((dp) => (
                       <Badge key={dp.data_point_id} variant="outline">
                         {dp.code} &mdash; {dp.label}
                       </Badge>
@@ -590,13 +590,13 @@ export default function EvidencePage() {
               <div>
                 <p className="text-xs font-medium text-slate-500">
                   Linked Requirement Items (
-                  {detailTarget.linked_requirement_items.length})
+                  {(detailTarget.linked_requirement_items ?? []).length})
                 </p>
-                {detailTarget.linked_requirement_items.length === 0 ? (
+                {(detailTarget.linked_requirement_items ?? []).length === 0 ? (
                   <p className="mt-1 text-xs text-slate-400">None</p>
                 ) : (
                   <div className="mt-1.5 space-y-1">
-                    {detailTarget.linked_requirement_items.map((ri) => (
+                    {(detailTarget.linked_requirement_items ?? []).map((ri) => (
                       <div
                         key={ri.requirement_item_id}
                         className="rounded border border-slate-100 px-2 py-1 text-xs"

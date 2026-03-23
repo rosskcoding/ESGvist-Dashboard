@@ -199,7 +199,7 @@ export default function TenantDetailPage({
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-slate-500">Total Users</span>
                   <span className="text-sm font-medium">
-                    {tenant.users.length}
+                    {(tenant.users ?? []).length}
                   </span>
                 </div>
               </CardContent>
@@ -213,14 +213,14 @@ export default function TenantDetailPage({
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Users className="h-4 w-4" />
-                Users ({tenant.users.length})
+                Users ({(tenant.users ?? []).length})
               </CardTitle>
               <CardDescription>
                 Users belonging to this organization
               </CardDescription>
             </CardHeader>
             <CardContent className="p-0">
-              {tenant.users.length === 0 ? (
+              {(tenant.users ?? []).length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12">
                   <Users className="mb-3 h-10 w-10 text-slate-300" />
                   <p className="text-sm text-slate-500">No users found</p>
@@ -237,7 +237,7 @@ export default function TenantDetailPage({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {tenant.users.map((user) => (
+                    {(tenant.users ?? []).map((user) => (
                       <TableRow key={user.id}>
                         <TableCell className="font-medium">
                           {user.full_name}
@@ -286,7 +286,7 @@ export default function TenantDetailPage({
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {tenant.recent_activity.length === 0 ? (
+              {(tenant.recent_activity ?? []).length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12">
                   <Activity className="mb-3 h-10 w-10 text-slate-300" />
                   <p className="text-sm text-slate-500">
@@ -295,7 +295,7 @@ export default function TenantDetailPage({
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {tenant.recent_activity.map((entry) => (
+                  {(tenant.recent_activity ?? []).map((entry) => (
                     <div
                       key={entry.id}
                       className="flex items-start gap-3 rounded-lg border border-slate-100 p-3"
