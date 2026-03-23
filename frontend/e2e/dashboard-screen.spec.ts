@@ -23,7 +23,7 @@ test.describe("Screen 6 - Overview Dashboard", () => {
       await expect(page.getByText("Overdue Assignments")).toBeVisible();
       await expect(page.getByText("Completion by Standard")).toBeVisible();
       await expect(page.getByText("Boundary Summary")).toBeVisible();
-      await expect(page.getByText("Priority Tasks")).toBeVisible();
+      await expect(page.getByText("Priority Tasks", { exact: true })).toBeVisible();
       await expect(page.getByText("FY2025 Sustainability Boundary")).toBeVisible();
     });
   }

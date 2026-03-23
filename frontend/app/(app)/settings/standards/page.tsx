@@ -524,18 +524,19 @@ export default function StandardsPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [addOpen, setAddOpen] = useState(false);
 
-  const { data: standards, isLoading } = useApiQuery<Standard[]>(
+  const { data: standardsData, isLoading } = useApiQuery<{ items: Standard[]; total: number } | Standard[]>(
     ["standards"],
     "/standards"
   );
+  const standards = Array.isArray(standardsData) ? standardsData : standardsData?.items ?? [];
 
   const selectedStandard = useMemo(
-    () => standards?.find((s) => s.id === selectedId) ?? null,
+    () => standards.find((s) => s.id === selectedId) ?? null,
     [standards, selectedId]
   );
 
   const filtered = useMemo(() => {
-    if (!standards) return [];
+    if (!standards.length) return [];
     if (!search) return standards;
     const q = search.toLowerCase();
     return standards.filter(

@@ -466,8 +466,11 @@ class DashboardService:
             assignments,
             data_points,
         )
-        merge_summary = (await self.merge_service.get_merged_view(project_id, ctx))["summary"]
-        merge_coverage = (await self.merge_service.get_coverage(project_id, ctx))["coverage"]
+        merge_summary = {"total": 0, "common": 0, "unique": 0, "orphans": 0, "standards": []}
+        merge_coverage: dict[str, dict] = {}
+        if ctx.role in {"admin", "esg_manager", "reviewer", "auditor", "platform_admin"}:
+            merge_summary = (await self.merge_service.get_merged_view(project_id, ctx))["summary"]
+            merge_coverage = (await self.merge_service.get_coverage(project_id, ctx))["coverage"]
 
         overdue_assignments = (
             sla_counts["overdue"] + sla_counts["breach_level_1"] + sla_counts["breach_level_2"]
