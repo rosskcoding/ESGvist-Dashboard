@@ -2,7 +2,15 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.routes import auth, health, mappings, requirement_items, shared_elements, standards
+from app.api.routes import (
+    auth,
+    entities,
+    health,
+    mappings,
+    requirement_items,
+    shared_elements,
+    standards,
+)
 from app.core.config import settings
 from app.core.exceptions import AppError
 from app.core.middleware import RequestIdMiddleware
@@ -43,6 +51,7 @@ def create_app() -> FastAPI:
     app.include_router(requirement_items.router)
     app.include_router(shared_elements.router)
     app.include_router(mappings.router)
+    app.include_router(entities.router)
 
     return app
 

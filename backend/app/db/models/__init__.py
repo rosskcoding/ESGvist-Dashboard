@@ -1,5 +1,6 @@
 from app.db.models.audit_log import AuditLog
 from app.db.models.base import Base
+from app.db.models.company_entity import CompanyEntity, ControlLink, OwnershipLink
 from app.db.models.mapping import RequirementItemSharedElement
 from app.db.models.organization import Organization
 from app.db.models.refresh_token import RefreshToken
@@ -24,4 +25,7 @@ __all__ = [
     "SharedElement",
     "SharedElementDimension",
     "RequirementItemSharedElement",
+    "CompanyEntity",
+    "OwnershipLink",
+    "ControlLink",
 ]
