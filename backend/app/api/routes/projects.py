@@ -52,7 +52,7 @@ async def get_project(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    return await _get_service(session).get_project(project_id)
+    return await _get_service(session).get_project(project_id, ctx)
 
 
 @router.post("/api/projects/{project_id}/standards")
@@ -88,7 +88,7 @@ async def list_assignments(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    return await _get_service(session).list_assignments(project_id)
+    return await _get_service(session).list_assignments(project_id, ctx)
 
 
 # --- Boundaries ---

@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
+import { AICopilot } from "@/components/ai-copilot";
 import {
   LayoutDashboard,
   ClipboardList,
@@ -37,6 +38,9 @@ import {
   BotMessageSquare,
   LogOut,
   ChevronDown,
+  ScrollText,
+  Settings,
+  UserCircle,
   type LucideIcon,
 } from "lucide-react";
 
@@ -80,13 +84,16 @@ const navGroups: NavGroup[] = [
     items: [
       { label: "Projects", href: "/projects", icon: FolderKanban },
       { label: "Completeness", href: "/completeness", icon: PieChart },
-      { label: "Report / Export", href: "/reports", icon: FileOutput },
+      { label: "Report / Export", href: "/report", icon: FileOutput },
+      { label: "Audit Log", href: "/audit", icon: ScrollText },
     ],
   },
   {
     title: "Settings",
     items: [
-      { label: "Company Structure", href: "/settings/structure", icon: Building2 },
+      { label: "Organization", href: "/settings", icon: Settings },
+      { label: "Profile", href: "/settings/profile", icon: UserCircle },
+      { label: "Company Structure", href: "/settings/company-structure", icon: Building2 },
       { label: "Assignments", href: "/settings/assignments", icon: UserCog },
       { label: "Standards", href: "/settings/standards", icon: BookOpen },
       { label: "Shared Elements", href: "/settings/shared-elements", icon: Share2 },
@@ -294,29 +301,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <main className="flex-1 overflow-y-auto p-6">{children}</main>
 
           {/* AI Copilot Panel */}
-          {copilotOpen && (
-            <aside className="w-80 border-l border-gray-200 bg-white p-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-gray-900">
-                  AI Copilot
-                </h3>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setCopilotOpen(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  &times;
-                </Button>
-              </div>
-              <div className="mt-4 flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 py-12 text-center">
-                <BotMessageSquare className="h-8 w-8 text-gray-300" />
-                <p className="mt-2 text-sm text-muted-foreground">
-                  AI assistant coming soon
-                </p>
-              </div>
-            </aside>
-          )}
+          <AICopilot
+            open={copilotOpen}
+            onClose={() => setCopilotOpen(false)}
+            screenContext={pathname}
+          />
         </div>
       </div>
     </div>

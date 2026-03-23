@@ -1,5 +1,7 @@
+from app.core.access import get_project_for_ctx
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError
+from app.policies.auth_policy import AuthPolicy
 from app.repositories.audit_repo import AuditRepository
 from app.repositories.project_repo import ProjectRepository
 from app.schemas.projects import (
@@ -52,14 +54,21 @@ class ProjectService:
             total=total,
         )
 
-    async def get_project(self, project_id: int) -> ProjectOut:
-        p = await self.repo.get_or_raise(project_id)
+    async def get_project(self, project_id: int, ctx: RequestContext) -> ProjectOut:
+        p = await get_project_for_ctx(self.repo.session, project_id, ctx)
         return ProjectOut.model_validate(p)
 
     async def add_standard(self, project_id: int, payload: ProjectStandardAdd, ctx: RequestContext):
         self._require_manager(ctx)
-        await self.repo.get_or_raise(project_id)
-        ps = await self.repo.add_standard(project_id, payload.standard_id, payload.is_base_standard)
+        await get_project_for_ctx(self.repo.session, project_id, ctx)
+        await self.repo.add_standard(project_id, payload.standard_id, payload.is_base_standard)
+        await self._audit(
+            "ReportingProject",
+            "project_standard_added",
+            ctx,
+            entity_id=project_id,
+            changes=payload.model_dump(),
+        )
         return {"project_id": project_id, "standard_id": payload.standard_id}
 
     # --- Assignments ---
@@ -74,13 +83,19 @@ class ProjectService:
                 "Collector and reviewer cannot be the same person"
             )
 
+        await get_project_for_ctx(self.repo.session, project_id, ctx)
         a = await self.repo.create_assignment(project_id, **payload.model_dump())
         await self._audit("MetricAssignment", "assignment_created", ctx, entity_id=a.id,
                           changes=payload.model_dump())
         return AssignmentOut.model_validate(a)
 
-    async def list_assignments(self, project_id: int) -> list[AssignmentOut]:
+    async def list_assignments(self, project_id: int, ctx: RequestContext) -> list[AssignmentOut]:
+        await get_project_for_ctx(self.repo.session, project_id, ctx)
         items = await self.repo.list_assignments(project_id)
+        if ctx.role == "collector":
+            items = [assignment for assignment in items if assignment.collector_id == ctx.user_id]
+        elif ctx.role == "reviewer":
+            items = [assignment for assignment in items if assignment.reviewer_id == ctx.user_id]
         return [AssignmentOut.model_validate(a) for a in items]
 
     # --- Boundaries ---
@@ -102,7 +117,9 @@ class ProjectService:
 
     async def apply_boundary(self, project_id: int, boundary_id: int, ctx: RequestContext) -> ProjectOut:
         self._require_manager(ctx)
-        p = await self.repo.get_or_raise(project_id)
+        p = await get_project_for_ctx(self.repo.session, project_id, ctx, allow_collectors=False, allow_reviewers=False)
+        boundary = await self.repo.get_boundary_or_raise(boundary_id)
+        AuthPolicy.check_tenant_isolation(ctx, boundary.organization_id)
         if p.status == "published":
             raise AppError("PROJECT_LOCKED", 422, "Cannot change boundary for published project")
         p = await self.repo.update_project(project_id, boundary_definition_id=boundary_id)

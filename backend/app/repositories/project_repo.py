@@ -1,6 +1,7 @@
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.boundary import BoundaryDefinition
 from app.core.exceptions import AppError
 from app.db.models.boundary import BoundaryDefinition, BoundaryMembership
 from app.db.models.project import MetricAssignment, ReportingProject, ReportingProjectStandard
@@ -28,6 +29,15 @@ class ProjectRepository:
         if not p:
             raise AppError("NOT_FOUND", 404, f"Project {project_id} not found")
         return p
+
+    async def get_boundary_or_raise(self, boundary_id: int) -> BoundaryDefinition:
+        result = await self.session.execute(
+            select(BoundaryDefinition).where(BoundaryDefinition.id == boundary_id)
+        )
+        boundary = result.scalar_one_or_none()
+        if not boundary:
+            raise AppError("NOT_FOUND", 404, f"Boundary {boundary_id} not found")
+        return boundary
 
     async def list_projects(
         self, org_id: int, page: int = 1, page_size: int = 20

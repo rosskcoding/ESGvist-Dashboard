@@ -26,14 +26,22 @@ class EvidenceRepository:
         return ev
 
     async def list_by_org(
-        self, org_id: int, page: int = 1, page_size: int = 50
+        self,
+        org_id: int,
+        page: int = 1,
+        page_size: int = 50,
+        created_by: int | None = None,
     ) -> tuple[list[Evidence], int]:
-        count_q = select(func.count()).select_from(Evidence).where(Evidence.organization_id == org_id)
+        filters = [Evidence.organization_id == org_id]
+        if created_by is not None:
+            filters.append(Evidence.created_by == created_by)
+
+        count_q = select(func.count()).select_from(Evidence).where(*filters)
         total = (await self.session.execute(count_q)).scalar_one()
 
         q = (
             select(Evidence)
-            .where(Evidence.organization_id == org_id)
+            .where(*filters)
             .order_by(Evidence.id)
             .offset((page - 1) * page_size)
             .limit(page_size)

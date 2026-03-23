@@ -26,22 +26,46 @@ class DataPointRepository:
         return dp
 
     async def list_by_project(
-        self, project_id: int, page: int = 1, page_size: int = 50
+        self,
+        project_id: int,
+        page: int = 1,
+        page_size: int = 50,
+        shared_element_ids: list[int] | None = None,
+        created_by: int | None = None,
     ) -> tuple[list[DataPoint], int]:
-        count_q = select(func.count()).select_from(DataPoint).where(
-            DataPoint.reporting_project_id == project_id
-        )
+        base_filters = [DataPoint.reporting_project_id == project_id]
+        if shared_element_ids is not None:
+            if not shared_element_ids:
+                return [], 0
+            base_filters.append(DataPoint.shared_element_id.in_(shared_element_ids))
+        if created_by is not None:
+            base_filters.append(DataPoint.created_by == created_by)
+
+        count_q = select(func.count()).select_from(DataPoint).where(*base_filters)
         total = (await self.session.execute(count_q)).scalar_one()
 
         q = (
             select(DataPoint)
-            .where(DataPoint.reporting_project_id == project_id)
+            .where(*base_filters)
             .order_by(DataPoint.id)
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
         result = await self.session.execute(q)
         return list(result.scalars().all()), total
+
+    async def list_all_by_project(
+        self, project_id: int, shared_element_ids: list[int] | None = None
+    ) -> list[DataPoint]:
+        filters = [DataPoint.reporting_project_id == project_id]
+        if shared_element_ids is not None:
+            if not shared_element_ids:
+                return []
+            filters.append(DataPoint.shared_element_id.in_(shared_element_ids))
+        result = await self.session.execute(
+            select(DataPoint).where(*filters).order_by(DataPoint.id)
+        )
+        return list(result.scalars().all())
 
     async def update(self, dp_id: int, **kwargs) -> DataPoint:
         dp = await self.get_or_raise(dp_id)

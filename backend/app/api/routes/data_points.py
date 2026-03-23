@@ -11,8 +11,10 @@ from app.db.models.requirement_item_evidence import RequirementItemEvidence
 from app.db.session import get_session
 from app.policies.auth_policy import AuthPolicy
 from app.policies.evidence_policy import EvidencePolicy
+from app.repositories.audit_repo import AuditRepository
 from app.repositories.data_point_repo import DataPointRepository
 from app.repositories.evidence_repo import EvidenceRepository
+from app.repositories.project_repo import ProjectRepository
 from app.schemas.data_points import DataPointCreate, DataPointListOut, DataPointOut
 from app.schemas.evidence import (
     EvidenceCreate,
@@ -20,7 +22,6 @@ from app.schemas.evidence import (
     EvidenceListOut,
     EvidenceOut,
 )
-from app.repositories.audit_repo import AuditRepository
 from app.services.data_point_service import DataPointService
 from app.services.evidence_service import EvidenceService
 
@@ -38,11 +39,20 @@ router = APIRouter(tags=["Data Points & Evidence"])
 
 
 def _dp_service(session: AsyncSession) -> DataPointService:
-    return DataPointService(repo=DataPointRepository(session), audit_repo=AuditRepository(session))
+    return DataPointService(
+        repo=DataPointRepository(session),
+        project_repo=ProjectRepository(session),
+        audit_repo=AuditRepository(session),
+    )
 
 
 def _ev_service(session: AsyncSession) -> EvidenceService:
-    return EvidenceService(repo=EvidenceRepository(session), audit_repo=AuditRepository(session))
+    return EvidenceService(
+        repo=EvidenceRepository(session),
+        dp_repo=DataPointRepository(session),
+        project_repo=ProjectRepository(session),
+        audit_repo=AuditRepository(session),
+    )
 
 
 # --- Data Points ---
@@ -69,7 +79,7 @@ async def list_data_points(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    return await _dp_service(session).list_by_project(project_id, page, page_size)
+    return await _dp_service(session).list_by_project(project_id, ctx, page, page_size)
 
 
 @router.get("/api/data-points/{dp_id}", response_model=DataPointOut)
@@ -78,7 +88,7 @@ async def get_data_point(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    return await _dp_service(session).get(dp_id)
+    return await _dp_service(session).get(dp_id, ctx)
 
 
 # --- Evidence ---
