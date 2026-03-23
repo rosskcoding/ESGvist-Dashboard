@@ -5,18 +5,23 @@ from fastapi.responses import JSONResponse
 from app.api.routes import (
     ai,
     audit,
-    platform,
     auth,
+    comments,
     completeness,
     data_points,
     deltas,
     entities,
+    entity_tree,
     export,
     health,
+    impact,
+    invitations,
     mappings,
     merge,
     notifications,
+    platform,
     projects,
+    references,
     requirement_items,
     reuse,
     review,
@@ -65,6 +70,7 @@ def create_app() -> FastAPI:
     app.include_router(shared_elements.router)
     app.include_router(mappings.router)
     app.include_router(entities.router)
+    app.include_router(entity_tree.router)
     app.include_router(projects.router)
     app.include_router(data_points.router)
     app.include_router(workflow.router)
@@ -78,6 +84,10 @@ def create_app() -> FastAPI:
     app.include_router(deltas.router)
     app.include_router(ai.router)
     app.include_router(platform.router)
+    app.include_router(comments.router)
+    app.include_router(invitations.router)
+    app.include_router(impact.router)
+    app.include_router(references.router)
 
     return app
 

@@ -63,13 +63,30 @@ class WorkflowService:
             ]
         }
 
-    async def submit(self, dp_id: int, ctx: RequestContext) -> dict:
+    async def submit(self, dp_id: int, ctx: RequestContext, assignment_repo=None) -> dict:
         dp = await self.dp_repo.get_or_raise(dp_id)
         context = {"data_point": dp, "target_status": "submitted", "role": ctx.role}
         gate_result = await self._check_gates("submit_data_point", context)
 
         dp = await self.dp_repo.update(dp_id, status="submitted")
-        return {"id": dp.id, "status": dp.status, **gate_result}
+
+        # Auto-transition to in_review if reviewer is assigned
+        final_status = "submitted"
+        if assignment_repo:
+            from sqlalchemy import select
+            from app.db.models.project import MetricAssignment
+
+            q = select(MetricAssignment).where(
+                MetricAssignment.reporting_project_id == dp.reporting_project_id,
+                MetricAssignment.shared_element_id == dp.shared_element_id,
+                MetricAssignment.reviewer_id.isnot(None),
+            )
+            result = await assignment_repo.session.execute(q)
+            if result.scalar_one_or_none():
+                dp = await self.dp_repo.update(dp_id, status="in_review")
+                final_status = "in_review"
+
+        return {"id": dp.id, "status": final_status, **gate_result}
 
     async def approve(self, dp_id: int, comment: str | None, ctx: RequestContext) -> dict:
         dp = await self.dp_repo.get_or_raise(dp_id)

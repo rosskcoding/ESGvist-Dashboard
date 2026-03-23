@@ -23,6 +23,8 @@ from app.db.models.requirement_item_evidence import RequirementItemEvidence
 from app.db.models.role_binding import RoleBinding
 from app.db.models.shared_element import SharedElement, SharedElementDimension
 from app.db.models.standard import DisclosureRequirement, Standard, StandardSection
+from app.db.models.unit_reference import BoundaryApproach, Methodology, UnitReference
+from app.db.models.comment import Comment
 from app.db.models.user import User
 
 __all__ = [
@@ -38,4 +40,5 @@ __all__ = [
     "RequirementItemDataPoint", "RequirementItemStatus", "DisclosureRequirementStatus",
     "Notification", "RequirementDelta",
     "UserInvitation", "RequirementItemEvidence", "AIInteraction",
+    "Comment", "UnitReference", "Methodology", "BoundaryApproach",
 ]
