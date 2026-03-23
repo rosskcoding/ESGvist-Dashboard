@@ -109,6 +109,7 @@ interface BoundaryMembership {
 
 interface EntityTreeNode extends Entity {
   children: EntityTreeNode[];
+  ownership?: Array<{ parent_id: number; percent: number; type: string }>;
 }
 
 interface EntitiesResponse {
@@ -1232,7 +1233,7 @@ export default function CompanyStructurePage() {
   const tree = Array.isArray(treeData) ? treeData : (treeData as { tree?: EntityTreeNode[] })?.tree ?? [];
 
   // Extract ownership links from tree data (each entity has .ownership array)
-  const treeOwnershipLinks: OwnershipLink[] = tree.flatMap((node) =>
+  const treeOwnershipLinks = tree.flatMap((node) =>
     (node.ownership ?? []).map((o: { parent_id: number; percent: number; type: string }, idx: number) => ({
       id: idx,
       parent_entity_id: o.parent_id,
@@ -1241,7 +1242,7 @@ export default function CompanyStructurePage() {
       ownership_type: o.type as "direct" | "indirect" | "beneficial",
     }))
   );
-  const allOwnershipLinks = ownershipLinks.length > 0 ? ownershipLinks : treeOwnershipLinks;
+  const allOwnershipLinks = ownershipLinks.length > 0 ? ownershipLinks : treeOwnershipLinks as unknown as OwnershipLink[];
 
   // Build edges based on view mode
   // Build nested tree from flat list using ownership

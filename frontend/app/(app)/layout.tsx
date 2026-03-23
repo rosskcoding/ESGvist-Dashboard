@@ -62,6 +62,7 @@ interface NavItem {
   label: string;
   href: string;
   icon: LucideIcon;
+  requiredRoles?: string[];
 }
 
 interface NavGroup {
@@ -84,7 +85,12 @@ const navGroups: NavGroup[] = [
     title: "Reporting",
     items: [
       { label: "Projects", href: "/projects", icon: FolderKanban },
-      { label: "Completeness", href: "/completeness", icon: PieChart },
+      {
+        label: "Completeness",
+        href: "/completeness",
+        icon: PieChart,
+        requiredRoles: ["admin", "esg_manager", "auditor", "platform_admin"],
+      },
       { label: "Report / Export", href: "/report", icon: FileOutput },
       { label: "Audit Log", href: "/audit", icon: ScrollText },
     ],
@@ -194,9 +200,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </p>
                 <div className="space-y-1">
                   {group.items.map((item) => {
+                    if (item.requiredRoles && !item.requiredRoles.includes(userRole)) {
+                      return null;
+                    }
                     const isActive =
                       pathname === item.href ||
-                      pathname.startsWith(item.href + "/");
+                      (item.href !== "/settings" && pathname.startsWith(item.href + "/"));
                     const Icon = item.icon;
 
                     return (

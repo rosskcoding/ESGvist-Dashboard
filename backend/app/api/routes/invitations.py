@@ -15,6 +15,10 @@ class InviteRequest(BaseModel):
     role: str
 
 
+class InvitationTokenRequest(BaseModel):
+    token: str
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_invitation(
     payload: InviteRequest,
@@ -31,14 +35,32 @@ async def create_invitation(
     )
 
 
-@router.post("/accept/{token}")
-async def accept_invitation(
+@router.get("/accept")
+async def get_invitation_info(
     token: str,
+    session: AsyncSession = Depends(get_session),
+):
+    service = InvitationService(session)
+    return await service.get_invitation_info(token)
+
+
+@router.post("/accept")
+async def accept_invitation(
+    payload: InvitationTokenRequest,
     user: CurrentUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
     service = InvitationService(session)
-    return await service.accept_invitation(token, user.id)
+    return await service.accept_invitation(payload.token, user.id)
+
+
+@router.post("/decline")
+async def decline_invitation(
+    payload: InvitationTokenRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    service = InvitationService(session)
+    return await service.decline_invitation(payload.token)
 
 
 @router.get("")

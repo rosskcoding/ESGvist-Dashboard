@@ -40,10 +40,12 @@ interface Project {
   id: number;
   name: string;
   status: "draft" | "active" | "review" | "published";
-  standards: string[];
-  completion_percentage: number;
-  deadline: string | null;
-  created_at: string;
+  standards?: string[];
+  standard_codes?: string[];
+  completion_percentage?: number;
+  deadline?: string | null;
+  created_at?: string;
+  reporting_year?: number;
 }
 
 interface ProjectsResponse {
@@ -177,8 +179,8 @@ export default function ProjectsPage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
-                          {(project.standards || []).length > 0 ? (
-                            (project.standards || []).map((std) => (
+                          {(project.standards || project.standard_codes || []).length > 0 ? (
+                            (project.standards || project.standard_codes || []).map((std: string) => (
                               <Badge
                                 key={std}
                                 variant="outline"
@@ -197,18 +199,18 @@ export default function ProjectsPage() {
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Progress
-                            value={project.completion_percentage}
+                            value={(project.completion_percentage ?? 0)}
                             className="w-20"
                             indicatorClassName={
-                              project.completion_percentage >= 80
+                              (project.completion_percentage ?? 0) >= 80
                                 ? "bg-green-500"
-                                : project.completion_percentage >= 50
+                                : (project.completion_percentage ?? 0) >= 50
                                   ? "bg-amber-500"
                                   : "bg-blue-600"
                             }
                           />
                           <span className="text-sm text-slate-600">
-                            {Math.round(project.completion_percentage)}%
+                            {Math.round((project.completion_percentage ?? 0))}%
                           </span>
                         </div>
                       </TableCell>

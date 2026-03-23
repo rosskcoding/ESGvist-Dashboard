@@ -766,16 +766,15 @@ async def main() -> None:
         )
         await session.flush()
 
-        session.add(
-            UserInvitation(
-                organization_id=org.id,
-                email="pending.facility@greentech.com",
-                role="collector",
-                invited_by=users["admin"].id,
-                status="pending",
-                expires_at=datetime.now(timezone.utc) + timedelta(days=14),
-            )
+        pending_invitation = UserInvitation(
+            organization_id=org.id,
+            email="pending.facility@greentech.com",
+            role="collector",
+            invited_by=users["admin"].id,
+            status="pending",
+            expires_at=datetime.now(timezone.utc) + timedelta(days=14),
         )
+        session.add(pending_invitation)
         await session.commit()
 
         state = {
@@ -803,6 +802,11 @@ async def main() -> None:
                     "role": "platform_admin" if spec.platform_admin else spec.org_role,
                 }
                 for spec in USER_SPECS
+            },
+            "pending_invitation": {
+                "email": pending_invitation.email,
+                "role": pending_invitation.role,
+                "token": pending_invitation.token,
             },
             "entities": {
                 "root": {"id": root.id, "name": root.name},

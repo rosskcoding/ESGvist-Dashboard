@@ -345,8 +345,8 @@ function BoundaryDetail({ boundary }: { boundary: Boundary }) {
       <div>
         <div className="flex items-center gap-3 mb-2">
           <h3 className="text-lg font-semibold">{boundary.name}</h3>
-          <Badge variant={BOUNDARY_TYPE_VARIANT[boundary.type]}>
-            {boundary.type.replace(/_/g, " ")}
+          <Badge variant={BOUNDARY_TYPE_VARIANT[(boundary.boundary_type ?? boundary.type ?? "custom")]}>
+            {(boundary.boundary_type ?? boundary.type ?? "custom").replace(/_/g, " ")}
           </Badge>
           {boundary.is_default && (
             <Badge variant="success">default</Badge>

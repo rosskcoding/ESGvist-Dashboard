@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { register, login } from "@/lib/auth";
@@ -19,6 +19,7 @@ import {
 
 export default function RegisterPage() {
   const router = useRouter();
+  const [hydrated, setHydrated] = useState(false);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -27,8 +28,13 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!hydrated || loading) return;
     setError("");
 
     if (password !== confirmPassword) {
@@ -53,8 +59,7 @@ export default function RegisterPage() {
       await login(email, password);
       router.push("/dashboard");
     } catch (err: unknown) {
-      const apiErr = err as { error?: { message?: string } };
-      setError(apiErr?.error?.message || "Registration failed");
+      setError(err instanceof Error ? err.message : "Registration failed");
     } finally {
       setLoading(false);
     }
@@ -83,6 +88,7 @@ export default function RegisterPage() {
               id="fullName"
               type="text"
               required
+              autoComplete="name"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               placeholder="John Doe"
@@ -95,6 +101,7 @@ export default function RegisterPage() {
               id="email"
               type="email"
               required
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@company.com"
@@ -107,6 +114,7 @@ export default function RegisterPage() {
               id="password"
               type="password"
               required
+              autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="At least 8 characters"
@@ -119,6 +127,7 @@ export default function RegisterPage() {
               id="confirmPassword"
               type="password"
               required
+              autoComplete="new-password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="Re-enter your password"
@@ -143,8 +152,8 @@ export default function RegisterPage() {
             </Label>
           </div>
 
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Creating account..." : "Create account"}
+          <Button type="submit" className="w-full" disabled={!hydrated || loading}>
+            {!hydrated ? "Loading..." : loading ? "Creating account..." : "Create account"}
           </Button>
         </form>
       </CardContent>

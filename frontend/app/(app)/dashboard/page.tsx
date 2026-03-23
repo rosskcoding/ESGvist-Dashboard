@@ -93,22 +93,24 @@ export default function DashboardPage() {
     );
   }
 
-  const progress = data ?? {
-    overall_completion: 0,
-    data_points_submitted: 0,
-    data_points_total: 0,
+  const progress: DashboardProgress = data ?? {
+    project_id: 0,
+    overall_completion_percent: 0,
     overdue_assignments: 0,
-    pending_reviews: 0,
-    standards: [],
-    boundary: {
-      boundary_id: null,
-      boundary_name: "No boundary selected",
+    item_statuses: { complete: 0, partial: 0, missing: 0, total: 0 },
+    data_point_statuses: {},
+    standards_progress: [],
+    boundary_summary: {
+      selected: "No boundary selected",
+      boundary_type: "financial_reporting_default",
       entities_in_scope: 0,
       excluded_entities: 0,
-      snapshot_status: "not_created" as const,
+      manual_overrides: 0,
+      snapshot_status: "not_created",
+      snapshot_date: null,
     },
-    recent_activity: [],
     priority_tasks: [],
+    coverage_by_user: [],
   };
 
   const overdueTasks = (progress.priority_tasks || []).filter(

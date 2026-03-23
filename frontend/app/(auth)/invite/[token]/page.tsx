@@ -17,6 +17,7 @@ import {
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
 
 interface InvitationInfo {
+  organization_id?: number;
   organization_name: string;
   email: string;
   role: string;
@@ -40,6 +41,11 @@ export default function InvitePage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [accepted, setAccepted] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
 
   useEffect(() => {
     async function validateToken() {
@@ -49,9 +55,8 @@ export default function InvitePage() {
         );
         setInvitation(data);
       } catch (err: unknown) {
-        const apiErr = err as { error?: { message?: string } };
         setValidationError(
-          apiErr?.error?.message || "Invalid or expired invitation"
+          err instanceof Error ? err.message : "Invalid or expired invitation"
         );
       } finally {
         setValidating(false);
@@ -63,6 +68,7 @@ export default function InvitePage() {
 
   const handleAccept = async (e?: React.FormEvent) => {
     e?.preventDefault();
+    if (!hydrated || loading) return;
     setError("");
     setLoading(true);
 
@@ -84,14 +90,16 @@ export default function InvitePage() {
       }
 
       await api.post(`/invitations/accept`, { token });
+      if (invitation?.organization_id) {
+        localStorage.setItem("organization_id", String(invitation.organization_id));
+      }
       setAccepted(true);
 
       setTimeout(() => {
         router.push("/dashboard");
       }, 2000);
     } catch (err: unknown) {
-      const apiErr = err as { error?: { message?: string } };
-      setError(apiErr?.error?.message || "Failed to accept invitation");
+      setError(err instanceof Error ? err.message : "Failed to accept invitation");
     } finally {
       setLoading(false);
     }
@@ -201,6 +209,7 @@ export default function InvitePage() {
                 <Input
                   id="inviteEmail"
                   type="email"
+                  autoComplete="email"
                   value={invitation?.email ?? ""}
                   disabled
                 />
@@ -212,6 +221,7 @@ export default function InvitePage() {
                   id="inviteFullName"
                   type="text"
                   required
+                  autoComplete="name"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="Your full name"
@@ -224,6 +234,7 @@ export default function InvitePage() {
                   id="invitePassword"
                   type="password"
                   required
+                  autoComplete="new-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="At least 8 characters"
@@ -236,6 +247,7 @@ export default function InvitePage() {
                   id="inviteConfirmPassword"
                   type="password"
                   required
+                  autoComplete="new-password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Re-enter your password"
@@ -250,11 +262,11 @@ export default function InvitePage() {
               variant="outline"
               className="flex-1"
               onClick={handleDecline}
-              disabled={loading}
+              disabled={!hydrated || loading}
             >
               Decline
             </Button>
-            <Button type="submit" className="flex-1" disabled={loading}>
+            <Button type="submit" className="flex-1" disabled={!hydrated || loading}>
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

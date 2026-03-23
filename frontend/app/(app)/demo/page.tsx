@@ -153,7 +153,7 @@ export default function DemoPage() {
     async function load() {
       setLoading(true);
       const me = await getMe();
-      setUser(me);
+      setUser(me as any);
 
       const projects = await safeGet<ProjectListResponse>("/projects");
       const currentProject = projects?.items?.[0] ?? null;

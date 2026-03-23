@@ -1,0 +1,241 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e7] [cursor=pointer]:
+    - img [ref=e8]
+  - alert [ref=e11]
+  - generic [ref=e12]:
+    - complementary [ref=e13]:
+      - link "ESGvist" [ref=e15] [cursor=pointer]:
+        - /url: /dashboard
+      - navigation [ref=e16]:
+        - generic [ref=e17]:
+          - paragraph [ref=e18]: Main
+          - generic [ref=e19]:
+            - link "Dashboard" [ref=e20] [cursor=pointer]:
+              - /url: /dashboard
+              - img [ref=e21]
+              - text: Dashboard
+            - link "Collection" [ref=e26] [cursor=pointer]:
+              - /url: /collection
+              - img [ref=e27]
+              - text: Collection
+            - link "Validation" [ref=e30] [cursor=pointer]:
+              - /url: /validation
+              - img [ref=e31]
+              - text: Validation
+            - link "Merge View" [ref=e34] [cursor=pointer]:
+              - /url: /merge
+              - img [ref=e35]
+              - text: Merge View
+        - generic [ref=e39]:
+          - paragraph [ref=e40]: Reporting
+          - generic [ref=e41]:
+            - link "Projects" [ref=e42] [cursor=pointer]:
+              - /url: /projects
+              - img [ref=e43]
+              - text: Projects
+            - link "Completeness" [ref=e45] [cursor=pointer]:
+              - /url: /completeness
+              - img [ref=e46]
+              - text: Completeness
+            - link "Report / Export" [ref=e49] [cursor=pointer]:
+              - /url: /report
+              - img [ref=e50]
+              - text: Report / Export
+            - link "Audit Log" [ref=e55] [cursor=pointer]:
+              - /url: /audit
+              - img [ref=e56]
+              - text: Audit Log
+        - generic [ref=e59]:
+          - paragraph [ref=e60]: Settings
+          - generic [ref=e61]:
+            - link "Organization" [ref=e62] [cursor=pointer]:
+              - /url: /settings
+              - img [ref=e63]
+              - text: Organization
+            - link "Profile" [ref=e66] [cursor=pointer]:
+              - /url: /settings/profile
+              - img [ref=e67]
+              - text: Profile
+            - link "Company Structure" [ref=e71] [cursor=pointer]:
+              - /url: /settings/company-structure
+              - img [ref=e72]
+              - text: Company Structure
+            - link "Assignments" [ref=e76] [cursor=pointer]:
+              - /url: /settings/assignments
+              - img [ref=e77]
+              - text: Assignments
+            - link "Standards" [ref=e89] [cursor=pointer]:
+              - /url: /settings/standards
+              - img [ref=e90]
+              - text: Standards
+            - link "Shared Elements" [ref=e92] [cursor=pointer]:
+              - /url: /settings/shared-elements
+              - img [ref=e93]
+              - text: Shared Elements
+            - link "Users" [ref=e99] [cursor=pointer]:
+              - /url: /settings/users
+              - img [ref=e100]
+              - text: Users
+            - link "Boundaries" [ref=e105] [cursor=pointer]:
+              - /url: /settings/boundaries
+              - img [ref=e106]
+              - text: Boundaries
+            - link "Webhooks" [ref=e108] [cursor=pointer]:
+              - /url: /settings/webhooks
+              - img [ref=e109]
+              - text: Webhooks
+        - generic [ref=e113]:
+          - paragraph [ref=e114]: Platform
+          - link "Tenants" [ref=e116] [cursor=pointer]:
+            - /url: /platform/tenants
+            - img [ref=e117]
+            - text: Tenants
+    - generic [ref=e120]:
+      - banner [ref=e121]:
+        - generic [ref=e122]:
+          - img [ref=e123]
+          - generic [ref=e126]: Search...
+        - generic [ref=e127]:
+          - button "AI Copilot" [ref=e128]:
+            - img
+            - text: AI Copilot
+          - button [ref=e129]:
+            - img
+          - button "RA Ross Admin platform_admin" [ref=e131]:
+            - generic [ref=e132]: RA
+            - generic [ref=e133]:
+              - paragraph [ref=e134]: Ross Admin
+              - paragraph [ref=e135]: platform_admin
+            - img
+      - generic [ref=e136]:
+        - main [ref=e137]:
+          - generic [ref=e138]:
+            - generic [ref=e139]:
+              - heading "Dashboard" [level=2] [ref=e140]
+              - paragraph [ref=e141]: "ESGvist reporting overview for Project #1"
+            - generic [ref=e142]:
+              - generic [ref=e143]:
+                - generic [ref=e144]:
+                  - generic [ref=e145]: Overall Completion
+                  - img [ref=e146]
+                - generic [ref=e148]:
+                  - generic [ref=e149]: 75%
+                  - progressbar [ref=e151]
+              - generic [ref=e153]:
+                - generic [ref=e154]:
+                  - generic [ref=e155]: Data Points
+                  - img [ref=e156]
+                - generic [ref=e159]:
+                  - generic [ref=e160]:
+                    - text: "0"
+                    - generic [ref=e161]: / 8
+                  - paragraph [ref=e162]: submitted
+              - generic [ref=e163]:
+                - generic [ref=e164]:
+                  - generic [ref=e165]: Overdue Assignments
+                  - img [ref=e166]
+                - generic [ref=e168]:
+                  - generic [ref=e169]: "0"
+                  - paragraph [ref=e170]: all on track
+              - generic [ref=e171]:
+                - generic [ref=e172]:
+                  - generic [ref=e173]: Pending Reviews
+                  - img [ref=e174]
+                - generic [ref=e177]:
+                  - generic [ref=e178]: "0"
+                  - paragraph [ref=e179]: awaiting review
+            - generic [ref=e180]:
+              - generic [ref=e181]:
+                - generic [ref=e182]:
+                  - generic [ref=e183]: Completion by Standard
+                  - generic [ref=e184]: Progress across reporting frameworks
+                - generic [ref=e186]:
+                  - generic [ref=e187]:
+                    - generic [ref=e188]:
+                      - generic [ref=e189]:
+                        - generic [ref=e190]: GRI
+                        - generic [ref=e191]: Global Reporting Initiative
+                      - generic [ref=e192]: 100%
+                    - progressbar [ref=e194]
+                    - paragraph [ref=e196]: 2 / 2 disclosures complete
+                  - generic [ref=e197]:
+                    - generic [ref=e198]:
+                      - generic [ref=e199]:
+                        - generic [ref=e200]: IFRS-S1
+                        - generic [ref=e201]: IFRS S1 General Requirements
+                      - generic [ref=e202]: 0%
+                    - progressbar [ref=e204]
+                    - paragraph [ref=e205]: 0 / 1 disclosures complete
+                  - generic [ref=e206]:
+                    - generic [ref=e207]:
+                      - generic [ref=e208]:
+                        - generic [ref=e209]: IFRS-S2
+                        - generic [ref=e210]: IFRS S2 Climate-related Disclosures
+                      - generic [ref=e211]: 100%
+                    - progressbar [ref=e213]
+                    - paragraph [ref=e215]: 2 / 2 disclosures complete
+                  - generic [ref=e216]:
+                    - generic [ref=e217]:
+                      - generic [ref=e218]:
+                        - generic [ref=e219]: ESRS
+                        - generic [ref=e220]: European Sustainability Reporting Standards
+                      - generic [ref=e221]: 100%
+                    - progressbar [ref=e223]
+                    - paragraph [ref=e225]: 2 / 2 disclosures complete
+              - generic [ref=e226]:
+                - generic [ref=e228]:
+                  - img [ref=e229]
+                  - text: Boundary Summary
+                - generic [ref=e232]:
+                  - generic [ref=e233]:
+                    - paragraph [ref=e234]: Selected Boundary
+                    - generic [ref=e235]:
+                      - generic [ref=e236]: FY2025 Sustainability Boundary
+                      - generic [ref=e237]: locked
+                  - generic [ref=e238]:
+                    - generic [ref=e239]:
+                      - paragraph [ref=e240]: "6"
+                      - paragraph [ref=e241]: In scope
+                    - generic [ref=e242]:
+                      - paragraph [ref=e243]: "1"
+                      - paragraph [ref=e244]: Excluded
+            - generic [ref=e245]:
+              - generic [ref=e246]:
+                - generic [ref=e247]:
+                  - generic [ref=e248]:
+                    - img [ref=e249]
+                    - text: Recent Activity
+                  - generic [ref=e251]: Last 5 audit log entries
+                - paragraph [ref=e253]: No recent activity.
+              - generic [ref=e254]:
+                - generic [ref=e255]:
+                  - generic [ref=e256]:
+                    - img [ref=e257]
+                    - text: Priority Tasks
+                  - generic [ref=e260]: Overdue and upcoming deadlines
+                - paragraph [ref=e262]: No priority tasks at this time.
+        - complementary [ref=e263]:
+          - generic [ref=e264]:
+            - generic [ref=e265]:
+              - img [ref=e266]
+              - heading "AI Assistant" [level=3] [ref=e269]
+            - button [ref=e270]:
+              - img
+          - generic [ref=e272]:
+            - img [ref=e273]
+            - paragraph [ref=e276]: How can I help?
+            - paragraph [ref=e277]: Ask questions about your ESG reporting
+            - generic [ref=e278]:
+              - paragraph [ref=e279]: Quick prompts
+              - button "Explain this metric" [ref=e280]
+              - button "What data is missing?" [ref=e281]
+              - button "Help me understand boundary" [ref=e282]
+              - button "Suggest next steps" [ref=e283]
+          - generic [ref=e285]:
+            - textbox "Ask the AI assistant..." [ref=e287]
+            - button [disabled]:
+              - img
+```

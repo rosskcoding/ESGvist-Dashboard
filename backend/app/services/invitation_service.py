@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError
 from app.db.models.invitation import UserInvitation
+from app.db.models.organization import Organization
 from app.db.models.role_binding import RoleBinding
 from app.db.models.user import User
 
@@ -13,6 +14,57 @@ from app.db.models.user import User
 class InvitationService:
     def __init__(self, session: AsyncSession):
         self.session = session
+
+    async def _get_by_token(self, token: str) -> UserInvitation | None:
+        result = await self.session.execute(
+            select(UserInvitation).where(UserInvitation.token == token)
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    def _expires_at_utc(invitation: UserInvitation) -> datetime:
+        return (
+            invitation.expires_at.replace(tzinfo=timezone.utc)
+            if invitation.expires_at.tzinfo is None
+            else invitation.expires_at
+        )
+
+    async def _get_inviter_name(self, invited_by: int) -> str:
+        result = await self.session.execute(select(User).where(User.id == invited_by))
+        inviter = result.scalar_one_or_none()
+        if not inviter:
+            return "Unknown inviter"
+        return inviter.full_name or inviter.email
+
+    async def get_invitation_info(self, token: str) -> dict:
+        invitation = await self._get_by_token(token)
+        if not invitation:
+            raise AppError("INVALID_INVITATION_TOKEN", 400, "Invalid or already used invitation token")
+
+        if invitation.status != "pending":
+            raise AppError("INVALID_INVITATION_TOKEN", 400, "Invalid or already used invitation token")
+
+        if self._expires_at_utc(invitation) < datetime.now(timezone.utc):
+            invitation.status = "expired"
+            await self.session.flush()
+            raise AppError("INVITATION_EXPIRED", 410, "Invitation has expired")
+
+        existing_user = await self.session.execute(
+            select(User).where(User.email == invitation.email.lower())
+        )
+        user = existing_user.scalar_one_or_none()
+        org_result = await self.session.execute(
+            select(Organization).where(Organization.id == invitation.organization_id)
+        )
+        organization = org_result.scalar_one_or_none()
+        return {
+            "organization_id": invitation.organization_id,
+            "organization_name": organization.name if organization else f"Organization #{invitation.organization_id}",
+            "email": invitation.email,
+            "role": invitation.role,
+            "inviter_name": await self._get_inviter_name(invitation.invited_by),
+            "already_registered": user is not None,
+        }
 
     async def _get_pending_invitation(self, invitation_id: int, org_id: int) -> UserInvitation:
         result = await self.session.execute(
@@ -70,15 +122,9 @@ class InvitationService:
         }
 
     async def accept_invitation(self, token: str, user_id: int) -> dict:
-        result = await self.session.execute(
-            select(UserInvitation).where(
-                UserInvitation.token == token,
-                UserInvitation.status == "pending",
-            )
-        )
-        inv = result.scalar_one_or_none()
+        inv = await self._get_by_token(token)
 
-        if not inv:
+        if not inv or inv.status != "pending":
             raise AppError("INVALID_INVITATION_TOKEN", 400, "Invalid or already used invitation token")
 
         user_result = await self.session.execute(select(User).where(User.id == user_id))
@@ -102,7 +148,7 @@ class InvitationService:
         if existing_binding.scalar_one_or_none():
             raise AppError("ROLE_BINDING_EXISTS", 409, "User already has a role in this organization")
 
-        expires = inv.expires_at.replace(tzinfo=timezone.utc) if inv.expires_at.tzinfo is None else inv.expires_at
+        expires = self._expires_at_utc(inv)
         if expires < datetime.now(timezone.utc):
             inv.status = "expired"
             await self.session.flush()
@@ -127,6 +173,20 @@ class InvitationService:
             "role": inv.role,
             "accepted": True,
         }
+
+    async def decline_invitation(self, token: str) -> dict:
+        invitation = await self._get_by_token(token)
+        if not invitation or invitation.status != "pending":
+            raise AppError("INVALID_INVITATION_TOKEN", 400, "Invalid or already used invitation token")
+
+        if self._expires_at_utc(invitation) < datetime.now(timezone.utc):
+            invitation.status = "expired"
+            await self.session.flush()
+            raise AppError("INVITATION_EXPIRED", 410, "Invitation has expired")
+
+        invitation.status = "declined"
+        await self.session.flush()
+        return {"id": invitation.id, "declined": True}
 
     async def list_pending(self, org_id: int) -> list[dict]:
         q = (

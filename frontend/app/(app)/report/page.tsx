@@ -71,12 +71,15 @@ interface ExportFile {
 }
 
 interface ReadinessData {
-  status: "ready" | "warnings" | "blocking";
-  completion_percentage: number;
-  boundary: BoundaryValidation;
-  blocking_issues: BlockingIssue[];
-  warnings: Warning[];
-  exports: ExportFile[];
+  status?: "ready" | "warnings" | "blocking";
+  ready?: boolean;
+  overall_ready?: boolean;
+  completion_percent?: number;
+  completion_percentage?: number;
+  boundary?: BoundaryValidation;
+  blocking_issues?: BlockingIssue[];
+  warnings?: Warning[];
+  exports?: ExportFile[];
 }
 
 export default function ReportPage() {
@@ -202,7 +205,8 @@ export default function ReportPage() {
     },
   };
 
-  const sc = statusConfig[readiness.status as keyof typeof statusConfig] ?? statusConfig.blocking;
+  const derivedStatus = readiness.ready ? "ready" : ((readiness.warnings ?? []).length > 0 && (readiness.blocking_issues ?? []).length === 0) ? "warnings" : "blocking";
+  const sc = statusConfig[derivedStatus as keyof typeof statusConfig] ?? statusConfig.blocking;
   const StatusIcon = sc.icon;
 
   const formatCards = [
@@ -268,7 +272,7 @@ export default function ReportPage() {
           </Button>
           <Button
             onClick={() => setPublishDialogOpen(true)}
-            disabled={readiness.status !== "ready"}
+            disabled={derivedStatus !== "ready"}
           >
             <Send className="mr-2 h-4 w-4" />
             Publish Project
@@ -296,16 +300,16 @@ export default function ReportPage() {
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-sm font-medium text-slate-700">Completion</span>
                 <span className="text-2xl font-bold text-slate-900">
-                  {Math.round(readiness.completion_percentage)}%
+                  {Math.round((readiness.completion_percentage ?? readiness.completion_percent ?? 0))}%
                 </span>
               </div>
               <Progress
-                value={readiness.completion_percentage}
+                value={(readiness.completion_percentage ?? readiness.completion_percent ?? 0)}
                 className="h-3"
                 indicatorClassName={cn(
-                  readiness.completion_percentage >= 80
+                  (readiness.completion_percentage ?? readiness.completion_percent ?? 0) >= 80
                     ? "bg-green-500"
-                    : readiness.completion_percentage >= 50
+                    : (readiness.completion_percentage ?? readiness.completion_percent ?? 0) >= 50
                       ? "bg-amber-500"
                       : "bg-red-500"
                 )}
@@ -327,14 +331,14 @@ export default function ReportPage() {
               <span className="text-sm text-slate-500">Selected Boundary</span>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">
-                  {(readiness.boundary ?? {} as Record<string, unknown>).boundary_name}
+                  {(readiness.boundary ?? {} as any).boundary_name}
                 </span>
                 <Badge variant="secondary">Active</Badge>
               </div>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm text-slate-500">Snapshot Locked</span>
-              {(readiness.boundary ?? {} as Record<string, unknown>).snapshot_locked ? (
+              {(readiness.boundary ?? {} as any).snapshot_locked ? (
                 <Badge variant="default">
                   <CheckCircle2 className="mr-1 h-3 w-3" /> Locked
                 </Badge>
@@ -347,13 +351,13 @@ export default function ReportPage() {
             <div className="flex items-center justify-between">
               <span className="text-sm text-slate-500">Entities in Scope</span>
               <span className="text-sm font-semibold">
-                {(readiness.boundary ?? {} as Record<string, unknown>).entities_in_scope}
+                {(readiness.boundary ?? {} as any).entities_in_scope}
               </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm text-slate-500">Manual Overrides</span>
               <span className="text-sm font-semibold">
-                {(readiness.boundary ?? {} as Record<string, unknown>).manual_overrides}
+                {(readiness.boundary ?? {} as any).manual_overrides}
               </span>
             </div>
           </CardContent>

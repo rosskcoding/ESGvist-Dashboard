@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import RequestContext, get_current_context
 from app.db.session import get_session
+from app.policies.auth_policy import AuthPolicy
 from app.schemas.completeness import CompletenessOut
 from app.repositories.completeness_repo import CompletenessRepository
 from app.schemas.completeness import BindRequest
@@ -58,6 +59,7 @@ async def get_project_completeness(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
+    AuthPolicy.require_role(ctx, ["admin", "esg_manager", "auditor", "platform_admin"])
     service = _get_service(session)
     return await service.get_project_completeness(
         project_id,
@@ -73,5 +75,6 @@ async def get_standard_completeness(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
+    AuthPolicy.require_role(ctx, ["admin", "esg_manager", "auditor", "platform_admin"])
     service = _get_service(session)
     return await service.get_project_completeness(project_id, ctx, standard_id=standard_id)

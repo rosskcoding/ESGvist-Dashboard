@@ -447,8 +447,9 @@ export default function SharedElementsPage() {
   // Group mappings by shared element
   const mappingsByElement = useMemo(() => {
     const map = new Map<number, Mapping[]>();
-    if (mappings) {
-      for (const m of mappings) {
+    const mappingList = Array.isArray(mappings) ? mappings : (mappings as any)?.items ?? [];
+    if (mappingList.length > 0) {
+      for (const m of mappingList) {
         const arr = map.get(m.shared_element_id) ?? [];
         arr.push(m);
         map.set(m.shared_element_id, arr);

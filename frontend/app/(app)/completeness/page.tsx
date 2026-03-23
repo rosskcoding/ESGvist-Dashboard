@@ -29,37 +29,57 @@ import {
   Globe,
   BarChart3,
   Info,
+  ShieldAlert,
 } from "lucide-react";
 
-interface StandardCompletion {
+interface DashboardStandardProgress {
   standard_id: number;
+  standard: string;
   standard_name: string;
-  code: string;
-  total_disclosures: number;
-  completed_disclosures: number;
-  completion_percentage: number;
+  completion_percent: number;
+  complete_items: number;
+  partial_items: number;
+  missing_items: number;
+  total_items: number;
 }
 
-interface DisclosureDetail {
-  id: number;
-  code: string;
-  title: string;
+interface DashboardProgress {
+  standards_progress: DashboardStandardProgress[];
+}
+
+interface BoundaryContext {
+  boundary_id: number | null;
+  boundary_name: string | null;
+  snapshot_date: string | null;
+  entities_in_scope: number;
+  excluded_entities: number;
+  snapshot_locked: boolean;
+  entities_without_data: string[];
+}
+
+interface DisclosureRow {
+  disclosure_requirement_id: number;
+  code: string | null;
+  title: string | null;
   status: "complete" | "partial" | "missing" | "not_applicable";
-  covered_entities: string[];
-  missing_entities: string[];
-  explanation: string;
+  completion_percent: number;
+  entity_breakdown?: {
+    covered_entities: number;
+    missing_entities: number;
+    excluded_entities: number;
+    missing_entity_names?: string[];
+  } | null;
 }
 
-interface CompletenessData {
-  overall_completion: number;
-  boundary_name: string;
-  entity_count: number;
-  standards: StandardCompletion[];
-  disclosures: DisclosureDetail[];
+interface CompletenessResponse {
+  overall_percent: number;
+  overall_status: string;
+  boundary_context?: BoundaryContext | null;
+  disclosures: DisclosureRow[];
 }
 
 const disclosureStatusConfig: Record<
-  DisclosureDetail["status"],
+  DisclosureRow["status"],
   {
     label: string;
     variant: "success" | "warning" | "destructive" | "secondary";
@@ -72,19 +92,61 @@ const disclosureStatusConfig: Record<
   not_applicable: { label: "N/A", variant: "secondary", icon: Info },
 };
 
+function isForbidden(error: Error | null) {
+  const code = (error as Error & { code?: string } | null)?.code;
+  return code === "FORBIDDEN" || /not allowed|access denied|forbidden/i.test(error?.message || "");
+}
+
 export default function CompletenessPage() {
   const [projectId] = useState(1);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
 
-  const { data, isLoading, error } = useApiQuery<CompletenessData>(
+  const {
+    data: completeness,
+    isLoading: completenessLoading,
+    error: completenessError,
+  } = useApiQuery<CompletenessResponse>(
     ["completeness", projectId],
-    `/dashboard/projects/${projectId}/completeness`
+    `/projects/${projectId}/completeness?boundaryContext=true`
   );
+  const {
+    data: dashboard,
+    isLoading: dashboardLoading,
+    error: dashboardError,
+  } = useApiQuery<DashboardProgress>(
+    ["dashboard", "progress", projectId, "completeness-page"],
+    `/dashboard/projects/${projectId}/progress`
+  );
+
+  const isLoading = completenessLoading || dashboardLoading;
+  const error = completenessError || dashboardError;
 
   if (isLoading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+      </div>
+    );
+  }
+
+  if (error && isForbidden(error)) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Completeness</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Data completeness analysis
+          </p>
+        </div>
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <ShieldAlert className="mb-3 h-10 w-10 text-red-500" />
+            <p className="text-sm font-medium text-slate-900">Access denied</p>
+            <p className="mt-1 text-sm text-slate-500">
+              Only admin, ESG manager, and auditor roles can view completeness.
+            </p>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -110,17 +172,12 @@ export default function CompletenessPage() {
     );
   }
 
-  const completeness = data ?? {
-    overall_completion: 0,
-    boundary_name: "No boundary",
-    entity_count: 0,
-    standards: [],
-    disclosures: [],
-  };
+  const standards = dashboard?.standards_progress ?? [];
+  const disclosures = completeness?.disclosures ?? [];
+  const boundary = completeness?.boundary_context;
 
   return (
     <div className="space-y-6">
-      {/* Page header */}
       <div>
         <h2 className="text-2xl font-bold text-slate-900">Completeness</h2>
         <p className="mt-1 text-sm text-slate-500">
@@ -128,7 +185,6 @@ export default function CompletenessPage() {
         </p>
       </div>
 
-      {/* Summary header */}
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -139,15 +195,15 @@ export default function CompletenessPage() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">
-              {Math.round(completeness.overall_completion)}%
+              {Math.round(completeness?.overall_percent ?? 0)}%
             </div>
             <Progress
-              value={completeness.overall_completion}
+              value={completeness?.overall_percent ?? 0}
               className="mt-3"
               indicatorClassName={cn(
-                completeness.overall_completion >= 80
+                (completeness?.overall_percent ?? 0) >= 80
                   ? "bg-green-500"
-                  : completeness.overall_completion >= 50
+                  : (completeness?.overall_percent ?? 0) >= 50
                     ? "bg-amber-500"
                     : "bg-blue-600"
               )}
@@ -164,10 +220,10 @@ export default function CompletenessPage() {
           </CardHeader>
           <CardContent>
             <div className="text-lg font-semibold">
-              {completeness.boundary_name}
+              {boundary?.boundary_name ?? "No boundary"}
             </div>
             <p className="mt-1 text-xs text-slate-500">
-              Selected organizational boundary
+              {boundary?.snapshot_locked ? "Snapshot locked" : "Snapshot not locked"}
             </p>
           </CardContent>
         </Card>
@@ -181,16 +237,15 @@ export default function CompletenessPage() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">
-              {completeness.entity_count}
+              {boundary?.entities_in_scope ?? 0}
             </div>
             <p className="mt-1 text-xs text-slate-500">
-              reporting entities
+              excluded: {boundary?.excluded_entities ?? 0}
             </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* By Standard breakdown */}
       <Card>
         <CardHeader>
           <CardTitle>Completion by Standard</CardTitle>
@@ -199,41 +254,40 @@ export default function CompletenessPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {completeness.standards.length === 0 ? (
+          {standards.length === 0 ? (
             <p className="py-6 text-center text-sm text-slate-400">
               No standards data available.
             </p>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {completeness.standards.map((std) => (
+              {standards.map((std) => (
                 <div
                   key={std.standard_id}
                   className="rounded-lg border border-slate-200 p-4 space-y-3"
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <span className="text-sm font-semibold">{std.code}</span>
+                      <span className="text-sm font-semibold">{std.standard}</span>
                       <p className="text-xs text-slate-500">
                         {std.standard_name}
                       </p>
                     </div>
                     <span className="text-lg font-bold">
-                      {Math.round(std.completion_percentage)}%
+                      {Math.round(std.completion_percent)}%
                     </span>
                   </div>
                   <Progress
-                    value={std.completion_percentage}
+                    value={std.completion_percent}
                     indicatorClassName={cn(
-                      std.completion_percentage >= 80
+                      std.completion_percent >= 80
                         ? "bg-green-500"
-                        : std.completion_percentage >= 50
+                        : std.completion_percent >= 50
                           ? "bg-amber-500"
                           : "bg-blue-600"
                     )}
                   />
                   <p className="text-xs text-slate-400">
-                    {std.completed_disclosures} / {std.total_disclosures}{" "}
-                    disclosures
+                    {std.complete_items} complete / {std.total_items} items
                   </p>
                 </div>
               ))}
@@ -242,17 +296,16 @@ export default function CompletenessPage() {
         </CardContent>
       </Card>
 
-      {/* Disclosure-level detail table */}
       <Card>
         <CardHeader>
           <CardTitle>Disclosure Details</CardTitle>
           <CardDescription>
             Status of individual disclosures across all standards. Click a row to
-            see entity coverage details.
+            inspect missing entity coverage.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {completeness.disclosures.length === 0 ? (
+          {disclosures.length === 0 ? (
             <p className="py-6 text-center text-sm text-slate-400">
               No disclosure data available.
             </p>
@@ -268,23 +321,28 @@ export default function CompletenessPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {completeness.disclosures.map((disclosure) => {
+                {disclosures.map((disclosure) => {
                   const statusCfg = disclosureStatusConfig[disclosure.status];
                   const StatusIcon = statusCfg.icon;
-                  const isExpanded = expandedRow === disclosure.id;
+                  const isExpanded = expandedRow === disclosure.disclosure_requirement_id;
+                  const coveredCount = disclosure.entity_breakdown?.covered_entities ?? 0;
+                  const missingCount = disclosure.entity_breakdown?.missing_entities ?? 0;
+                  const missingNames = disclosure.entity_breakdown?.missing_entity_names ?? [];
 
                   return (
-                    <Fragment key={disclosure.id}>
+                    <Fragment key={disclosure.disclosure_requirement_id}>
                       <TableRow
                         className="cursor-pointer"
                         onClick={() =>
-                          setExpandedRow(isExpanded ? null : disclosure.id)
+                          setExpandedRow(
+                            isExpanded ? null : disclosure.disclosure_requirement_id
+                          )
                         }
                       >
                         <TableCell className="font-mono text-sm font-medium">
-                          {disclosure.code}
+                          {disclosure.code ?? "n/a"}
                         </TableCell>
-                        <TableCell>{disclosure.title}</TableCell>
+                        <TableCell>{disclosure.title ?? "Untitled disclosure"}</TableCell>
                         <TableCell>
                           <Badge variant={statusCfg.variant}>
                             <StatusIcon className="mr-1 h-3 w-3" />
@@ -292,20 +350,16 @@ export default function CompletenessPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <span className="text-sm text-green-600">
-                            {(disclosure.covered_entities ?? []).length}
-                          </span>
+                          <span className="text-sm text-green-600">{coveredCount}</span>
                         </TableCell>
                         <TableCell>
                           <span
                             className={cn(
                               "text-sm",
-                              disclosure.missing_entities.length > 0
-                                ? "font-medium text-red-600"
-                                : "text-slate-400"
+                              missingCount > 0 ? "font-medium text-red-600" : "text-slate-400"
                             )}
                           >
-                            {(disclosure.missing_entities ?? []).length}
+                            {missingCount}
                           </span>
                         </TableCell>
                       </TableRow>
@@ -313,70 +367,32 @@ export default function CompletenessPage() {
                         <TableRow>
                           <TableCell colSpan={5} className="bg-slate-50 p-4">
                             <div className="space-y-3">
-                              {/* Explanation */}
-                              {disclosure.explanation && (
-                                <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
-                                  <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-500" />
-                                  <p className="text-sm text-blue-800">
-                                    {disclosure.explanation}
-                                  </p>
-                                </div>
-                              )}
+                              <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                                <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-500" />
+                                <p className="text-sm text-blue-800">
+                                  Completion: {Math.round(disclosure.completion_percent)}%
+                                </p>
+                              </div>
 
-                              <div className="grid gap-4 sm:grid-cols-2">
-                                {/* Covered entities */}
-                                <div>
-                                  <p className="mb-1 text-xs font-medium text-green-700">
-                                    Covered Entities (
-                                    {(disclosure.covered_entities ?? []).length})
-                                  </p>
-                                  {disclosure.covered_entities.length > 0 ? (
-                                    <div className="flex flex-wrap gap-1">
-                                      {(disclosure.covered_entities ?? []).map(
-                                        (entity) => (
-                                          <Badge
-                                            key={entity}
-                                            variant="outline"
-                                            className="border-green-200 bg-green-50 text-green-700"
-                                          >
-                                            {entity}
-                                          </Badge>
-                                        )
-                                      )}
-                                    </div>
-                                  ) : (
-                                    <p className="text-xs text-slate-400">
-                                      None
-                                    </p>
-                                  )}
-                                </div>
-
-                                {/* Missing entities */}
-                                <div>
-                                  <p className="mb-1 text-xs font-medium text-red-700">
-                                    Missing Entities (
-                                    {(disclosure.missing_entities ?? []).length})
-                                  </p>
-                                  {disclosure.missing_entities.length > 0 ? (
-                                    <div className="flex flex-wrap gap-1">
-                                      {(disclosure.missing_entities ?? []).map(
-                                        (entity) => (
-                                          <Badge
-                                            key={entity}
-                                            variant="outline"
-                                            className="border-red-200 bg-red-50 text-red-700"
-                                          >
-                                            {entity}
-                                          </Badge>
-                                        )
-                                      )}
-                                    </div>
-                                  ) : (
-                                    <p className="text-xs text-slate-400">
-                                      None
-                                    </p>
-                                  )}
-                                </div>
+                              <div>
+                                <p className="mb-1 text-xs font-medium text-red-700">
+                                  Missing Entities ({missingNames.length})
+                                </p>
+                                {missingNames.length > 0 ? (
+                                  <div className="flex flex-wrap gap-1">
+                                    {missingNames.map((entity) => (
+                                      <Badge
+                                        key={entity}
+                                        variant="outline"
+                                        className="border-red-200 bg-red-50 text-red-700"
+                                      >
+                                        {entity}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-xs text-slate-400">None</p>
+                                )}
                               </div>
                             </div>
                           </TableCell>
