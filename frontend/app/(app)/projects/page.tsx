@@ -177,8 +177,8 @@ export default function ProjectsPage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
-                          {project.standards.length > 0 ? (
-                            project.standards.map((std) => (
+                          {(project.standards || []).length > 0 ? (
+                            (project.standards || []).map((std) => (
                               <Badge
                                 key={std}
                                 variant="outline"
