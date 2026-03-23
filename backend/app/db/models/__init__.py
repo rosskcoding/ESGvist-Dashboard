@@ -1,8 +1,10 @@
 from app.db.models.audit_log import AuditLog
 from app.db.models.base import Base
+from app.db.models.boundary import BoundaryDefinition, BoundaryMembership
 from app.db.models.company_entity import CompanyEntity, ControlLink, OwnershipLink
 from app.db.models.mapping import RequirementItemSharedElement
 from app.db.models.organization import Organization
+from app.db.models.project import MetricAssignment, ReportingProject, ReportingProjectStandard
 from app.db.models.refresh_token import RefreshToken
 from app.db.models.requirement_item import RequirementItem, RequirementItemDependency
 from app.db.models.role_binding import RoleBinding
@@ -28,4 +30,9 @@ __all__ = [
     "CompanyEntity",
     "OwnershipLink",
     "ControlLink",
+    "BoundaryDefinition",
+    "BoundaryMembership",
+    "ReportingProject",
+    "ReportingProjectStandard",
+    "MetricAssignment",
 ]

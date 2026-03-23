@@ -7,6 +7,7 @@ from app.api.routes import (
     entities,
     health,
     mappings,
+    projects,
     requirement_items,
     shared_elements,
     standards,
@@ -52,6 +53,7 @@ def create_app() -> FastAPI:
     app.include_router(shared_elements.router)
     app.include_router(mappings.router)
     app.include_router(entities.router)
+    app.include_router(projects.router)
 
     return app
 
