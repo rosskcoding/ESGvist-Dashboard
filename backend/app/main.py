@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from app.api.routes import (
     ai,
     audit,
+    platform,
     auth,
     completeness,
     data_points,
@@ -76,6 +77,7 @@ def create_app() -> FastAPI:
     app.include_router(merge.router)
     app.include_router(deltas.router)
     app.include_router(ai.router)
+    app.include_router(platform.router)
 
     return app
 
