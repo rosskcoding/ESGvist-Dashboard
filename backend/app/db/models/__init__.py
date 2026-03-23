@@ -8,6 +8,7 @@ from app.db.models.completeness import (
     RequirementItemStatus,
 )
 from app.db.models.data_point import DataPoint, DataPointDimension
+from app.db.models.delta import RequirementDelta
 from app.db.models.evidence import DataPointEvidence, Evidence, EvidenceFile, EvidenceLink
 from app.db.models.mapping import RequirementItemSharedElement
 from app.db.models.notification import Notification
@@ -32,4 +33,5 @@ __all__ = [
     "Evidence", "EvidenceFile", "EvidenceLink", "DataPointEvidence",
     "RequirementItemDataPoint", "RequirementItemStatus", "DisclosureRequirementStatus",
     "Notification",
+    "RequirementDelta",
 ]

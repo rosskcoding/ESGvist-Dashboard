@@ -3,10 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.routes import (
+    ai,
     audit,
     auth,
     completeness,
     data_points,
+    deltas,
     entities,
     export,
     health,
@@ -72,6 +74,8 @@ def create_app() -> FastAPI:
     app.include_router(export.router)
     app.include_router(audit.router)
     app.include_router(merge.router)
+    app.include_router(deltas.router)
+    app.include_router(ai.router)
 
     return app
 
