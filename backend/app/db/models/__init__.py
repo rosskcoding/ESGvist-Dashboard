@@ -1,5 +1,6 @@
 from app.db.models.audit_log import AuditLog
 from app.db.models.base import Base
+from app.db.models.mapping import RequirementItemSharedElement
 from app.db.models.organization import Organization
 from app.db.models.refresh_token import RefreshToken
 from app.db.models.requirement_item import RequirementItem, RequirementItemDependency
@@ -22,4 +23,5 @@ __all__ = [
     "RequirementItemDependency",
     "SharedElement",
     "SharedElementDimension",
+    "RequirementItemSharedElement",
 ]
