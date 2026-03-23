@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import CurrentUser, RequestContext, get_current_context, get_current_user
 from app.db.session import get_session
+from app.policies.auth_policy import AuthPolicy
 from app.services.invitation_service import InvitationService
 
 router = APIRouter(prefix="/api/invitations", tags=["Invitations"])
@@ -20,6 +21,7 @@ async def create_invitation(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
+    AuthPolicy.require_manager_or_admin(ctx)
     service = InvitationService(session)
     return await service.create_invitation(
         org_id=ctx.organization_id,
@@ -44,5 +46,6 @@ async def list_pending(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
+    AuthPolicy.require_manager_or_admin(ctx)
     service = InvitationService(session)
     return await service.list_pending(ctx.organization_id)

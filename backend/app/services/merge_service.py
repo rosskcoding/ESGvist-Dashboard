@@ -1,6 +1,9 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.access import get_project_for_ctx
+from app.core.dependencies import RequestContext
+from app.policies.auth_policy import AuthPolicy
 from app.db.models.completeness import RequirementItemStatus
 from app.db.models.mapping import RequirementItemSharedElement
 from app.db.models.project import ReportingProjectStandard
@@ -13,7 +16,7 @@ class MergeService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_merged_view(self, project_id: int) -> dict:
+    async def get_merged_view(self, project_id: int, ctx: RequestContext | None = None) -> dict:
         """
         5-step merge algorithm:
         1. Collect all requirement_items from standards linked to project
@@ -22,6 +25,18 @@ class MergeService:
         4. Attach statuses
         5. Build response
         """
+        if ctx:
+            AuthPolicy.require_role(
+                ctx, ["admin", "esg_manager", "reviewer", "auditor", "platform_admin"]
+            )
+            await get_project_for_ctx(
+                self.session,
+                project_id,
+                ctx,
+                allow_collectors=False,
+                allow_reviewers=True,
+            )
+
         # Step 1: Get project standards
         ps_q = select(ReportingProjectStandard).where(
             ReportingProjectStandard.reporting_project_id == project_id
@@ -132,9 +147,9 @@ class MergeService:
             },
         }
 
-    async def get_coverage(self, project_id: int) -> dict:
+    async def get_coverage(self, project_id: int, ctx: RequestContext | None = None) -> dict:
         """Coverage per standard."""
-        merged = await self.get_merged_view(project_id)
+        merged = await self.get_merged_view(project_id, ctx)
         standards = merged["summary"].get("standards", [])
 
         coverage = {}

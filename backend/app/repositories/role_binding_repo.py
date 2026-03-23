@@ -14,6 +14,12 @@ class RoleBindingRepository:
         )
         return list(result.scalars().all())
 
+    async def get_binding_by_id(self, binding_id: int) -> RoleBinding | None:
+        result = await self.session.execute(
+            select(RoleBinding).where(RoleBinding.id == binding_id)
+        )
+        return result.scalar_one_or_none()
+
     async def get_binding(
         self, user_id: int, scope_type: str, scope_id: int | None
     ) -> RoleBinding | None:
@@ -46,3 +52,39 @@ class RoleBindingRepository:
         self.session.add(binding)
         await self.session.flush()
         return binding
+
+    async def list_for_scope(self, scope_type: str, scope_id: int | None) -> list[RoleBinding]:
+        query = select(RoleBinding).where(RoleBinding.scope_type == scope_type)
+        if scope_id is None:
+            query = query.where(RoleBinding.scope_id.is_(None))
+        else:
+            query = query.where(RoleBinding.scope_id == scope_id)
+        result = await self.session.execute(query)
+        return list(result.scalars().all())
+
+    async def update_role(
+        self,
+        user_id: int,
+        scope_type: str,
+        scope_id: int | None,
+        role: str,
+    ) -> RoleBinding | None:
+        binding = await self.get_binding(user_id, scope_type, scope_id)
+        if not binding:
+            return None
+        binding.role = role
+        await self.session.flush()
+        return binding
+
+    async def delete_binding(
+        self,
+        user_id: int,
+        scope_type: str,
+        scope_id: int | None,
+    ) -> bool:
+        binding = await self.get_binding(user_id, scope_type, scope_id)
+        if not binding:
+            return False
+        await self.session.delete(binding)
+        await self.session.flush()
+        return True

@@ -17,18 +17,33 @@ class DataPointSubmitted(DomainEvent):
     data_point_id: int = 0
     submitted_by: int = 0
     project_id: int = 0
+    organization_id: int = 0
+    target_user_ids: list[int] = field(default_factory=list)
 
 
 @dataclass
 class DataPointApproved(DomainEvent):
     data_point_id: int = 0
     reviewed_by: int = 0
+    organization_id: int = 0
+    target_user_ids: list[int] = field(default_factory=list)
 
 
 @dataclass
 class DataPointRejected(DomainEvent):
     data_point_id: int = 0
     reviewed_by: int = 0
+    organization_id: int = 0
+    target_user_ids: list[int] = field(default_factory=list)
+    comment: str = ""
+
+
+@dataclass
+class DataPointRevisionRequested(DomainEvent):
+    data_point_id: int = 0
+    reviewed_by: int = 0
+    organization_id: int = 0
+    target_user_ids: list[int] = field(default_factory=list)
     comment: str = ""
 
 
@@ -36,6 +51,8 @@ class DataPointRejected(DomainEvent):
 class DataPointRolledBack(DomainEvent):
     data_point_id: int = 0
     rolled_back_by: int = 0
+    organization_id: int = 0
+    target_user_ids: list[int] = field(default_factory=list)
     reason: str = ""
 
 
@@ -43,6 +60,8 @@ class DataPointRolledBack(DomainEvent):
 class BoundaryAppliedToProject(DomainEvent):
     project_id: int = 0
     boundary_id: int = 0
+    organization_id: int = 0
+    applied_by: int = 0
 
 
 @dataclass
@@ -54,18 +73,29 @@ class OrganizationCreated(DomainEvent):
 @dataclass
 class AssignmentCreated(DomainEvent):
     assignment_id: int = 0
-    collector_id: int = 0
+    project_id: int = 0
+    organization_id: int = 0
+    collector_id: int | None = None
+    reviewer_id: int | None = None
+    shared_element_id: int = 0
+    assigned_by: int = 0
 
 
 @dataclass
 class AssignmentUpdated(DomainEvent):
     assignment_id: int = 0
+    project_id: int = 0
+    organization_id: int = 0
+    affected_user_ids: list[int] = field(default_factory=list)
     changes: dict = field(default_factory=dict)
+    updated_by: int = 0
 
 
 @dataclass
 class EvidenceCreated(DomainEvent):
     evidence_id: int = 0
+    organization_id: int = 0
+    created_by: int = 0
     type: str = ""
 
 
@@ -138,6 +168,8 @@ class SnapshotSaved(DomainEvent):
     snapshot_id: int = 0
     project_id: int = 0
     boundary_id: int = 0
+    organization_id: int = 0
+    saved_by: int = 0
 
 
 @dataclass
@@ -156,6 +188,45 @@ class GateChecked(DomainEvent):
     failed_codes: list = field(default_factory=list)
 
 
+@dataclass
+class ProjectStarted(DomainEvent):
+    project_id: int = 0
+    organization_id: int = 0
+    started_by: int = 0
+    project_name: str = ""
+
+
+@dataclass
+class ProjectReviewStarted(DomainEvent):
+    project_id: int = 0
+    organization_id: int = 0
+    started_by: int = 0
+    project_name: str = ""
+    target_user_ids: list[int] = field(default_factory=list)
+
+
+@dataclass
+class ProjectPublished(DomainEvent):
+    project_id: int = 0
+    organization_id: int = 0
+    published_by: int = 0
+    project_name: str = ""
+
+
+@dataclass
+class CompletenessUpdated(DomainEvent):
+    project_id: int = 0
+    organization_id: int = 0
+    standard_id: int | None = None
+    overall_status: str = ""
+    overall_percent: float = 0.0
+    complete_count: int = 0
+    partial_count: int = 0
+    missing_count: int = 0
+    changed: bool = False
+    triggered_by: int | None = None
+
+
 class EventBus:
     """In-process async event bus."""
 
@@ -164,6 +235,9 @@ class EventBus:
 
     def subscribe(self, event_type, handler: Callable):
         self._handlers[event_type].append(handler)
+
+    def reset(self):
+        self._handlers.clear()
 
     async def publish(self, event: DomainEvent):
         handlers = list(self._handlers.get(type(event), []))

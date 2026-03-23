@@ -15,7 +15,7 @@ async def preview_requirement_change(
     session: AsyncSession = Depends(get_session),
 ):
     service = ImpactService(session)
-    return await service.preview_requirement_change(item_id)
+    return await service.preview_requirement_change(item_id, ctx)
 
 
 @router.get("/mapping/{mapping_id}")
@@ -25,7 +25,7 @@ async def preview_mapping_change(
     session: AsyncSession = Depends(get_session),
 ):
     service = ImpactService(session)
-    return await service.preview_mapping_change(mapping_id)
+    return await service.preview_mapping_change(mapping_id, ctx)
 
 
 @router.get("/boundary/preview")
@@ -36,4 +36,4 @@ async def preview_boundary_change(
     session: AsyncSession = Depends(get_session),
 ):
     service = ImpactService(session)
-    return await service.preview_boundary_change(project_id, new_boundary_id)
+    return await service.preview_boundary_change(project_id, new_boundary_id, ctx)

@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import RequestContext, get_current_context
 from app.db.session import get_session
+from app.repositories.audit_repo import AuditRepository
 from app.repositories.entity_repo import EntityRepository
 from app.repositories.role_binding_repo import RoleBindingRepository
 from app.schemas.entities import (
@@ -24,6 +25,7 @@ def _get_service(session: AsyncSession) -> EntityService:
     return EntityService(
         repo=EntityRepository(session),
         role_binding_repo=RoleBindingRepository(session),
+        audit_repo=AuditRepository(session),
     )
 
 

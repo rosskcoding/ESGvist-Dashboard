@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import select
+
 from app.core.config import settings
 from app.core.exceptions import AppError
 from app.core.security import (
@@ -9,6 +11,7 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
+from app.db.models.organization import Organization
 from app.repositories.audit_repo import AuditRepository
 from app.repositories.refresh_token_repo import RefreshTokenRepository
 from app.repositories.role_binding_repo import RoleBindingRepository
@@ -81,6 +84,21 @@ class AuthService:
 
         if not user.is_active:
             raise AppError(code="FORBIDDEN", status_code=403, message="Account is deactivated")
+
+        bindings = await self.role_binding_repo.get_bindings(user.id)
+        if not any(binding.scope_type == "platform" and binding.role == "platform_admin" for binding in bindings):
+            org_scope_ids = [binding.scope_id for binding in bindings if binding.scope_type == "organization" and binding.scope_id is not None]
+            if org_scope_ids:
+                result = await self.user_repo.session.execute(
+                    select(Organization.status).where(Organization.id.in_(org_scope_ids))
+                )
+                statuses = {row[0] for row in result.all()}
+                if statuses and statuses.issubset({"suspended", "archived"}):
+                    raise AppError(
+                        code="TENANT_SUSPENDED",
+                        status_code=403,
+                        message="All tenant access for this account is suspended",
+                    )
 
         access = create_access_token(user.id, user.email)
         refresh = create_refresh_token(user.id, user.email)

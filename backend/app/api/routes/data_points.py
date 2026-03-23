@@ -98,8 +98,6 @@ async def create_evidence(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    AuthPolicy.require_write_access(ctx)
-
     # File size / mime type validation for file-type evidence
     if payload.type == "file":
         if payload.file_size and payload.file_size > MAX_FILE_SIZE:
@@ -134,7 +132,6 @@ async def link_evidence_to_dp(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    AuthPolicy.require_write_access(ctx)
     return await _ev_service(session).link_to_data_point(dp_id, payload.evidence_id, ctx)
 
 
@@ -150,11 +147,13 @@ async def bind_evidence_to_requirement(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    AuthPolicy.require_write_access(ctx)
+    EvidencePolicy().can_create(ctx)
 
     # Verify evidence exists
     repo = EvidenceRepository(session)
-    await repo.get_or_raise(evidence_id)
+    evidence = await repo.get_or_raise(evidence_id)
+    if evidence.organization_id != ctx.organization_id and not ctx.is_platform_admin:
+        raise AppError("FORBIDDEN", 403, "Evidence belongs to another organization")
 
     # Check for existing binding (dedup)
     existing = await session.execute(
@@ -187,10 +186,10 @@ async def delete_evidence(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    AuthPolicy.require_write_access(ctx)
-
     repo = EvidenceRepository(session)
     ev = await repo.get_or_raise(evidence_id)
+    if ev.organization_id != ctx.organization_id and not ctx.is_platform_admin:
+        raise AppError("FORBIDDEN", 403, "Evidence belongs to another organization")
 
     policy = EvidencePolicy()
     policy.can_delete(ctx, ev.created_by)

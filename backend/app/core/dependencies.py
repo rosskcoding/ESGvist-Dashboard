@@ -6,7 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError
 from app.core.security import decode_token
+from app.db.models.organization import Organization
 from app.db.models.role_binding import RoleBinding
+from app.db.models.user import User
 from app.db.session import get_session
 
 security_scheme = HTTPBearer()
@@ -27,10 +29,15 @@ class RequestContext(BaseModel):
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
+    session: AsyncSession = Depends(get_session),
 ) -> CurrentUser:
     payload = decode_token(credentials.credentials)
     if payload.token_type != "access":
         raise AppError(code="UNAUTHORIZED", status_code=401, message="Invalid token type")
+    result = await session.execute(select(User).where(User.id == payload.sub))
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active:
+        raise AppError(code="FORBIDDEN", status_code=403, message="Account is deactivated")
     return CurrentUser(id=payload.sub, email=payload.email)
 
 
@@ -81,6 +88,26 @@ async def get_current_context(
         raise AppError(
             code="FORBIDDEN", status_code=403, message="No access to this organization"
         )
+
+    org_result = await session.execute(
+        select(Organization).where(Organization.id == x_organization_id)
+    )
+    organization = org_result.scalar_one_or_none()
+    if not organization:
+        if is_platform_admin and binding is None:
+            return RequestContext(
+                user_id=user.id,
+                email=user.email,
+                organization_id=None,
+                role="platform_admin",
+                is_platform_admin=True,
+            )
+        raise AppError("NOT_FOUND", 404, f"Organization {x_organization_id} not found")
+    if not is_platform_admin:
+        if organization.status == "suspended":
+            raise AppError("TENANT_SUSPENDED", 403, "Tenant is suspended")
+        if organization.status == "archived":
+            raise AppError("TENANT_ARCHIVED", 403, "Tenant is archived")
 
     return RequestContext(
         user_id=user.id,

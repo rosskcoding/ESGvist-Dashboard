@@ -24,13 +24,29 @@ async def ctx(client: AsyncClient) -> dict:
     }
 
 
+async def _create_data_point(client: AsyncClient, headers: dict) -> int:
+    project = await client.post("/api/projects", json={"name": "Comment Project"}, headers=headers)
+    shared_element = await client.post(
+        "/api/shared-elements",
+        json={"code": "COMMENT_SE", "name": "Comment Element"},
+        headers=headers,
+    )
+    data_point = await client.post(
+        f"/api/projects/{project.json()['id']}/data-points",
+        json={"shared_element_id": shared_element.json()["id"], "numeric_value": 10},
+        headers=headers,
+    )
+    return data_point.json()["id"]
+
+
 # === COMMENTS (threaded) ===
 
 @pytest.mark.asyncio
 async def test_create_comment(client: AsyncClient, ctx: dict):
+    data_point_id = await _create_data_point(client, ctx["headers"])
     resp = await client.post(
         "/api/comments",
-        json={"body": "Please check this value", "comment_type": "question", "data_point_id": 1},
+        json={"body": "Please check this value", "comment_type": "question", "data_point_id": data_point_id},
         headers=ctx["headers"],
     )
     assert resp.status_code == 201
@@ -39,22 +55,23 @@ async def test_create_comment(client: AsyncClient, ctx: dict):
 
 @pytest.mark.asyncio
 async def test_threaded_comments(client: AsyncClient, ctx: dict):
+    data_point_id = await _create_data_point(client, ctx["headers"])
     # Create parent
     parent = await client.post(
         "/api/comments",
-        json={"body": "Parent comment", "data_point_id": 1},
+        json={"body": "Parent comment", "data_point_id": data_point_id},
         headers=ctx["headers"],
     )
     # Create reply
     reply = await client.post(
         "/api/comments",
-        json={"body": "Reply", "data_point_id": 1, "parent_comment_id": parent.json()["id"]},
+        json={"body": "Reply", "data_point_id": data_point_id, "parent_comment_id": parent.json()["id"]},
         headers=ctx["headers"],
     )
     assert reply.status_code == 201
 
     # List threaded
-    resp = await client.get("/api/comments/data-point/1", headers=ctx["headers"])
+    resp = await client.get(f"/api/comments/data-point/{data_point_id}", headers=ctx["headers"])
     assert resp.status_code == 200
     threads = resp.json()
     assert len(threads) == 1  # one root
@@ -68,7 +85,10 @@ async def test_resolve_comment(client: AsyncClient, ctx: dict):
         json={"body": "Issue", "comment_type": "issue"},
         headers=ctx["headers"],
     )
-    resp = await client.patch(f"/api/comments/{c.json()['id']}/resolve")
+    resp = await client.patch(
+        f"/api/comments/{c.json()['id']}/resolve",
+        headers=ctx["headers"],
+    )
     assert resp.status_code == 200
     assert resp.json()["is_resolved"] is True
 

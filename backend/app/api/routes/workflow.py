@@ -7,6 +7,7 @@ from app.db.session import get_session
 from app.policies.auth_policy import AuthPolicy
 from app.repositories.audit_repo import AuditRepository
 from app.repositories.data_point_repo import DataPointRepository
+from app.repositories.evidence_repo import EvidenceRepository
 from app.services.workflow_service import WorkflowService
 
 router = APIRouter(tags=["Workflow"])
@@ -25,6 +26,7 @@ class GateCheckRequest(BaseModel):
 def _get_service(session: AsyncSession) -> WorkflowService:
     return WorkflowService(
         dp_repo=DataPointRepository(session),
+        evidence_repo=EvidenceRepository(session),
         audit_repo=AuditRepository(session),
     )
 
@@ -36,8 +38,7 @@ async def submit(
     session: AsyncSession = Depends(get_session),
 ):
     AuthPolicy.auditor_read_only(ctx)
-    service = _get_service(session)
-    return await service.submit(dp_id, ctx, assignment_repo=service.dp_repo)
+    return await _get_service(session).submit(dp_id, ctx)
 
 
 @router.post("/api/data-points/{dp_id}/approve")

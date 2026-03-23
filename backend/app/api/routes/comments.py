@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import CurrentUser, RequestContext, get_current_context, get_current_user
+from app.core.dependencies import RequestContext, get_current_context
 from app.db.session import get_session
 from app.services.comment_service import CommentService
 
@@ -20,12 +20,12 @@ class CommentCreate(BaseModel):
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_comment(
     payload: CommentCreate,
-    user: CurrentUser = Depends(get_current_user),
+    ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
     service = CommentService(session)
     return await service.create(
-        user_id=user.id,
+        ctx=ctx,
         body=payload.body,
         comment_type=payload.comment_type,
         data_point_id=payload.data_point_id,
@@ -37,10 +37,14 @@ async def create_comment(
 @router.get("/data-point/{dp_id}")
 async def list_comments(dp_id: int, ctx: RequestContext = Depends(get_current_context), session: AsyncSession = Depends(get_session)):
     service = CommentService(session)
-    return await service.list_for_data_point(dp_id)
+    return await service.list_for_data_point(dp_id, ctx)
 
 
 @router.patch("/{comment_id}/resolve")
-async def resolve_comment(comment_id: int, session: AsyncSession = Depends(get_session)):
+async def resolve_comment(
+    comment_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
     service = CommentService(session)
-    return await service.resolve(comment_id)
+    return await service.resolve(comment_id, ctx)

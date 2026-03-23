@@ -15,7 +15,7 @@ async def get_merged_view(
     session: AsyncSession = Depends(get_session),
 ):
     service = MergeService(session)
-    return await service.get_merged_view(project_id)
+    return await service.get_merged_view(project_id, ctx)
 
 
 @router.get("/api/projects/{project_id}/merge/coverage")
@@ -25,4 +25,4 @@ async def get_coverage(
     session: AsyncSession = Depends(get_session),
 ):
     service = MergeService(session)
-    return await service.get_coverage(project_id)
+    return await service.get_coverage(project_id, ctx)

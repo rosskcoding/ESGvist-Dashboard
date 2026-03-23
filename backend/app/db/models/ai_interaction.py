@@ -1,7 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Boolean, func
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.models.base import Base
@@ -27,6 +26,9 @@ class AIInteraction(Base):
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     gate_blocked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     gate_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    tools_blocked: Mapped[str | None] = mapped_column(String, nullable=True)
+    output_filtered: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    output_filter_reason: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

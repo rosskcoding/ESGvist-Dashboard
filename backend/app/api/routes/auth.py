@@ -5,18 +5,25 @@ from app.core.config import settings
 from app.core.dependencies import CurrentUser, RequestContext, get_current_context, get_current_user
 from app.core.exceptions import AppError
 from app.db.session import get_session
+from app.policies.auth_policy import AuthPolicy
 from app.repositories.audit_repo import AuditRepository
 from app.repositories.refresh_token_repo import RefreshTokenRepository
 from app.repositories.role_binding_repo import RoleBindingRepository
 from app.repositories.user_repo import UserRepository
 from app.schemas.auth import (
+    InvitationCreateRequest,
     LoginRequest,
+    OrganizationUsersOut,
     RefreshRequest,
     RegisterRequest,
     TokenResponse,
+    UserRoleUpdateRequest,
+    UserStatusUpdateRequest,
     UserResponse,
 )
 from app.services.auth_service import AuthService
+from app.services.invitation_service import InvitationService
+from app.services.organization_user_service import OrganizationUserService
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
 
@@ -26,6 +33,16 @@ def _get_auth_service(session: AsyncSession) -> AuthService:
         user_repo=UserRepository(session),
         role_binding_repo=RoleBindingRepository(session),
         refresh_token_repo=RefreshTokenRepository(session),
+        audit_repo=AuditRepository(session),
+    )
+
+
+def _get_organization_user_service(session: AsyncSession) -> OrganizationUserService:
+    return OrganizationUserService(
+        user_repo=UserRepository(session),
+        role_binding_repo=RoleBindingRepository(session),
+        refresh_token_repo=RefreshTokenRepository(session),
+        invitation_service=InvitationService(session),
         audit_repo=AuditRepository(session),
     )
 
@@ -68,32 +85,80 @@ async def logout(
     await service.logout(user.id)
 
 
-@router.get("/organization/users")
+@router.get("/organization/users", response_model=OrganizationUsersOut)
 async def list_organization_users(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    from sqlalchemy import select
-    from app.db.models.role_binding import RoleBinding
-    from app.db.models.user import User
+    return await _get_organization_user_service(session).list_organization_users(ctx)
 
-    result = await session.execute(
-        select(User, RoleBinding.role).join(
-            RoleBinding, RoleBinding.user_id == User.id
-        ).where(
-            RoleBinding.scope_type == "organization",
-            RoleBinding.scope_id == ctx.organization_id,
-        )
+
+@router.post("/invitations", status_code=status.HTTP_201_CREATED)
+async def create_auth_invitation(
+    payload: InvitationCreateRequest,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    AuthPolicy.require_manager_or_admin(ctx)
+    return await InvitationService(session).create_invitation(
+        org_id=ctx.organization_id,
+        email=payload.email,
+        role=payload.role,
+        invited_by=ctx.user_id,
     )
-    users = [
-        {
-            "id": user.id,
-            "email": user.email,
-            "full_name": user.full_name,
-            "is_active": user.is_active,
-            "role": role,
-            "created_at": user.created_at.isoformat() if user.created_at else None,
-        }
-        for user, role in result.all()
-    ]
-    return users
+
+
+@router.post("/invitations/{invitation_id}/resend")
+async def resend_auth_invitation(
+    invitation_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    AuthPolicy.require_manager_or_admin(ctx)
+    return await InvitationService(session).resend_invitation(
+        invitation_id=invitation_id,
+        org_id=ctx.organization_id,
+        invited_by=ctx.user_id,
+    )
+
+
+@router.delete("/invitations/{invitation_id}")
+async def cancel_auth_invitation(
+    invitation_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    AuthPolicy.require_manager_or_admin(ctx)
+    return await InvitationService(session).cancel_invitation(
+        invitation_id=invitation_id,
+        org_id=ctx.organization_id,
+    )
+
+
+@router.patch("/users/{user_id}/role")
+async def update_organization_user_role(
+    user_id: int,
+    payload: UserRoleUpdateRequest,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _get_organization_user_service(session).update_user_role(user_id, payload.role, ctx)
+
+
+@router.patch("/users/{user_id}/status")
+async def update_organization_user_status(
+    user_id: int,
+    payload: UserStatusUpdateRequest,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _get_organization_user_service(session).update_user_status(user_id, payload.status, ctx)
+
+
+@router.delete("/users/{user_id}")
+async def remove_organization_user(
+    user_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _get_organization_user_service(session).remove_user_from_organization(user_id, ctx)

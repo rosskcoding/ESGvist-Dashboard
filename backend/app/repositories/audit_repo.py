@@ -16,6 +16,7 @@ class AuditRepository:
         entity_id: int | None = None,
         changes: dict | None = None,
         request_id: str | None = None,
+        performed_by_platform_admin: bool = False,
     ) -> AuditLog:
         entry = AuditLog(
             organization_id=organization_id,
@@ -25,6 +26,7 @@ class AuditRepository:
             action=action,
             changes=changes,
             request_id=request_id,
+            performed_by_platform_admin=performed_by_platform_admin,
         )
         self.session.add(entry)
         await self.session.flush()

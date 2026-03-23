@@ -1,13 +1,26 @@
+from app.core.access import get_data_point_for_ctx
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError
+from app.policies.evidence_policy import EvidencePolicy
 from app.repositories.audit_repo import AuditRepository
+from app.repositories.data_point_repo import DataPointRepository
 from app.repositories.evidence_repo import EvidenceRepository
+from app.repositories.project_repo import ProjectRepository
 from app.schemas.evidence import EvidenceCreate, EvidenceListOut, EvidenceOut
+from app.events.bus import EvidenceCreated, get_event_bus
 
 
 class EvidenceService:
-    def __init__(self, repo: EvidenceRepository, audit_repo: AuditRepository | None = None):
+    def __init__(
+        self,
+        repo: EvidenceRepository,
+        dp_repo: DataPointRepository,
+        project_repo: ProjectRepository,
+        audit_repo: AuditRepository | None = None,
+    ):
         self.repo = repo
+        self.dp_repo = dp_repo
+        self.project_repo = project_repo
         self.audit_repo = audit_repo
 
     async def _audit(self, action: str, entity_id: int, ctx: RequestContext, changes: dict | None = None):
@@ -19,9 +32,11 @@ class EvidenceService:
                 user_id=ctx.user_id,
                 organization_id=ctx.organization_id,
                 changes=changes,
+                performed_by_platform_admin=ctx.is_platform_admin,
             )
 
     async def create(self, payload: EvidenceCreate, ctx: RequestContext) -> EvidenceOut:
+        EvidencePolicy().can_create(ctx)
         if not ctx.organization_id:
             raise AppError("ORG_HEADER_REQUIRED", 400, "Organization context required")
 
@@ -50,6 +65,14 @@ class EvidenceService:
             )
 
         await self._audit("evidence_created", ev.id, ctx, {"type": payload.type})
+        await get_event_bus().publish(
+            EvidenceCreated(
+                evidence_id=ev.id,
+                organization_id=ctx.organization_id,
+                created_by=ctx.user_id,
+                type=payload.type,
+            )
+        )
         return EvidenceOut.model_validate(ev)
 
     async def list_evidences(
@@ -57,7 +80,13 @@ class EvidenceService:
     ) -> EvidenceListOut:
         if not ctx.organization_id:
             raise AppError("ORG_HEADER_REQUIRED", 400, "Organization context required")
-        items, total = await self.repo.list_by_org(ctx.organization_id, page, page_size)
+        created_by = ctx.user_id if ctx.role == "collector" else None
+        items, total = await self.repo.list_by_org(
+            ctx.organization_id,
+            page,
+            page_size,
+            created_by=created_by,
+        )
         return EvidenceListOut(
             items=[EvidenceOut.model_validate(ev) for ev in items],
             total=total,
@@ -66,7 +95,12 @@ class EvidenceService:
     async def link_to_data_point(
         self, dp_id: int, evidence_id: int, ctx: RequestContext
     ) -> dict:
-        await self.repo.get_or_raise(evidence_id)
+        EvidencePolicy().can_create(ctx)
+        evidence = await self.repo.get_or_raise(evidence_id)
+        if evidence.organization_id != ctx.organization_id and not ctx.is_platform_admin:
+            raise AppError("FORBIDDEN", 403, "Evidence belongs to another organization")
+
+        await get_data_point_for_ctx(self.repo.session, dp_id, ctx)
         await self.repo.link_to_data_point(dp_id, evidence_id, ctx.user_id)
         await self._audit("evidence_linked", evidence_id, ctx, {"data_point_id": dp_id})
         return {"data_point_id": dp_id, "evidence_id": evidence_id, "linked": True}

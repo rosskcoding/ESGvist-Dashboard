@@ -7,6 +7,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.db.models import Base
 from app.db.session import get_session
+from app.events.registry import configure_event_session_factory, register_event_handlers
 from app.main import app
 
 TEST_DATABASE_URL = "sqlite+aiosqlite://"
@@ -41,6 +42,8 @@ async def override_get_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 app.dependency_overrides[get_session] = override_get_session
+configure_event_session_factory(TestSessionLocal)
+register_event_handlers()
 
 
 @pytest.fixture

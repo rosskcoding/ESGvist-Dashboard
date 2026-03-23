@@ -1,6 +1,8 @@
 import pytest
 from httpx import AsyncClient
 
+from tests.conftest import TestSessionLocal
+
 
 @pytest.fixture
 async def org_ctx(client: AsyncClient) -> dict:
@@ -23,7 +25,12 @@ async def org_ctx(client: AsyncClient) -> dict:
     )
     org_id = org.json()["organization_id"]
     headers["X-Organization-Id"] = str(org_id)
-    return {"headers": headers, "org_id": org_id}
+    return {
+        "headers": headers,
+        "org_id": org_id,
+        "root_entity_id": org.json()["root_entity_id"],
+        "default_boundary_id": org.json()["boundary_id"],
+    }
 
 
 # --- Projects ---
@@ -183,3 +190,204 @@ async def test_apply_boundary_to_project(client: AsyncClient, org_ctx: dict):
     )
     assert resp.status_code == 200
     assert resp.json()["boundary_definition_id"] == boundary.json()["id"]
+
+
+@pytest.mark.asyncio
+async def test_apply_boundary_invalidates_existing_snapshot(client: AsyncClient, org_ctx: dict):
+    boundary_a = await client.post(
+        "/api/boundaries",
+        json={"name": "Boundary A", "boundary_type": "financial_control"},
+        headers=org_ctx["headers"],
+    )
+    boundary_b = await client.post(
+        "/api/boundaries",
+        json={"name": "Boundary B", "boundary_type": "operational_control"},
+        headers=org_ctx["headers"],
+    )
+    project = await client.post(
+        "/api/projects",
+        json={"name": "Snapshot Project"},
+        headers=org_ctx["headers"],
+    )
+
+    apply_a = await client.put(
+        f"/api/projects/{project.json()['id']}/boundary?boundary_id={boundary_a.json()['id']}",
+        headers=org_ctx["headers"],
+    )
+    assert apply_a.status_code == 200
+
+    snapshot = await client.post(
+        f"/api/projects/{project.json()['id']}/boundary/snapshot",
+        headers=org_ctx["headers"],
+    )
+    assert snapshot.status_code == 200
+
+    apply_b = await client.put(
+        f"/api/projects/{project.json()['id']}/boundary?boundary_id={boundary_b.json()['id']}",
+        headers=org_ctx["headers"],
+    )
+    assert apply_b.status_code == 200
+
+    snapshot_after_change = await client.get(
+        f"/api/projects/{project.json()['id']}/boundary/snapshot",
+        headers=org_ctx["headers"],
+    )
+    assert snapshot_after_change.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_assignment_rejects_entity_outside_active_boundary(client: AsyncClient, org_ctx: dict):
+    from app.db.models.boundary import BoundaryMembership
+
+    boundary = await client.post(
+        "/api/boundaries",
+        json={"name": "Operational", "boundary_type": "operational_control"},
+        headers=org_ctx["headers"],
+    )
+    entity_in = await client.post(
+        "/api/entities",
+        json={"name": "Entity In", "entity_type": "legal_entity", "parent_entity_id": org_ctx["root_entity_id"]},
+        headers=org_ctx["headers"],
+    )
+    entity_out = await client.post(
+        "/api/entities",
+        json={"name": "Entity Out", "entity_type": "legal_entity", "parent_entity_id": org_ctx["root_entity_id"]},
+        headers=org_ctx["headers"],
+    )
+    project = await client.post(
+        "/api/projects",
+        json={"name": "Boundary Guard Project"},
+        headers=org_ctx["headers"],
+    )
+    shared_element = await client.post(
+        "/api/shared-elements",
+        json={"code": "BG1", "name": "Boundary Guard Metric"},
+        headers=org_ctx["headers"],
+    )
+    assert boundary.status_code == 201
+    assert entity_in.status_code == 201
+    assert entity_out.status_code == 201
+    assert project.status_code == 201
+
+    async with TestSessionLocal() as session:
+        session.add(
+            BoundaryMembership(
+                boundary_definition_id=boundary.json()["id"],
+                entity_id=entity_in.json()["id"],
+                included=True,
+                inclusion_source="manual",
+                consolidation_method="full",
+            )
+        )
+        await session.commit()
+
+    applied = await client.put(
+        f"/api/projects/{project.json()['id']}/boundary",
+        params={"boundary_id": boundary.json()["id"]},
+        headers=org_ctx["headers"],
+    )
+    assert applied.status_code == 200
+
+    resp = await client.post(
+        f"/api/projects/{project.json()['id']}/assignments",
+        json={
+            "shared_element_id": shared_element.json()["id"],
+            "entity_id": entity_out.json()["id"],
+        },
+        headers=org_ctx["headers"],
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "ASSIGNMENT_ENTITY_MISMATCH"
+
+
+@pytest.mark.asyncio
+async def test_boundary_assignments_preview_returns_added_and_removed_assignments(client: AsyncClient, org_ctx: dict):
+    from app.db.models.boundary import BoundaryMembership
+
+    boundary_a = await client.post(
+        "/api/boundaries",
+        json={"name": "Boundary A", "boundary_type": "financial_control"},
+        headers=org_ctx["headers"],
+    )
+    boundary_b = await client.post(
+        "/api/boundaries",
+        json={"name": "Boundary B", "boundary_type": "operational_control"},
+        headers=org_ctx["headers"],
+    )
+    entity_a = await client.post(
+        "/api/entities",
+        json={"name": "Entity A", "entity_type": "legal_entity", "parent_entity_id": org_ctx["root_entity_id"]},
+        headers=org_ctx["headers"],
+    )
+    entity_b = await client.post(
+        "/api/entities",
+        json={"name": "Entity B", "entity_type": "legal_entity", "parent_entity_id": org_ctx["root_entity_id"]},
+        headers=org_ctx["headers"],
+    )
+    project = await client.post(
+        "/api/projects",
+        json={"name": "Boundary Preview Project"},
+        headers=org_ctx["headers"],
+    )
+    shared_element = await client.post(
+        "/api/shared-elements",
+        json={"code": "BP1", "name": "Boundary Preview Metric"},
+        headers=org_ctx["headers"],
+    )
+    assert boundary_a.status_code == 201
+    assert boundary_b.status_code == 201
+    assert entity_a.status_code == 201
+    assert entity_b.status_code == 201
+    assert project.status_code == 201
+
+    async with TestSessionLocal() as session:
+        session.add_all(
+            [
+                BoundaryMembership(
+                    boundary_definition_id=boundary_a.json()["id"],
+                    entity_id=entity_a.json()["id"],
+                    included=True,
+                    inclusion_source="manual",
+                    consolidation_method="full",
+                ),
+                BoundaryMembership(
+                    boundary_definition_id=boundary_b.json()["id"],
+                    entity_id=entity_b.json()["id"],
+                    included=True,
+                    inclusion_source="manual",
+                    consolidation_method="full",
+                ),
+            ]
+        )
+        await session.commit()
+
+    applied = await client.put(
+        f"/api/projects/{project.json()['id']}/boundary",
+        params={"boundary_id": boundary_a.json()["id"]},
+        headers=org_ctx["headers"],
+    )
+    assert applied.status_code == 200
+
+    assignment = await client.post(
+        f"/api/projects/{project.json()['id']}/assignments",
+        json={
+            "shared_element_id": shared_element.json()["id"],
+            "entity_id": entity_a.json()["id"],
+        },
+        headers=org_ctx["headers"],
+    )
+    assert assignment.status_code == 201
+
+    preview = await client.get(
+        f"/api/projects/{project.json()['id']}/boundary/assignments-preview",
+        params={"boundary_id": boundary_b.json()["id"]},
+        headers=org_ctx["headers"],
+    )
+    assert preview.status_code == 200
+    data = preview.json()
+    assert data["added_entity_ids"] == [entity_b.json()["id"]]
+    assert data["removed_entity_ids"] == [entity_a.json()["id"]]
+    assert data["assignment_changes"]["removed_count"] == 1
+    assert data["assignment_changes"]["added_count"] == 1
+    assert data["assignment_changes"]["added"][0]["entity_id"] == entity_b.json()["id"]
+    assert data["assignment_changes"]["removed"][0]["entity_id"] == entity_a.json()["id"]

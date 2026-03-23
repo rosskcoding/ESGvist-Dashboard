@@ -1,6 +1,9 @@
 import pytest
 from httpx import AsyncClient
 
+from app.db.models.boundary import BoundaryMembership
+from tests.conftest import TestSessionLocal
+
 
 @pytest.fixture
 async def admin_headers(client: AsyncClient) -> dict:
@@ -40,6 +43,32 @@ async def test_org_setup_creates_org_and_root(client: AsyncClient, admin_headers
     data = resp.json()
     assert "organization_id" in data
     assert "root_entity_id" in data
+
+
+@pytest.mark.asyncio
+async def test_org_setup_creates_default_boundary_membership(client: AsyncClient, admin_headers: dict):
+    resp = await client.post(
+        "/api/organizations/setup",
+        json={"name": "BoundaryCo", "country": "US"},
+        headers=admin_headers,
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+
+    async with TestSessionLocal() as session:
+        from sqlalchemy import select
+
+        membership_result = await session.execute(
+            select(BoundaryMembership).where(
+                BoundaryMembership.boundary_definition_id == data["boundary_id"],
+                BoundaryMembership.entity_id == data["root_entity_id"],
+            )
+        )
+        membership = membership_result.scalar_one_or_none()
+
+    assert membership is not None
+    assert membership.included is True
+    assert membership.entity_id == data["root_entity_id"]
 
 
 @pytest.mark.asyncio

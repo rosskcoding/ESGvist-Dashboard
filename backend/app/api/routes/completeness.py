@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import RequestContext, get_current_context
 from app.db.session import get_session
+from app.schemas.completeness import CompletenessOut
 from app.repositories.completeness_repo import CompletenessRepository
 from app.schemas.completeness import BindRequest
 from app.services.completeness_service import CompletenessService
@@ -23,7 +24,7 @@ async def bind_data_point(
 ):
     service = _get_service(session)
     return await service.bind_data_point(
-        project_id, payload.requirement_item_id, payload.data_point_id
+        project_id, payload.requirement_item_id, payload.data_point_id, ctx
     )
 
 
@@ -35,7 +36,7 @@ async def get_item_status(
     session: AsyncSession = Depends(get_session),
 ):
     service = _get_service(session)
-    status_val = await service.calculate_item_status(project_id, item_id)
+    status_val = await service.calculate_item_status(project_id, item_id, ctx)
     return {"requirement_item_id": item_id, "status": status_val}
 
 
@@ -47,4 +48,30 @@ async def get_disclosure_status(
     session: AsyncSession = Depends(get_session),
 ):
     service = _get_service(session)
-    return await service.aggregate_disclosure_status(project_id, disclosure_id)
+    return await service.aggregate_disclosure_status(project_id, disclosure_id, ctx)
+
+
+@router.get("/api/projects/{project_id}/completeness", response_model=CompletenessOut)
+async def get_project_completeness(
+    project_id: int,
+    boundary_context: bool = Query(False, alias="boundaryContext"),
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    service = _get_service(session)
+    return await service.get_project_completeness(
+        project_id,
+        ctx,
+        boundary_context=boundary_context,
+    )
+
+
+@router.get("/api/projects/{project_id}/completeness/{standard_id}", response_model=CompletenessOut)
+async def get_standard_completeness(
+    project_id: int,
+    standard_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    service = _get_service(session)
+    return await service.get_project_completeness(project_id, ctx, standard_id=standard_id)

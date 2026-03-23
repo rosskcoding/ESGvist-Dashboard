@@ -49,6 +49,7 @@ class EntityService:
                 user_id=ctx.user_id,
                 organization_id=ctx.organization_id,
                 changes=changes,
+                performed_by_platform_admin=ctx.is_platform_admin,
             )
 
     def _require_write(self, ctx: RequestContext) -> None:
@@ -77,6 +78,7 @@ class EntityService:
             default_currency=currency,
             default_reporting_year=reporting_year,
             setup_completed=True,
+            status="active",
         )
 
         root = await self.repo.create_entity(

@@ -1,7 +1,21 @@
 import logging
 
+from sqlalchemy import select
+
+from app.core.access import assignment_matches_data_point, get_data_point_for_ctx
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError, GateBlockedError
+from app.db.models.completeness import RequirementItemDataPoint, RequirementItemStatus
+from app.db.models.project import MetricAssignment
+from app.db.models.requirement_item import RequirementItem
+from app.events.bus import (
+    DataPointApproved,
+    DataPointRejected,
+    DataPointRevisionRequested,
+    DataPointRolledBack,
+    DataPointSubmitted,
+    get_event_bus,
+)
 from app.repositories.audit_repo import AuditRepository
 from app.repositories.data_point_repo import DataPointRepository
 from app.repositories.evidence_repo import EvidenceRepository
@@ -76,6 +90,7 @@ class WorkflowService:
                 user_id=ctx.user_id,
                 organization_id=ctx.organization_id,
                 changes=gate_log,
+                performed_by_platform_admin=ctx.is_platform_admin,
             )
 
         if not result.allowed:
@@ -113,11 +128,78 @@ class WorkflowService:
                 user_id=ctx.user_id,
                 organization_id=ctx.organization_id,
                 changes=changes,
+                performed_by_platform_admin=ctx.is_platform_admin,
             )
 
-    async def submit(self, dp_id: int, ctx: RequestContext, assignment_repo=None) -> dict:
-        dp = await self.dp_repo.get_or_raise(dp_id)
-        context = {"data_point": dp, "target_status": "submitted", "role": ctx.role}
+    def _require_submit_access(self, ctx: RequestContext) -> None:
+        if ctx.role not in ("collector", "admin", "esg_manager", "platform_admin"):
+            raise AppError("FORBIDDEN", 403, "Only collectors or managers can submit data points")
+
+    def _require_review_access(self, ctx: RequestContext) -> None:
+        if ctx.role not in ("reviewer", "admin", "esg_manager", "platform_admin"):
+            raise AppError("FORBIDDEN", 403, "Only reviewers or managers can review data points")
+
+    def _require_rollback_access(self, ctx: RequestContext) -> None:
+        if ctx.role not in ("admin", "esg_manager", "platform_admin"):
+            raise AppError("FORBIDDEN", 403, "Only admin or ESG manager can rollback approved data points")
+
+    async def _build_gate_context(
+        self,
+        dp,
+        project,
+        ctx: RequestContext,
+        target_status: str,
+        comment: str | None = None,
+    ) -> dict:
+        binding_result = await self.dp_repo.session.execute(
+            select(RequirementItemDataPoint).where(
+                RequirementItemDataPoint.reporting_project_id == dp.reporting_project_id,
+                RequirementItemDataPoint.data_point_id == dp.id,
+            )
+        )
+        bindings = list(binding_result.scalars().all())
+        item_ids = [binding.requirement_item_id for binding in bindings]
+
+        requirement_items = []
+        item_statuses: list[str] = []
+
+        if item_ids:
+            items_result = await self.dp_repo.session.execute(
+                select(RequirementItem).where(RequirementItem.id.in_(item_ids))
+            )
+            item_map = {item.id: item for item in items_result.scalars().all()}
+
+            status_result = await self.dp_repo.session.execute(
+                select(RequirementItemStatus).where(
+                    RequirementItemStatus.reporting_project_id == dp.reporting_project_id,
+                    RequirementItemStatus.requirement_item_id.in_(item_ids),
+                )
+            )
+            status_map = {
+                item_status.requirement_item_id: item_status.status
+                for item_status in status_result.scalars().all()
+            }
+
+            requirement_items = [item_map[item_id] for item_id in item_ids if item_id in item_map]
+            item_statuses = [status_map.get(item_id, "missing") for item_id in item_ids]
+
+        return {
+            "data_point": dp,
+            "project": project,
+            "target_status": target_status,
+            "role": ctx.role,
+            "comment": comment,
+            "requirement_bindings": bindings,
+            "requirement_items": requirement_items,
+            "requirement_item": requirement_items[0] if requirement_items else None,
+            "item_statuses": item_statuses,
+            "item_status": item_statuses[0] if item_statuses else None,
+        }
+
+    async def submit(self, dp_id: int, ctx: RequestContext) -> dict:
+        self._require_submit_access(ctx)
+        dp, project, _ = await get_data_point_for_ctx(self.dp_repo.session, dp_id, ctx)
+        context = await self._build_gate_context(dp, project, ctx, "submitted")
         gate_result = await self._check_gates("submit_data_point", context, ctx)
 
         dp = await self.dp_repo.update(dp_id, status="submitted")
@@ -125,60 +207,116 @@ class WorkflowService:
 
         # Auto-transition to in_review if reviewer is assigned
         final_status = "submitted"
-        if assignment_repo:
-            from sqlalchemy import select
-            from app.db.models.project import MetricAssignment
-
-            q = select(MetricAssignment).where(
+        reviewer_assignment = await self.dp_repo.session.execute(
+            select(MetricAssignment).where(
                 MetricAssignment.reporting_project_id == dp.reporting_project_id,
                 MetricAssignment.shared_element_id == dp.shared_element_id,
-                MetricAssignment.reviewer_id.isnot(None),
+                MetricAssignment.reviewer_id.is_not(None),
             )
-            result = await assignment_repo.session.execute(q)
-            if result.scalar_one_or_none():
-                dp = await self.dp_repo.update(dp_id, status="in_review")
-                final_status = "in_review"
+        )
+        matching_reviewers = [
+            assignment
+            for assignment in reviewer_assignment.scalars().all()
+            if assignment_matches_data_point(assignment, dp)
+        ]
+        if matching_reviewers:
+            dp = await self.dp_repo.update(dp_id, status="in_review")
+            final_status = "in_review"
+        await get_event_bus().publish(
+            DataPointSubmitted(
+                data_point_id=dp.id,
+                submitted_by=ctx.user_id,
+                project_id=dp.reporting_project_id,
+                organization_id=project.organization_id,
+                target_user_ids=sorted(
+                    {
+                        assignment.reviewer_id
+                        for assignment in matching_reviewers
+                        if assignment.reviewer_id
+                    }
+                ),
+            )
+        )
 
         return {"id": dp.id, "status": final_status, **gate_result}
 
     async def approve(self, dp_id: int, comment: str | None, ctx: RequestContext) -> dict:
-        dp = await self.dp_repo.get_or_raise(dp_id)
-        context = {"data_point": dp, "target_status": "approved", "role": ctx.role, "comment": comment}
+        self._require_review_access(ctx)
+        dp, project, _ = await get_data_point_for_ctx(self.dp_repo.session, dp_id, ctx)
+        context = await self._build_gate_context(dp, project, ctx, "approved", comment)
         gate_result = await self._check_gates("approve_data_point", context, ctx)
 
         dp = await self.dp_repo.update(dp_id, status="approved", review_comment=comment)
         await self._audit("data_point_approved", dp_id, ctx, {"comment": comment})
+        await get_event_bus().publish(
+            DataPointApproved(
+                data_point_id=dp.id,
+                reviewed_by=ctx.user_id,
+                organization_id=project.organization_id,
+                target_user_ids=[dp.created_by] if dp.created_by else [],
+            )
+        )
         return {"id": dp.id, "status": dp.status, **gate_result}
 
     async def reject(self, dp_id: int, comment: str | None, ctx: RequestContext) -> dict:
-        dp = await self.dp_repo.get_or_raise(dp_id)
-        context = {"data_point": dp, "target_status": "rejected", "role": ctx.role, "comment": comment}
+        self._require_review_access(ctx)
+        dp, project, _ = await get_data_point_for_ctx(self.dp_repo.session, dp_id, ctx)
+        context = await self._build_gate_context(dp, project, ctx, "rejected", comment)
         gate_result = await self._check_gates("reject_data_point", context, ctx)
 
         dp = await self.dp_repo.update(dp_id, status="rejected", review_comment=comment)
         await self._audit("data_point_rejected", dp_id, ctx, {"comment": comment})
+        await get_event_bus().publish(
+            DataPointRejected(
+                data_point_id=dp.id,
+                reviewed_by=ctx.user_id,
+                organization_id=project.organization_id,
+                target_user_ids=[dp.created_by] if dp.created_by else [],
+                comment=comment or "",
+            )
+        )
         return {"id": dp.id, "status": dp.status, **gate_result}
 
     async def request_revision(self, dp_id: int, comment: str | None, ctx: RequestContext) -> dict:
-        dp = await self.dp_repo.get_or_raise(dp_id)
-        context = {"data_point": dp, "target_status": "needs_revision", "role": ctx.role, "comment": comment}
+        self._require_review_access(ctx)
+        dp, project, _ = await get_data_point_for_ctx(self.dp_repo.session, dp_id, ctx)
+        context = await self._build_gate_context(dp, project, ctx, "needs_revision", comment)
         gate_result = await self._check_gates("request_revision", context, ctx)
 
         dp = await self.dp_repo.update(dp_id, status="needs_revision", review_comment=comment)
         await self._audit("data_point_revision_requested", dp_id, ctx, {"comment": comment})
+        await get_event_bus().publish(
+            DataPointRevisionRequested(
+                data_point_id=dp.id,
+                reviewed_by=ctx.user_id,
+                organization_id=project.organization_id,
+                target_user_ids=[dp.created_by] if dp.created_by else [],
+                comment=comment or "",
+            )
+        )
         return {"id": dp.id, "status": dp.status, **gate_result}
 
     async def rollback(self, dp_id: int, comment: str | None, ctx: RequestContext) -> dict:
-        dp = await self.dp_repo.get_or_raise(dp_id)
-        context = {"data_point": dp, "target_status": "draft", "role": ctx.role, "comment": comment}
+        self._require_rollback_access(ctx)
+        dp, project, _ = await get_data_point_for_ctx(self.dp_repo.session, dp_id, ctx)
+        context = await self._build_gate_context(dp, project, ctx, "draft", comment)
         gate_result = await self._check_gates("rollback_data_point", context, ctx)
 
         dp = await self.dp_repo.update(dp_id, status="draft", review_comment=comment)
         await self._audit("data_point_rolled_back", dp_id, ctx, {"comment": comment})
+        await get_event_bus().publish(
+            DataPointRolledBack(
+                data_point_id=dp.id,
+                rolled_back_by=ctx.user_id,
+                organization_id=project.organization_id,
+                target_user_ids=[dp.created_by] if dp.created_by else [],
+                reason=comment or "",
+            )
+        )
         return {"id": dp.id, "status": dp.status, **gate_result}
 
     async def gate_check(self, action: str, dp_id: int, ctx: RequestContext, comment: str | None = None) -> dict:
-        dp = await self.dp_repo.get_or_raise(dp_id)
+        dp, project, _ = await get_data_point_for_ctx(self.dp_repo.session, dp_id, ctx)
         target_map = {
             "submit_data_point": "submitted",
             "approve_data_point": "approved",
@@ -187,7 +325,7 @@ class WorkflowService:
             "rollback_data_point": "draft",
         }
         target = target_map.get(action, "")
-        context = {"data_point": dp, "target_status": target, "role": ctx.role, "comment": comment}
+        context = await self._build_gate_context(dp, project, ctx, target, comment)
         result = await self.gate_engine.check(action, context)
 
         # Log gate check
@@ -205,6 +343,7 @@ class WorkflowService:
                 user_id=ctx.user_id,
                 organization_id=ctx.organization_id,
                 changes=gate_log,
+                performed_by_platform_admin=ctx.is_platform_admin,
             )
 
         return {

@@ -8,7 +8,26 @@ class RequirementIncompleteGate(Gate):
         return action in ("approve_data_point",)
 
     async def evaluate(self, context: dict) -> GateFailure | None:
+        item_statuses = context.get("item_statuses")
         item_status = context.get("item_status")
+
+        if item_statuses:
+            blocking_status = next(
+                (
+                    status
+                    for status in item_statuses
+                    if status not in ("complete", "not_applicable")
+                ),
+                None,
+            )
+            if blocking_status:
+                return GateFailure(
+                    code="REQUIREMENT_INCOMPLETE",
+                    gate_type="completeness",
+                    message=f"Requirement item status is '{blocking_status}', must be complete",
+                    severity="blocker",
+                )
+
         if item_status and item_status not in ("complete", "not_applicable"):
             return GateFailure(
                 code="REQUIREMENT_INCOMPLETE",

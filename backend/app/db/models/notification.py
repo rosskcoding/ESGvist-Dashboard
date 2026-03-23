@@ -22,7 +22,11 @@ class Notification(Base):
     entity_type: Mapped[str | None] = mapped_column(String, nullable=True)
     entity_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     severity: Mapped[str] = mapped_column(String, default="info", nullable=False)
+    channel: Mapped[str] = mapped_column(String, default="in_app", nullable=False)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    email_sent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    email_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

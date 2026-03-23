@@ -50,15 +50,23 @@ async def user_has_project_assignment(
     user_id: int,
     role: str,
 ) -> bool:
-    assignment_column = (
-        MetricAssignment.collector_id if role == "collector" else MetricAssignment.reviewer_id
-    )
-    result = await session.execute(
-        select(MetricAssignment.id).where(
-            MetricAssignment.reporting_project_id == project_id,
-            assignment_column == user_id,
+    if role == "collector":
+        result = await session.execute(
+            select(MetricAssignment.id).where(
+                MetricAssignment.reporting_project_id == project_id,
+                or_(
+                    MetricAssignment.collector_id == user_id,
+                    MetricAssignment.backup_collector_id == user_id,
+                ),
+            )
         )
-    )
+    else:
+        result = await session.execute(
+            select(MetricAssignment.id).where(
+                MetricAssignment.reporting_project_id == project_id,
+                MetricAssignment.reviewer_id == user_id,
+            )
+        )
     return result.scalar_one_or_none() is not None
 
 
@@ -68,15 +76,23 @@ async def get_user_assignments(
     user_id: int,
     role: str,
 ) -> list[MetricAssignment]:
-    assignment_column = (
-        MetricAssignment.collector_id if role == "collector" else MetricAssignment.reviewer_id
-    )
-    result = await session.execute(
-        select(MetricAssignment).where(
-            MetricAssignment.reporting_project_id == project_id,
-            assignment_column == user_id,
+    if role == "collector":
+        result = await session.execute(
+            select(MetricAssignment).where(
+                MetricAssignment.reporting_project_id == project_id,
+                or_(
+                    MetricAssignment.collector_id == user_id,
+                    MetricAssignment.backup_collector_id == user_id,
+                ),
+            )
         )
-    )
+    else:
+        result = await session.execute(
+            select(MetricAssignment).where(
+                MetricAssignment.reporting_project_id == project_id,
+                MetricAssignment.reviewer_id == user_id,
+            )
+        )
     return list(result.scalars().all())
 
 
@@ -96,14 +112,19 @@ async def get_matching_assignment(
     user_id: int,
     role: str,
 ) -> MetricAssignment | None:
-    assignment_column = (
-        MetricAssignment.collector_id if role == "collector" else MetricAssignment.reviewer_id
-    )
     query = select(MetricAssignment).where(
         MetricAssignment.reporting_project_id == data_point.reporting_project_id,
         MetricAssignment.shared_element_id == data_point.shared_element_id,
-        assignment_column == user_id,
     )
+    if role == "collector":
+        query = query.where(
+            or_(
+                MetricAssignment.collector_id == user_id,
+                MetricAssignment.backup_collector_id == user_id,
+            )
+        )
+    else:
+        query = query.where(MetricAssignment.reviewer_id == user_id)
     if data_point.entity_id is not None:
         query = query.where(
             or_(

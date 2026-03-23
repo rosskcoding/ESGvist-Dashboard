@@ -48,6 +48,11 @@ async def ctx(client: AsyncClient) -> dict:
 
     # Project
     proj = await client.post("/api/projects", json={"name": "Report"}, headers=headers)
+    await client.post(
+        f"/api/projects/{proj.json()['id']}/standards",
+        json={"standard_id": std.json()["id"], "is_base_standard": True},
+        headers=headers,
+    )
 
     # Data point (draft)
     dp = await client.post(
@@ -58,6 +63,9 @@ async def ctx(client: AsyncClient) -> dict:
 
     return {
         "headers": headers,
+        "root_entity_id": org.json()["root_entity_id"],
+        "default_boundary_id": org.json()["boundary_id"],
+        "standard_id": std.json()["id"],
         "project_id": proj.json()["id"],
         "disclosure_id": disc.json()["id"],
         "item1_id": item1.json()["id"],
@@ -219,3 +227,204 @@ async def test_disclosure_status_complete(client: AsyncClient, ctx: dict):
     )
     assert resp.json()["status"] == "complete"
     assert resp.json()["completion_percent"] == 100.0
+
+
+@pytest.mark.asyncio
+async def test_project_completeness_overall(client: AsyncClient, ctx: dict):
+    await client.post(
+        f"/api/projects/{ctx['project_id']}/bindings",
+        json={"requirement_item_id": ctx["item1_id"], "data_point_id": ctx["dp_id"]},
+        headers=ctx["headers"],
+    )
+
+    from tests.conftest import TestSessionLocal
+    from app.db.models.data_point import DataPoint
+    from sqlalchemy import update
+
+    async with TestSessionLocal() as session:
+        await session.execute(
+            update(DataPoint).where(DataPoint.id == ctx["dp_id"]).values(status="approved")
+        )
+        await session.commit()
+
+    await client.get(
+        f"/api/projects/{ctx['project_id']}/completeness/items/{ctx['item1_id']}",
+        headers=ctx["headers"],
+    )
+    await client.get(
+        f"/api/projects/{ctx['project_id']}/completeness/items/{ctx['item2_id']}",
+        headers=ctx["headers"],
+    )
+
+    resp = await client.get(
+        f"/api/projects/{ctx['project_id']}/completeness",
+        headers=ctx["headers"],
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["overall_status"] == "partial"
+    assert data["overall_percent"] == 50.0
+    assert len(data["items"]) == 2
+    assert len(data["disclosures"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_project_completeness_per_standard(client: AsyncClient, ctx: dict):
+    await client.post(
+        f"/api/projects/{ctx['project_id']}/bindings",
+        json={"requirement_item_id": ctx["item1_id"], "data_point_id": ctx["dp_id"]},
+        headers=ctx["headers"],
+    )
+
+    from tests.conftest import TestSessionLocal
+    from app.db.models.data_point import DataPoint
+    from sqlalchemy import update
+
+    async with TestSessionLocal() as session:
+        await session.execute(
+            update(DataPoint).where(DataPoint.id == ctx["dp_id"]).values(status="approved")
+        )
+        await session.commit()
+
+    await client.get(
+        f"/api/projects/{ctx['project_id']}/completeness/items/{ctx['item1_id']}",
+        headers=ctx["headers"],
+    )
+    await client.get(
+        f"/api/projects/{ctx['project_id']}/completeness/items/{ctx['item2_id']}",
+        headers=ctx["headers"],
+    )
+
+    resp = await client.get(
+        f"/api/projects/{ctx['project_id']}/completeness/{ctx['standard_id']}",
+        headers=ctx["headers"],
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["standard_id"] == ctx["standard_id"]
+    assert data["overall_percent"] == 50.0
+
+
+@pytest.mark.asyncio
+async def test_project_completeness_with_boundary_context(client: AsyncClient, ctx: dict):
+    from sqlalchemy import update
+
+    from app.db.models.boundary import BoundaryMembership
+    from app.db.models.data_point import DataPoint
+    from tests.conftest import TestSessionLocal
+
+    entity_a = await client.post(
+        "/api/entities",
+        json={"name": "Plant A", "entity_type": "legal_entity", "parent_entity_id": ctx["root_entity_id"]},
+        headers=ctx["headers"],
+    )
+    entity_b = await client.post(
+        "/api/entities",
+        json={"name": "Plant B", "entity_type": "legal_entity", "parent_entity_id": ctx["root_entity_id"]},
+        headers=ctx["headers"],
+    )
+    entity_c = await client.post(
+        "/api/entities",
+        json={"name": "Plant C", "entity_type": "legal_entity", "parent_entity_id": ctx["root_entity_id"]},
+        headers=ctx["headers"],
+    )
+    boundary = await client.post(
+        "/api/boundaries",
+        json={"name": "Operational Control", "boundary_type": "operational_control"},
+        headers=ctx["headers"],
+    )
+    assert entity_a.status_code == 201
+    assert entity_b.status_code == 201
+    assert entity_c.status_code == 201
+    assert boundary.status_code == 201
+
+    async with TestSessionLocal() as session:
+        session.add_all(
+            [
+                BoundaryMembership(
+                    boundary_definition_id=boundary.json()["id"],
+                    entity_id=entity_a.json()["id"],
+                    included=True,
+                    inclusion_source="manual",
+                    consolidation_method="full",
+                ),
+                BoundaryMembership(
+                    boundary_definition_id=boundary.json()["id"],
+                    entity_id=entity_b.json()["id"],
+                    included=True,
+                    inclusion_source="manual",
+                    consolidation_method="full",
+                ),
+            ]
+        )
+        await session.commit()
+
+    applied = await client.put(
+        f"/api/projects/{ctx['project_id']}/boundary",
+        params={"boundary_id": boundary.json()["id"]},
+        headers=ctx["headers"],
+    )
+    assert applied.status_code == 200
+
+    snapshot = await client.post(
+        f"/api/projects/{ctx['project_id']}/boundary/snapshot",
+        headers=ctx["headers"],
+    )
+    assert snapshot.status_code == 200
+
+    scoped_dp = await client.post(
+        f"/api/projects/{ctx['project_id']}/data-points",
+        json={
+            "shared_element_id": ctx["element_id"],
+            "entity_id": entity_a.json()["id"],
+            "numeric_value": 321,
+        },
+        headers=ctx["headers"],
+    )
+    assert scoped_dp.status_code == 201
+
+    await client.post(
+        f"/api/projects/{ctx['project_id']}/bindings",
+        json={"requirement_item_id": ctx["item1_id"], "data_point_id": scoped_dp.json()["id"]},
+        headers=ctx["headers"],
+    )
+
+    async with TestSessionLocal() as session:
+        await session.execute(
+            update(DataPoint).where(DataPoint.id == scoped_dp.json()["id"]).values(status="approved")
+        )
+        await session.commit()
+
+    item_status = await client.get(
+        f"/api/projects/{ctx['project_id']}/completeness/items/{ctx['item1_id']}",
+        headers=ctx["headers"],
+    )
+    assert item_status.status_code == 200
+    assert item_status.json()["status"] == "partial"
+
+    await client.get(
+        f"/api/projects/{ctx['project_id']}/completeness/items/{ctx['item2_id']}",
+        headers=ctx["headers"],
+    )
+    await client.get(
+        f"/api/projects/{ctx['project_id']}/completeness/disclosures/{ctx['disclosure_id']}",
+        headers=ctx["headers"],
+    )
+
+    resp = await client.get(
+        f"/api/projects/{ctx['project_id']}/completeness?boundaryContext=true",
+        headers=ctx["headers"],
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["boundary_context"]["boundary_name"] == "Operational Control"
+    assert data["boundary_context"]["entities_in_scope"] == 2
+    assert data["boundary_context"]["snapshot_locked"] is True
+    assert data["boundary_context"]["entities_without_data"] == ["Plant B"]
+    assert data["overall_status"] == "partial"
+    assert data["disclosures"][0]["entity_breakdown"] == {
+        "covered_entities": 1,
+        "missing_entities": 1,
+        "excluded_entities": 1,
+        "missing_entity_names": ["Plant B"],
+    }

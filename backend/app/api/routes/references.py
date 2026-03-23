@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.policies.auth_policy import AuthPolicy
 from app.core.dependencies import RequestContext, get_current_context
 from app.db.models.unit_reference import BoundaryApproach, Methodology, UnitReference
 from app.db.session import get_session
@@ -24,7 +25,12 @@ async def list_units(ctx: RequestContext = Depends(get_current_context), session
 
 
 @router.post("/units", status_code=status.HTTP_201_CREATED)
-async def create_unit(payload: RefCreate, session: AsyncSession = Depends(get_session)):
+async def create_unit(
+    payload: RefCreate,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    AuthPolicy.require_role(ctx, ["admin", "platform_admin"])
     u = UnitReference(code=payload.code, name=payload.name, category=payload.category)
     session.add(u)
     await session.flush()
@@ -38,7 +44,12 @@ async def list_methodologies(ctx: RequestContext = Depends(get_current_context),
 
 
 @router.post("/methodologies", status_code=status.HTTP_201_CREATED)
-async def create_methodology(payload: RefCreate, session: AsyncSession = Depends(get_session)):
+async def create_methodology(
+    payload: RefCreate,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    AuthPolicy.require_role(ctx, ["admin", "platform_admin"])
     m = Methodology(code=payload.code, name=payload.name, description=payload.description)
     session.add(m)
     await session.flush()
@@ -52,7 +63,12 @@ async def list_approaches(ctx: RequestContext = Depends(get_current_context), se
 
 
 @router.post("/boundary-approaches", status_code=status.HTTP_201_CREATED)
-async def create_approach(payload: RefCreate, session: AsyncSession = Depends(get_session)):
+async def create_approach(
+    payload: RefCreate,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    AuthPolicy.require_role(ctx, ["admin", "platform_admin"])
     b = BoundaryApproach(code=payload.code, name=payload.name, description=payload.description)
     session.add(b)
     await session.flush()

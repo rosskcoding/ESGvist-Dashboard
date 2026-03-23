@@ -55,5 +55,9 @@ class MetricAssignment(Base, TimestampMixin):
     reviewer_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    backup_collector_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     deadline: Mapped[str | None] = mapped_column(Date, nullable=True)
+    escalation_after_days: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
     status: Mapped[str] = mapped_column(String, default="assigned", nullable=False)

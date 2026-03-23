@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, EmailStr, Field
 
 
@@ -39,3 +41,47 @@ class UserResponse(BaseModel):
     roles: list[RoleBindingOut] = []
 
     model_config = {"from_attributes": True}
+
+
+class InvitationCreateRequest(BaseModel):
+    email: EmailStr
+    role: Literal["collector", "reviewer", "esg_manager", "admin", "auditor"]
+    message: str | None = None
+
+
+class OrgUserOut(BaseModel):
+    id: int
+    email: str
+    full_name: str
+    role: Literal["collector", "reviewer", "esg_manager", "admin", "auditor"]
+    status: Literal["active", "inactive"]
+    joined_date: str | None = None
+
+
+class PendingInvitationOut(BaseModel):
+    id: int
+    email: str
+    role: Literal["collector", "reviewer", "esg_manager", "admin", "auditor"]
+    status: str
+    invited_at: str | None = None
+    invited_by: str
+    expires_at: str | None = None
+
+
+class OrganizationUsersOut(BaseModel):
+    users: list[OrgUserOut]
+    pending_invitations: list[PendingInvitationOut]
+
+
+class UserRoleUpdateRequest(BaseModel):
+    role: Literal["collector", "reviewer", "esg_manager", "admin", "auditor"]
+
+
+class UserStatusUpdateRequest(BaseModel):
+    status: Literal["active", "inactive"]
+
+
+class UserRoleBindingCreateRequest(BaseModel):
+    role: Literal["platform_admin", "admin", "esg_manager", "reviewer", "collector", "auditor"]
+    scope_type: Literal["platform", "organization"]
+    scope_id: int | None = None

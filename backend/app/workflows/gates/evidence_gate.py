@@ -12,9 +12,15 @@ class EvidenceRequiredGate(Gate):
 
     async def evaluate(self, context: dict) -> GateFailure | None:
         dp = context.get("data_point")
+        requirement_items = context.get("requirement_items")
         requirement_item = context.get("requirement_item")
 
-        if not requirement_item or not getattr(requirement_item, "requires_evidence", False):
+        if requirement_items is None:
+            requirement_items = [requirement_item] if requirement_item else []
+
+        if not requirement_items or not any(
+            getattr(item, "requires_evidence", False) for item in requirement_items
+        ):
             return None
 
         if not dp or not self.evidence_repo:

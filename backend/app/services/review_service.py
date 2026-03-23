@@ -1,7 +1,6 @@
 import logging
 
-from sqlalchemy import select
-
+from app.core.access import get_data_point_for_ctx
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError
 from app.db.models.project import MetricAssignment
@@ -35,6 +34,7 @@ class ReviewService:
                 user_id=ctx.user_id,
                 organization_id=ctx.organization_id,
                 changes=changes,
+                performed_by_platform_admin=ctx.is_platform_admin,
             )
 
     async def _notify_collector(self, dp, action: str, ctx: RequestContext, comment: str | None = None):
@@ -69,12 +69,17 @@ class ReviewService:
         except Exception as e:
             logger.warning("Failed to send notification for dp %d: %s", dp.id, e)
 
+    def _require_review_access(self, ctx: RequestContext) -> None:
+        if ctx.role not in ("reviewer", "admin", "esg_manager", "platform_admin"):
+            raise AppError("FORBIDDEN", 403, "Only reviewers or managers can perform review actions")
+
     async def batch_approve(
         self, dp_ids: list[int], comment: str | None, ctx: RequestContext
     ) -> dict:
+        self._require_review_access(ctx)
         results = []
         for dp_id in dp_ids:
-            dp = await self.dp_repo.get_or_raise(dp_id)
+            dp, _, _ = await get_data_point_for_ctx(self.dp_repo.session, dp_id, ctx)
             if dp.status != "in_review":
                 results.append({"id": dp_id, "success": False, "reason": f"Status is '{dp.status}', expected 'in_review'"})
                 continue
@@ -87,12 +92,13 @@ class ReviewService:
     async def batch_reject(
         self, dp_ids: list[int], comment: str | None, ctx: RequestContext
     ) -> dict:
+        self._require_review_access(ctx)
         if not comment:
             raise AppError("REVIEW_COMMENT_REQUIRED", 422, "Comment is required for batch reject")
 
         results = []
         for dp_id in dp_ids:
-            dp = await self.dp_repo.get_or_raise(dp_id)
+            dp, _, _ = await get_data_point_for_ctx(self.dp_repo.session, dp_id, ctx)
             if dp.status != "in_review":
                 results.append({"id": dp_id, "success": False, "reason": f"Status is '{dp.status}'"})
                 continue
@@ -105,12 +111,13 @@ class ReviewService:
     async def batch_request_revision(
         self, dp_ids: list[int], comment: str | None, ctx: RequestContext
     ) -> dict:
+        self._require_review_access(ctx)
         if not comment:
             raise AppError("REVIEW_COMMENT_REQUIRED", 422, "Comment is required for request revision")
 
         results = []
         for dp_id in dp_ids:
-            dp = await self.dp_repo.get_or_raise(dp_id)
+            dp, _, _ = await get_data_point_for_ctx(self.dp_repo.session, dp_id, ctx)
             if dp.status != "in_review":
                 results.append({"id": dp_id, "success": False, "reason": f"Status is '{dp.status}'"})
                 continue

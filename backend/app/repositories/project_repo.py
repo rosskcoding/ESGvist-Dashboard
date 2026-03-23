@@ -1,9 +1,8 @@
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.boundary import BoundaryDefinition
 from app.core.exceptions import AppError
-from app.db.models.boundary import BoundaryDefinition, BoundaryMembership
+from app.db.models.boundary import BoundaryDefinition
 from app.db.models.project import MetricAssignment, ReportingProject, ReportingProjectStandard
 
 
@@ -88,6 +87,25 @@ class ProjectRepository:
         )
         result = await self.session.execute(q)
         return list(result.scalars().all())
+
+    async def get_assignment(self, assignment_id: int) -> MetricAssignment | None:
+        result = await self.session.execute(
+            select(MetricAssignment).where(MetricAssignment.id == assignment_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_assignment_or_raise(self, assignment_id: int) -> MetricAssignment:
+        assignment = await self.get_assignment(assignment_id)
+        if not assignment:
+            raise AppError("NOT_FOUND", 404, f"Assignment {assignment_id} not found")
+        return assignment
+
+    async def update_assignment(self, assignment_id: int, **kwargs) -> MetricAssignment:
+        assignment = await self.get_assignment_or_raise(assignment_id)
+        for key, value in kwargs.items():
+            setattr(assignment, key, value)
+        await self.session.flush()
+        return assignment
 
     # --- Boundaries ---
     async def create_boundary(self, org_id: int, **kwargs) -> BoundaryDefinition:

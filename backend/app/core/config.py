@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     # Self-service registration
     allow_self_registration: bool = True
 
+    # AI
+    ai_enabled: bool = False
+    ai_provider: str = "static"
+    ai_model: str = "static-ai"
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

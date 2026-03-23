@@ -18,7 +18,7 @@ async def find_reuse(
     session: AsyncSession = Depends(get_session),
 ):
     service = ReuseService(session)
-    return await service.find_reuse(project_id, shared_element_id, unit_code, entity_id)
+    return await service.find_reuse(project_id, shared_element_id, unit_code, entity_id, ctx)
 
 
 @router.get("/api/data-points/{dp_id}/reuse-info")
@@ -28,4 +28,4 @@ async def reuse_info(
     session: AsyncSession = Depends(get_session),
 ):
     service = ReuseService(session)
-    return await service.get_reuse_info(dp_id)
+    return await service.get_reuse_info(dp_id, ctx)

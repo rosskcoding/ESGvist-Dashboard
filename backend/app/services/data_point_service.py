@@ -65,6 +65,7 @@ class DataPointService:
                 user_id=ctx.user_id,
                 organization_id=ctx.organization_id,
                 changes={"project_id": project_id, "shared_element_id": payload.shared_element_id},
+                performed_by_platform_admin=ctx.is_platform_admin,
         )
 
         return DataPointOut.model_validate(dp)

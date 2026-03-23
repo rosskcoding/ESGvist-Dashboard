@@ -1,94 +1,66 @@
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import CurrentUser, get_current_user
+from app.core.dependencies import RequestContext, get_current_context
 from app.db.session import get_session
+from app.schemas.ai import AIResponse, AIStatusOut, AskRequest, ExplainRequest, ReviewAssistResponse
+from app.services.ai_service import AIAssistantService
 
 router = APIRouter(prefix="/api/ai", tags=["AI Assistant"])
 
 
-class ExplainRequest(BaseModel):
-    requirement_item_id: int | None = None
-    project_id: int | None = None
-    entity_id: int | None = None
-    disclosure_id: int | None = None
+def _get_service(session: AsyncSession) -> AIAssistantService:
+    return AIAssistantService(session)
 
 
-class AskRequest(BaseModel):
-    question: str
-    screen: str | None = None
-    context: dict | None = None
-
-
-class AIResponse(BaseModel):
-    text: str
-    reasons: list[str] | None = None
-    next_actions: list[dict] | None = None
-    confidence: str = "high"
+@router.get("/status", response_model=AIStatusOut)
+async def ai_status(
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    return _get_service(session).get_status()
 
 
 @router.post("/explain/field", response_model=AIResponse)
 async def explain_field(
     payload: ExplainRequest,
-    user: CurrentUser = Depends(get_current_user),
+    ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    """Explain a field — stub returning structured response."""
-    return AIResponse(
-        text="This field represents a quantitative ESG metric that needs to be reported according to the selected standard.",
-        reasons=["Required by the standard disclosure requirement"],
-        confidence="high",
-    )
+    return await _get_service(session).explain_field(payload, ctx)
 
 
 @router.post("/explain/completeness", response_model=AIResponse)
 async def explain_completeness(
     payload: ExplainRequest,
-    user: CurrentUser = Depends(get_current_user),
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
 ):
-    return AIResponse(
-        text="This disclosure is incomplete. Some required data points are missing or not yet approved.",
-        reasons=["Missing data for required items", "Some data points pending review"],
-        next_actions=[
-            {"label": "Fill missing data", "action_type": "navigate", "target": "/collection"},
-        ],
-        confidence="high",
-    )
+    return await _get_service(session).explain_completeness(payload, ctx)
 
 
 @router.post("/explain/boundary", response_model=AIResponse)
 async def explain_boundary(
     payload: ExplainRequest,
-    user: CurrentUser = Depends(get_current_user),
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
 ):
-    return AIResponse(
-        text="This entity is included in the project boundary based on the selected consolidation approach.",
-        reasons=["Entity is financially controlled", "Ownership is 100%"],
-        confidence="high",
-    )
+    return await _get_service(session).explain_boundary(payload, ctx)
 
 
 @router.post("/ask", response_model=AIResponse)
 async def ask(
     payload: AskRequest,
-    user: CurrentUser = Depends(get_current_user),
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
 ):
-    return AIResponse(
-        text=f"Thank you for your question about: {payload.question}. AI assistance will be fully enabled in a future release.",
-        confidence="low",
-    )
+    return await _get_service(session).ask(payload, ctx)
 
 
-@router.post("/review-assist")
+@router.post("/review-assist", response_model=ReviewAssistResponse | AIResponse)
 async def review_assist(
     data_point_id: int,
-    user: CurrentUser = Depends(get_current_user),
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
 ):
-    return {
-        "summary": "Data point contains a numeric value for Scope 1 emissions.",
-        "anomalies": [],
-        "missing_evidence": [],
-        "draft_comment": None,
-        "reuse_impact": "Used in 1 standard.",
-    }
+    return await _get_service(session).review_assist(data_point_id, ctx)

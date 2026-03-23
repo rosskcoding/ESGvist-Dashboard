@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Boolean, Integer, String
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.models.base import Base, TimestampMixin
@@ -16,3 +16,8 @@ class Organization(Base, TimestampMixin):
     default_currency: Mapped[str] = mapped_column(String, default="USD", nullable=False)
     default_reporting_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     setup_completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    status: Mapped[str] = mapped_column(String, default="active", nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("status IN ('active','suspended','archived')", name="chk_org_status"),
+    )

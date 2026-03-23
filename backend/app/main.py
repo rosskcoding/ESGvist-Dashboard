@@ -29,7 +29,9 @@ from app.api.routes import (
     shared_elements,
     snapshots,
     standards,
+    webhooks,
     workflow,
+    users,
 )
 from app.core.config import settings
 from app.core.exceptions import AppError
@@ -86,17 +88,19 @@ def create_app() -> FastAPI:
     app.include_router(deltas.router)
     app.include_router(ai.router)
     app.include_router(platform.router)
+    app.include_router(users.router)
     app.include_router(comments.router)
     app.include_router(invitations.router)
     app.include_router(impact.router)
     app.include_router(references.router)
     app.include_router(snapshots.router)
     app.include_router(dashboard.router)
+    app.include_router(webhooks.router)
 
     # Wire event bus
-    from app.events.bus import get_event_bus
-    from app.events.handlers.audit_handler import AuditEventHandler
-    get_event_bus().subscribe("*", AuditEventHandler())
+    from app.events.registry import register_event_handlers
+
+    register_event_handlers()
 
     return app
 

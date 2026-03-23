@@ -66,13 +66,19 @@ class BoundaryNotLockedGate(Gate):
         return action in ("start_export", "publish_project")
 
     async def evaluate(self, context: dict) -> GateFailure | None:
-        # Simplified: just check boundary exists
         project = context.get("project")
         if project and not getattr(project, "boundary_definition_id", None):
             return GateFailure(
                 code="BOUNDARY_NOT_LOCKED",
                 gate_type="boundary",
                 message="Boundary snapshot must be locked before export/publish",
+                severity="blocker",
+            )
+        if project and not context.get("boundary_snapshot_locked", False):
+            return GateFailure(
+                code="BOUNDARY_NOT_LOCKED",
+                gate_type="boundary",
+                message="Boundary snapshot must be created and match the active project boundary",
                 severity="blocker",
             )
         return None
