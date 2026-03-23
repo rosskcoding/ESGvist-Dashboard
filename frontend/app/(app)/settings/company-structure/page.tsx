@@ -112,15 +112,15 @@ interface EntityTreeNode extends Entity {
 }
 
 interface EntitiesResponse {
-  entities: Entity[];
-  ownership_links: OwnershipLink[];
+  items: Entity[];
+  entities?: Entity[];
+  total?: number;
+  ownership_links?: OwnershipLink[];
   control_links: ControlLink[];
   boundary_memberships: Record<number, BoundaryMembership[]>;
 }
 
-interface EntityTreeResponse {
-  tree: EntityTreeNode[];
-}
+type EntityTreeResponse = EntityTreeNode[] | { tree: EntityTreeNode[] };
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -270,8 +270,8 @@ function layoutTree(
   let xOffset = 0;
 
   function getSubtreeWidth(node: EntityTreeNode): number {
-    if (node.children.length === 0) return NODE_WIDTH;
-    const childrenWidth = node.children.reduce(
+    if ((node.children ?? []).length === 0) return NODE_WIDTH;
+    const childrenWidth = (node.children ?? []).reduce(
       (sum, c) => sum + getSubtreeWidth(c) + H_GAP,
       -H_GAP
     );
@@ -294,13 +294,13 @@ function layoutTree(
       },
     });
 
-    if (node.children.length > 0) {
+    if ((node.children ?? []).length > 0) {
       const totalChildrenWidth =
-        node.children.reduce((sum, c) => sum + getSubtreeWidth(c) + H_GAP, 0) -
+        (node.children ?? []).reduce((sum, c) => sum + getSubtreeWidth(c) + H_GAP, 0) -
         H_GAP;
       let childX = x + NODE_WIDTH / 2 - totalChildrenWidth / 2;
 
-      for (const child of node.children) {
+      for (const child of (node.children ?? [])) {
         const childWidth = getSubtreeWidth(child);
         const childCenterX = childX + childWidth / 2 - NODE_WIDTH / 2;
 
@@ -387,7 +387,7 @@ function EntityTreeItem({
         )}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
       >
-        {node.children.length > 0 ? (
+        {(node.children ?? []).length > 0 ? (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -1229,14 +1229,49 @@ export default function CompanyStructurePage() {
   const ownershipLinks = entitiesData?.ownership_links ?? [];
   const controlLinks = entitiesData?.control_links ?? [];
   const boundaryMemberships = entitiesData?.boundary_memberships ?? {};
-  const tree = treeData?.tree ?? [];
+  const tree = Array.isArray(treeData) ? treeData : (treeData as { tree?: EntityTreeNode[] })?.tree ?? [];
+
+  // Extract ownership links from tree data (each entity has .ownership array)
+  const treeOwnershipLinks: OwnershipLink[] = tree.flatMap((node) =>
+    (node.ownership ?? []).map((o: { parent_id: number; percent: number; type: string }, idx: number) => ({
+      id: idx,
+      parent_entity_id: o.parent_id,
+      child_entity_id: node.id,
+      ownership_percent: o.percent,
+      ownership_type: o.type as "direct" | "indirect" | "beneficial",
+    }))
+  );
+  const allOwnershipLinks = ownershipLinks.length > 0 ? ownershipLinks : treeOwnershipLinks;
 
   // Build edges based on view mode
+  // Build nested tree from flat list using ownership
+  const nestedTree = useMemo(() => {
+    if (tree.length === 0) return [];
+    const map = new Map(tree.map((n) => [n.id, { ...n, children: [] as EntityTreeNode[] }]));
+    const roots: EntityTreeNode[] = [];
+    for (const node of tree) {
+      const owned = (node.ownership ?? []) as Array<{ parent_id: number; percent: number; type: string }>;
+      if (owned.length > 0) {
+        const parent = map.get(owned[0].parent_id);
+        const child = map.get(node.id)!;
+        (child as EntityTreeNode & { ownership_percentage?: number }).ownership_percentage = owned[0].percent;
+        if (parent) {
+          parent.children.push(child);
+        } else {
+          roots.push(child);
+        }
+      } else {
+        roots.push(map.get(node.id)!);
+      }
+    }
+    return roots;
+  }, [tree]);
+
   const { flowNodes, flowEdges } = useMemo(() => {
-    if (tree.length === 0) return { flowNodes: [], flowEdges: [] };
+    if (nestedTree.length === 0) return { flowNodes: [], flowEdges: [] };
 
     const { nodes, edges } = layoutTree(
-      tree,
+      nestedTree,
       entities,
       viewMode,
       boundaryMemberships,
@@ -1259,7 +1294,7 @@ export default function CompanyStructurePage() {
 
     return { flowNodes: nodes, flowEdges: edges };
   }, [
-    tree,
+    nestedTree,
     entities,
     viewMode,
     boundaryMemberships,
@@ -1468,7 +1503,7 @@ export default function CompanyStructurePage() {
           {selectedEntity ? (
             <EntityDetailPanel
               entity={selectedEntity}
-              ownershipLinks={ownershipLinks}
+              ownershipLinks={allOwnershipLinks}
               controlLinks={controlLinks}
               boundaryMemberships={boundaryMemberships[selectedEntity.id] ?? []}
               entities={entities}

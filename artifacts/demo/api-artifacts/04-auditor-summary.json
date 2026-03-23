@@ -1,0 +1,171 @@
+{
+  "project_id": 1,
+  "completeness": {
+    "project_id": 1,
+    "standard_id": null,
+    "items": [
+      {
+        "requirement_item_id": 1,
+        "status": "complete",
+        "status_reason": null
+      },
+      {
+        "requirement_item_id": 2,
+        "status": "complete",
+        "status_reason": null
+      },
+      {
+        "requirement_item_id": 3,
+        "status": "partial",
+        "status_reason": "Data exists but not approved"
+      },
+      {
+        "requirement_item_id": 4,
+        "status": "complete",
+        "status_reason": null
+      },
+      {
+        "requirement_item_id": 5,
+        "status": "complete",
+        "status_reason": null
+      },
+      {
+        "requirement_item_id": 6,
+        "status": "complete",
+        "status_reason": null
+      },
+      {
+        "requirement_item_id": 7,
+        "status": "complete",
+        "status_reason": null
+      }
+    ],
+    "disclosures": [
+      {
+        "disclosure_requirement_id": 1,
+        "status": "complete",
+        "completion_percent": 100,
+        "code": "GRI 302-1",
+        "title": "Energy consumption within the organization",
+        "entity_breakdown": {
+          "covered_entities": 1,
+          "missing_entities": 5,
+          "excluded_entities": 1,
+          "missing_entity_names": [
+            "Northwind Grid Services GmbH",
+            "Northwind Solar Iberia Branch",
+            "Hamburg Wind Farm",
+            "Leeds Service Operations"
+          ]
+        }
+      },
+      {
+        "disclosure_requirement_id": 2,
+        "status": "complete",
+        "completion_percent": 100,
+        "code": "GRI 305-1",
+        "title": "Direct (Scope 1) GHG emissions",
+        "entity_breakdown": {
+          "covered_entities": 1,
+          "missing_entities": 5,
+          "excluded_entities": 1,
+          "missing_entity_names": [
+            "Northwind Generation Ltd",
+            "Northwind Grid Services GmbH",
+            "Northwind Solar Iberia Branch",
+            "Leeds Service Operations"
+          ]
+        }
+      },
+      {
+        "disclosure_requirement_id": 3,
+        "status": "missing",
+        "completion_percent": 0,
+        "code": "IFRS S1 GOV-1",
+        "title": "Governance oversight of sustainability risks and opportunities",
+        "entity_breakdown": {
+          "covered_entities": 0,
+          "missing_entities": 6,
+          "excluded_entities": 1,
+          "missing_entity_names": [
+            "Northwind Generation Ltd",
+            "Northwind Grid Services GmbH",
+            "Northwind Solar Iberia Branch",
+            "Hamburg Wind Farm",
+            "Leeds Service Operations"
+          ]
+        }
+      },
+      {
+        "disclosure_requirement_id": 4,
+        "status": "complete",
+        "completion_percent": 100,
+        "code": "IFRS S2 MET-4",
+        "title": "Greenhouse gas emissions metrics",
+        "entity_breakdown": {
+          "covered_entities": 2,
+          "missing_entities": 4,
+          "excluded_entities": 1,
+          "missing_entity_names": [
+            "Northwind Generation Ltd",
+            "Northwind Solar Iberia Branch",
+            "Leeds Service Operations"
+          ]
+        }
+      },
+      {
+        "disclosure_requirement_id": 5,
+        "status": "complete",
+        "completion_percent": 100,
+        "code": "ESRS E1-6",
+        "title": "Gross Scope 1, 2 and 3 GHG emissions",
+        "entity_breakdown": {
+          "covered_entities": 2,
+          "missing_entities": 4,
+          "excluded_entities": 1,
+          "missing_entity_names": [
+            "Northwind Generation Ltd",
+            "Northwind Solar Iberia Branch",
+            "Leeds Service Operations"
+          ]
+        }
+      }
+    ],
+    "overall_percent": 85.7,
+    "overall_status": "partial",
+    "boundary_context": {
+      "boundary_id": 2,
+      "boundary_name": "FY2025 Sustainability Boundary",
+      "snapshot_date": "2026-03-23T14:35:00.716215+00:00",
+      "entities_in_scope": 6,
+      "excluded_entities": 1,
+      "snapshot_locked": true,
+      "entities_without_data": [
+        "Northwind Solar Iberia Branch",
+        "Leeds Service Operations"
+      ]
+    }
+  },
+  "audit_action_sample": [
+    "assignment_created",
+    "data_point_approved",
+    "data_point_created",
+    "data_point_revision_requested",
+    "data_point_submitted",
+    "evidence_created",
+    "evidence_linked",
+    "gate_check"
+  ],
+  "runtime": {
+    "customStandardId": 5,
+    "customDisclosureId": 6,
+    "customItemId": 8,
+    "customSharedElementId": 5,
+    "customAssignmentId": 5,
+    "energyDataPointId": 1,
+    "scope1DataPointId": 2,
+    "scope2DataPointId": 3,
+    "customDataPointId": 4,
+    "governanceDataPointId": 5
+  }
+}
