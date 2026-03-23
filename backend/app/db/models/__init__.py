@@ -2,6 +2,11 @@ from app.db.models.audit_log import AuditLog
 from app.db.models.base import Base
 from app.db.models.boundary import BoundaryDefinition, BoundaryMembership
 from app.db.models.company_entity import CompanyEntity, ControlLink, OwnershipLink
+from app.db.models.completeness import (
+    DisclosureRequirementStatus,
+    RequirementItemDataPoint,
+    RequirementItemStatus,
+)
 from app.db.models.data_point import DataPoint, DataPointDimension
 from app.db.models.evidence import DataPointEvidence, Evidence, EvidenceFile, EvidenceLink
 from app.db.models.mapping import RequirementItemSharedElement
@@ -24,4 +29,5 @@ __all__ = [
     "ReportingProject", "ReportingProjectStandard", "MetricAssignment",
     "DataPoint", "DataPointDimension",
     "Evidence", "EvidenceFile", "EvidenceLink", "DataPointEvidence",
+    "RequirementItemDataPoint", "RequirementItemStatus", "DisclosureRequirementStatus",
 ]

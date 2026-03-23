@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.routes import (
     auth,
+    completeness,
     data_points,
     entities,
     health,
@@ -58,6 +59,7 @@ def create_app() -> FastAPI:
     app.include_router(projects.router)
     app.include_router(data_points.router)
     app.include_router(workflow.router)
+    app.include_router(completeness.router)
 
     return app
 
