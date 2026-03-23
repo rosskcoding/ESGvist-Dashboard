@@ -3,16 +3,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.routes import (
+    audit,
     auth,
     completeness,
     data_points,
     entities,
+    export,
     health,
     mappings,
     notifications,
     projects,
     requirement_items,
     reuse,
+    review,
     shared_elements,
     standards,
     workflow,
@@ -64,6 +67,9 @@ def create_app() -> FastAPI:
     app.include_router(completeness.router)
     app.include_router(reuse.router)
     app.include_router(notifications.router)
+    app.include_router(review.router)
+    app.include_router(export.router)
+    app.include_router(audit.router)
 
     return app
 
