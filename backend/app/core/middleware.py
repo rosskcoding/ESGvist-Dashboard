@@ -1,13 +1,14 @@
-import json
-import logging
 import time
 import uuid
 
+import structlog
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
 
-logger = logging.getLogger("app.requests")
+from app.core.config import settings
+
+logger = structlog.get_logger("app.requests")
 
 
 class RequestIdMiddleware(BaseHTTPMiddleware):
@@ -50,10 +51,12 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         }
 
         if response.status_code >= 500:
-            logger.error(json.dumps(log_data))
+            logger.error("http_request", **log_data)
         elif response.status_code >= 400:
-            logger.warning(json.dumps(log_data))
+            logger.warning("http_request", **log_data)
+        elif duration_ms >= settings.slow_request_warning_ms:
+            logger.warning("http_request_slow", **log_data)
         else:
-            logger.info(json.dumps(log_data))
+            logger.info("http_request", **log_data)
 
         return response

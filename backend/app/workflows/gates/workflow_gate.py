@@ -75,3 +75,21 @@ class LockedStateGate(Gate):
                 severity="blocker",
             )
         return None
+
+
+class ExportInProgressGate(Gate):
+    """Blocks export queueing when another export job is already active."""
+
+    def applies_to(self, action: str) -> bool:
+        return action in ("start_export",)
+
+    async def evaluate(self, context: dict) -> GateFailure | None:
+        active_export_count = context.get("active_export_count", 0)
+        if active_export_count > 0:
+            return GateFailure(
+                code="EXPORT_IN_PROGRESS",
+                gate_type="workflow",
+                message="An export job is already queued or running for this project",
+                severity="blocker",
+            )
+        return None

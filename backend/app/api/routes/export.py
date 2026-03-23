@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import RequestContext, get_current_context
 from app.db.session import get_session
 from app.repositories.audit_repo import AuditRepository
 from app.repositories.export_repo import ExportRepository
+from app.repositories.idempotency_repo import IdempotencyRepository
 from app.repositories.project_repo import ProjectRepository
 from app.schemas.export import ExportJobCreate
 from app.services.export_service import ExportService
@@ -25,6 +26,7 @@ def _export_service(session: AsyncSession) -> ExportService:
         session,
         repo=ExportRepository(session),
         audit_repo=AuditRepository(session),
+        idempotency_repo=IdempotencyRepository(session),
     )
 
 
@@ -42,10 +44,16 @@ async def readiness_check(
 async def queue_export_job(
     project_id: int,
     payload: ExportJobCreate,
+    x_idempotency_key: str | None = Header(default=None, alias="X-Idempotency-Key"),
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    return await _export_service(session).queue_export_job(project_id, payload, ctx)
+    return await _export_service(session).queue_export_job(
+        project_id,
+        payload,
+        ctx,
+        idempotency_key=x_idempotency_key,
+    )
 
 
 @router.get("/api/projects/{project_id}/exports")

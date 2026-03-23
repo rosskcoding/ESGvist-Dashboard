@@ -3,6 +3,14 @@ from httpx import AsyncClient
 from sqlalchemy import select
 
 from app.db.models.audit_log import AuditLog
+from app.db.models.boundary import BoundaryDefinition
+from app.db.models.boundary_snapshot import BoundarySnapshot
+from app.db.models.completeness import RequirementItemStatus
+from app.db.models.data_point import DataPoint
+from app.db.models.requirement_item import RequirementItem
+from app.db.models.shared_element import SharedElement
+from app.db.models.standard import DisclosureRequirement, Standard
+from app.db.models.project import ReportingProject
 from app.workers.job_runner import JobRunner
 from tests.conftest import TestSessionLocal
 
@@ -24,6 +32,7 @@ async def _register_and_login(client: AsyncClient, *, email: str, full_name: str
 
 async def _setup_project(client: AsyncClient, *, email: str, org_name: str, project_name: str) -> dict:
     admin = await _register_and_login(client, email=email, full_name="Export Admin")
+    me = await client.get("/api/auth/me", headers=admin["headers"])
     org = await client.post(
         "/api/organizations/setup",
         json={"name": org_name, "country": "GB"},
@@ -37,12 +46,92 @@ async def _setup_project(client: AsyncClient, *, email: str, org_name: str, proj
         headers=tenant_headers,
     )
     assert project.status_code == 201
+    await _make_project_export_ready(
+        organization_id=org.json()["organization_id"],
+        project_id=project.json()["id"],
+        user_id=me.json()["id"],
+    )
     return {
         "platform_headers": admin["headers"],
         "tenant_headers": tenant_headers,
         "org_id": org.json()["organization_id"],
         "project_id": project.json()["id"],
+        "user_id": me.json()["id"],
     }
+
+
+async def _make_project_export_ready(*, organization_id: int, project_id: int, user_id: int) -> None:
+    async with TestSessionLocal() as session:
+        project = await session.get(ReportingProject, project_id)
+
+        boundary = BoundaryDefinition(
+            organization_id=organization_id,
+            name=f"Export Boundary {project_id}",
+            boundary_type="operational_control",
+            is_default=False,
+        )
+        session.add(boundary)
+        await session.flush()
+        project.boundary_definition_id = boundary.id
+
+        shared_element = SharedElement(
+            code=f"EXPORT-SE-{project_id}",
+            name=f"Export Shared Element {project_id}",
+        )
+        session.add(shared_element)
+        await session.flush()
+
+        standard = Standard(code=f"EXPORT-STD-{project_id}", name=f"Export Standard {project_id}")
+        session.add(standard)
+        await session.flush()
+
+        disclosure = DisclosureRequirement(
+            standard_id=standard.id,
+            code=f"DISC-{project_id}",
+            title=f"Disclosure {project_id}",
+            requirement_type="quantitative",
+            mandatory_level="mandatory",
+        )
+        session.add(disclosure)
+        await session.flush()
+
+        item = RequirementItem(
+            disclosure_requirement_id=disclosure.id,
+            item_code=f"ITEM-{project_id}",
+            name=f"Item {project_id}",
+            item_type="metric",
+            value_type="number",
+            is_required=True,
+        )
+        session.add(item)
+        await session.flush()
+
+        data_point = DataPoint(
+            reporting_project_id=project_id,
+            shared_element_id=shared_element.id,
+            status="approved",
+            numeric_value=1,
+            created_by=user_id,
+        )
+        session.add(data_point)
+        await session.flush()
+
+        session.add(
+            RequirementItemStatus(
+                reporting_project_id=project_id,
+                requirement_item_id=item.id,
+                status="complete",
+            )
+        )
+        session.add(
+            BoundarySnapshot(
+                reporting_project_id=project_id,
+                boundary_definition_id=boundary.id,
+                snapshot_data={"locked": True},
+                created_by=user_id,
+            )
+        )
+        await session.commit()
 
 
 @pytest.mark.asyncio
@@ -150,3 +239,97 @@ async def test_export_artifact_returns_conflict_while_job_is_still_queued(client
     )
     assert artifact.status_code == 409
     assert artifact.json()["error"]["code"] == "EXPORT_ARTIFACT_NOT_READY"
+
+
+@pytest.mark.asyncio
+async def test_duplicate_export_is_blocked_while_job_is_active(client: AsyncClient):
+    ctx = await _setup_project(
+        client,
+        email="export-duplicate@test.com",
+        org_name="Export Duplicate Org",
+        project_name="Duplicate Export Project",
+    )
+
+    first = await client.post(
+        f"/api/projects/{ctx['project_id']}/exports",
+        json={"export_format": "json", "report_type": "project_report"},
+        headers=ctx["tenant_headers"],
+    )
+    assert first.status_code == 201
+
+    second = await client.post(
+        f"/api/projects/{ctx['project_id']}/exports",
+        json={"export_format": "csv", "report_type": "readiness_snapshot"},
+        headers=ctx["tenant_headers"],
+    )
+    assert second.status_code == 422
+    assert second.json()["error"]["code"] == "EXPORT_IN_PROGRESS"
+
+
+@pytest.mark.asyncio
+async def test_export_queue_replays_same_job_with_idempotency_key(client: AsyncClient):
+    ctx = await _setup_project(
+        client,
+        email="export-idempotent@test.com",
+        org_name="Export Idempotent Org",
+        project_name="Idempotent Export Project",
+    )
+    headers = {**ctx["tenant_headers"], "X-Idempotency-Key": "export-key-1"}
+
+    first = await client.post(
+        f"/api/projects/{ctx['project_id']}/exports",
+        json={"export_format": "json", "report_type": "project_report"},
+        headers=headers,
+    )
+    assert first.status_code == 201
+
+    replay = await client.post(
+        f"/api/projects/{ctx['project_id']}/exports",
+        json={"export_format": "json", "report_type": "project_report"},
+        headers=headers,
+    )
+    assert replay.status_code == 201
+    assert replay.json()["id"] == first.json()["id"]
+    assert replay.json()["status"] == "queued"
+
+    conflict = await client.post(
+        f"/api/projects/{ctx['project_id']}/exports",
+        json={"export_format": "csv", "report_type": "readiness_snapshot"},
+        headers=headers,
+    )
+    assert conflict.status_code == 409
+    assert conflict.json()["error"]["code"] == "IDEMPOTENCY_KEY_REUSED"
+
+
+@pytest.mark.asyncio
+async def test_gate_check_supports_start_export_and_reports_active_export(client: AsyncClient):
+    ctx = await _setup_project(
+        client,
+        email="export-gate@test.com",
+        org_name="Export Gate Org",
+        project_name="Gate Export Project",
+    )
+
+    allowed = await client.post(
+        "/api/gate-check",
+        json={"action": "start_export", "project_id": ctx["project_id"]},
+        headers=ctx["tenant_headers"],
+    )
+    assert allowed.status_code == 200
+    assert allowed.json()["allowed"] is True
+
+    queued = await client.post(
+        f"/api/projects/{ctx['project_id']}/exports",
+        json={"export_format": "json", "report_type": "project_report"},
+        headers=ctx["tenant_headers"],
+    )
+    assert queued.status_code == 201
+
+    blocked = await client.post(
+        "/api/gate-check",
+        json={"action": "start_export", "project_id": ctx["project_id"]},
+        headers=ctx["tenant_headers"],
+    )
+    assert blocked.status_code == 200
+    assert blocked.json()["allowed"] is False
+    assert any(gate["code"] == "EXPORT_IN_PROGRESS" for gate in blocked.json()["failedGates"])

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.access import get_project_for_ctx
 from app.core.dependencies import RequestContext
-from app.core.exceptions import AppError
+from app.core.exceptions import AppError, GateBlockedError
 from app.db.models.boundary import BoundaryDefinition, BoundaryMembership
 from app.db.models.boundary_snapshot import BoundarySnapshot
 from app.db.models.company_entity import CompanyEntity
@@ -19,7 +19,13 @@ from app.db.models.export_job import ExportJob
 from app.db.models.project import ReportingProject
 from app.repositories.audit_repo import AuditRepository
 from app.repositories.export_repo import ExportRepository
+from app.repositories.idempotency_repo import IdempotencyRepository
 from app.schemas.export import ExportArtifactOut, ExportJobCreate, ExportJobListOut, ExportJobOut
+from app.workflows.gates.base import GateEngine
+from app.workflows.gates.boundary_gate import BoundaryNotLockedGate
+from app.workflows.gates.completeness_gate import ProjectIncompleteGate
+from app.workflows.gates.review_gate import ReviewNotCompletedGate
+from app.workflows.gates.workflow_gate import ExportInProgressGate
 
 
 class ExportService:
@@ -28,10 +34,20 @@ class ExportService:
         session: AsyncSession,
         repo: ExportRepository | None = None,
         audit_repo: AuditRepository | None = None,
+        idempotency_repo: IdempotencyRepository | None = None,
     ):
         self.session = session
         self.repo = repo or ExportRepository(session)
         self.audit_repo = audit_repo
+        self.idempotency_repo = idempotency_repo or IdempotencyRepository(session)
+        self.export_gate_engine = GateEngine(
+            [
+                ReviewNotCompletedGate(),
+                ProjectIncompleteGate(),
+                BoundaryNotLockedGate(),
+                ExportInProgressGate(),
+            ]
+        )
 
     @staticmethod
     def _require_export_admin(ctx: RequestContext) -> None:
@@ -63,6 +79,17 @@ class ExportService:
             started_at=job.started_at,
             completed_at=job.completed_at,
         )
+
+    @staticmethod
+    def _request_fingerprint(project_id: int, payload: ExportJobCreate) -> str:
+        serialized = json.dumps(
+            {
+                "project_id": project_id,
+                "payload": payload.model_dump(mode="json"),
+            },
+            sort_keys=True,
+        )
+        return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
     async def _audit(
         self,
@@ -96,9 +123,101 @@ class ExportService:
         )
         return job
 
+    async def _build_export_gate_context(
+        self,
+        project_id: int,
+        ctx: RequestContext,
+        completion_threshold: int = 100,
+    ) -> dict:
+        project = await get_project_for_ctx(
+            self.session,
+            project_id,
+            ctx,
+            allow_collectors=False,
+            allow_reviewers=False,
+        )
+        total_data_point_count = (
+            await self.session.execute(
+                select(func.count()).select_from(DataPoint).where(
+                    DataPoint.reporting_project_id == project_id
+                )
+            )
+        ).scalar_one()
+        reviewed_count = (
+            await self.session.execute(
+                select(func.count()).select_from(DataPoint).where(
+                    DataPoint.reporting_project_id == project_id,
+                    DataPoint.status.in_(("approved", "rejected", "needs_revision")),
+                )
+            )
+        ).scalar_one()
+        status_rows = (
+            await self.session.execute(
+                select(RequirementItemStatus.status, func.count())
+                .where(RequirementItemStatus.reporting_project_id == project_id)
+                .group_by(RequirementItemStatus.status)
+            )
+        ).all()
+        status_counts = {status: count for status, count in status_rows}
+        total_item_statuses = sum(status_counts.values())
+        complete_items = status_counts.get("complete", 0)
+        snapshot = (
+            await self.session.execute(
+                select(BoundarySnapshot).where(BoundarySnapshot.reporting_project_id == project_id)
+            )
+        ).scalar_one_or_none()
+        completion_percent = (
+            (complete_items / total_item_statuses) * 100 if total_item_statuses else 0
+        )
+        return {
+            "project": project,
+            "reviewed_count": reviewed_count,
+            "total_data_point_count": total_data_point_count,
+            "completion_percent": round(completion_percent, 1),
+            "completion_threshold": completion_threshold,
+            "boundary_snapshot_locked": (
+                snapshot is not None
+                and snapshot.boundary_definition_id == project.boundary_definition_id
+            ),
+            "active_export_count": await self.repo.count_active_jobs(project_id),
+        }
+
+    async def gate_check_start_export(self, project_id: int, ctx: RequestContext) -> dict:
+        self._require_export_reader(ctx)
+        context = await self._build_export_gate_context(project_id, ctx)
+        result = await self.export_gate_engine.check("start_export", context)
+        gate_log = {
+            "action": "start_export",
+            "allowed": result.allowed,
+            "failed_codes": [gate.code for gate in result.failed_gates],
+            "warning_codes": [gate.code for gate in result.warnings],
+        }
+        if self.audit_repo:
+            await self.audit_repo.log(
+                entity_type="ReportingProject",
+                entity_id=project_id,
+                action="gate_check",
+                user_id=ctx.user_id,
+                organization_id=ctx.organization_id,
+                changes=gate_log,
+                performed_by_platform_admin=ctx.is_platform_admin,
+            )
+        return {
+            "allowed": result.allowed,
+            "failedGates": [
+                {"code": gate.code, "type": gate.gate_type, "message": gate.message, "severity": gate.severity}
+                for gate in result.failed_gates
+            ],
+            "warnings": [
+                {"code": gate.code, "type": gate.gate_type, "message": gate.message}
+                for gate in result.warnings
+            ],
+        }
+
     @staticmethod
     def _build_csv_artifact(payload: dict) -> str:
         buffer = StringIO()
+        boundary = payload.get("boundary") or {}
         writer = csv.writer(buffer)
         writer.writerow(["field", "value"])
         writer.writerow(["project_id", payload["project"]["id"]])
@@ -113,8 +232,8 @@ class ExportService:
         writer.writerow(["missing_items", payload["readiness"]["missing"]])
         writer.writerow(["blocking_issues", payload["readiness"]["blocking_issues"]])
         writer.writerow(["warnings", payload["readiness"]["warnings"]])
-        writer.writerow(["boundary_type", payload["boundary"].get("boundary_type") or ""])
-        writer.writerow(["entities_in_scope", payload["boundary"].get("entities_in_scope", 0)])
+        writer.writerow(["boundary_type", boundary.get("boundary_type") or ""])
+        writer.writerow(["entities_in_scope", boundary.get("entities_in_scope", 0)])
         return buffer.getvalue()
 
     async def _build_export_payload(self, project_id: int) -> dict:
@@ -137,15 +256,43 @@ class ExportService:
         project_id: int,
         payload: ExportJobCreate,
         ctx: RequestContext,
+        idempotency_key: str | None = None,
     ) -> ExportJobOut:
         self._require_export_admin(ctx)
-        project = await get_project_for_ctx(
-            self.session,
-            project_id,
-            ctx,
-            allow_collectors=False,
-            allow_reviewers=False,
-        )
+        if not ctx.organization_id:
+            raise AppError("ORG_HEADER_REQUIRED", 400, "Organization context required")
+
+        path = f"/api/projects/{project_id}/exports"
+        request_fingerprint = self._request_fingerprint(project_id, payload)
+        if idempotency_key:
+            existing_record = await self.idempotency_repo.get_record(
+                organization_id=ctx.organization_id,
+                user_id=ctx.user_id,
+                method="POST",
+                path=path,
+                idempotency_key=idempotency_key,
+            )
+            if existing_record:
+                if existing_record.request_fingerprint != request_fingerprint:
+                    raise AppError(
+                        "IDEMPOTENCY_KEY_REUSED",
+                        409,
+                        "Idempotency key was already used with a different request payload",
+                    )
+                return ExportJobOut(**existing_record.response_body)
+
+        context = await self._build_export_gate_context(project_id, ctx)
+        gate_result = await self.gate_check_start_export(project_id, ctx)
+        if not gate_result["allowed"]:
+            primary = gate_result["failedGates"][0]
+            raise GateBlockedError(
+                code=primary["code"],
+                message=primary["message"],
+                failed_gates=gate_result["failedGates"],
+                warnings=gate_result["warnings"],
+            )
+
+        project = context["project"]
         job = await self.repo.create_job(
             organization_id=project.organization_id,
             reporting_project_id=project.id,
@@ -160,7 +307,19 @@ class ExportService:
             ctx=ctx,
             changes={"export_format": payload.export_format, "report_type": payload.report_type},
         )
-        return self._serialize_job(job)
+        serialized = self._serialize_job(job)
+        if idempotency_key:
+            await self.idempotency_repo.create_record(
+                organization_id=ctx.organization_id,
+                user_id=ctx.user_id,
+                method="POST",
+                path=path,
+                idempotency_key=idempotency_key,
+                request_fingerprint=request_fingerprint,
+                response_status_code=201,
+                response_body=serialized.model_dump(mode="json"),
+            )
+        return serialized
 
     async def list_export_jobs(
         self,

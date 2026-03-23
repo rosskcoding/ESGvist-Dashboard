@@ -43,6 +43,12 @@ EVENT_ROUTING: dict[str, dict] = {
     "webhook_dead_letter": {"roles": ["admin"], "severity": "critical", "channel": "both"},
 }
 
+DEFAULT_NOTIFICATION_PREFS = {
+    "email": True,
+    "in_app": True,
+    "email_info_level": False,
+}
+
 
 class NotificationService:
     def __init__(self, repo: NotificationRepository, email_sender: BaseEmailSender | None = None):
@@ -57,18 +63,46 @@ class NotificationService:
             return routing["channel"]
         return "both" if severity in {"critical", "important"} else "in_app"
 
+    @staticmethod
+    def _merged_preferences(user: User | None) -> dict:
+        prefs = dict(DEFAULT_NOTIFICATION_PREFS)
+        if user and isinstance(user.notification_prefs, dict):
+            prefs.update(user.notification_prefs)
+        return prefs
+
+    @classmethod
+    def _apply_preferences(cls, user: User | None, channel: str, severity: str) -> str | None:
+        prefs = cls._merged_preferences(user)
+        wants_email = channel in {"email", "both"}
+        wants_in_app = channel in {"in_app", "both"}
+        email_allowed = bool(prefs["email"]) and (severity != "info" or bool(prefs["email_info_level"]))
+        in_app_allowed = bool(prefs["in_app"])
+
+        final_email = wants_email and email_allowed
+        final_in_app = wants_in_app and in_app_allowed
+
+        if final_email and final_in_app:
+            return "both"
+        if final_email:
+            return "email"
+        if final_in_app:
+            return "in_app"
+        return None
+
+    async def _get_user(self, user_id: int) -> User | None:
+        result = await self.repo.session.execute(select(User).where(User.id == user_id))
+        return result.scalar_one_or_none()
+
     async def _deliver_email(
         self,
         *,
-        user_id: int,
+        user: User | None,
         channel: str,
         title: str,
         message: str,
     ) -> tuple[bool, datetime | None]:
         if channel not in {"email", "both"}:
             return False, None
-        result = await self.repo.session.execute(select(User).where(User.id == user_id))
-        user = result.scalar_one_or_none()
         if not user or not user.email:
             return False, None
 
@@ -101,6 +135,10 @@ class NotificationService:
         if triggered_by and triggered_by == user_id:
             return None
 
+        user = await self._get_user(user_id)
+        if not user:
+            return None
+
         # Deduplication: don't create duplicate notification for same user+type+entity
         existing = await self.repo.session.execute(
             select(Notification).where(
@@ -116,8 +154,11 @@ class NotificationService:
             return None  # Already notified, skip
 
         resolved_channel = self._resolve_channel(type, severity, channel)
+        resolved_channel = self._apply_preferences(user, resolved_channel, severity)
+        if resolved_channel is None:
+            return None
         email_sent, email_sent_at = await self._deliver_email(
-            user_id=user_id,
+            user=user,
             channel=resolved_channel,
             title=title,
             message=message,
@@ -142,6 +183,20 @@ class NotificationService:
             "channel": n.channel,
             "email_sent": n.email_sent,
         }
+
+    async def get_preferences(self, user_id: int) -> dict:
+        user = await self._get_user(user_id)
+        return self._merged_preferences(user)
+
+    async def update_preferences(self, user_id: int, updates: dict) -> dict:
+        user = await self._get_user(user_id)
+        if not user:
+            return dict(DEFAULT_NOTIFICATION_PREFS)
+        prefs = self._merged_preferences(user)
+        prefs.update(updates)
+        user.notification_prefs = prefs
+        await self.repo.session.flush()
+        return prefs
 
     async def list_notifications(
         self,

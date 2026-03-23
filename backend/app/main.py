@@ -28,6 +28,7 @@ from app.api.routes import (
     review,
     shared_elements,
     snapshots,
+    sso,
     standards,
     webhooks,
     workflow,
@@ -35,13 +36,15 @@ from app.api.routes import (
 )
 from app.core.config import settings
 from app.core.exceptions import AppError
+from app.core.logging import configure_logging
 from app.core.middleware import RequestIdMiddleware
 
 
 def create_app() -> FastAPI:
+    configure_logging(debug=settings.debug)
     app = FastAPI(
         title=settings.app_name,
-        version="0.1.0",
+        version=settings.app_version,
         docs_url="/docs" if settings.debug else None,
         redoc_url="/redoc" if settings.debug else None,
     )
@@ -96,6 +99,7 @@ def create_app() -> FastAPI:
     app.include_router(snapshots.router)
     app.include_router(dashboard.router)
     app.include_router(webhooks.router)
+    app.include_router(sso.router)
 
     # Wire event bus
     from app.events.registry import register_event_handlers

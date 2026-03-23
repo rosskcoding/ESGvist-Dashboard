@@ -1,4 +1,4 @@
-from fastapi import Depends, Header
+from fastapi import Depends, Header, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -28,6 +28,7 @@ class RequestContext(BaseModel):
 
 
 async def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
     session: AsyncSession = Depends(get_session),
 ) -> CurrentUser:
@@ -38,10 +39,12 @@ async def get_current_user(
     user = result.scalar_one_or_none()
     if not user or not user.is_active:
         raise AppError(code="FORBIDDEN", status_code=403, message="Account is deactivated")
+    request.state.user_id = user.id
     return CurrentUser(id=payload.sub, email=payload.email)
 
 
 async def get_current_context(
+    request: Request,
     user: CurrentUser = Depends(get_current_user),
     x_organization_id: int | None = Header(None, alias="X-Organization-Id"),
     session: AsyncSession = Depends(get_session),
@@ -58,6 +61,8 @@ async def get_current_context(
 
     # Platform endpoints — no org needed
     if is_platform_admin and x_organization_id is None:
+        request.state.user_id = user.id
+        request.state.role = "platform_admin"
         return RequestContext(
             user_id=user.id,
             email=user.email,
@@ -95,6 +100,8 @@ async def get_current_context(
     organization = org_result.scalar_one_or_none()
     if not organization:
         if is_platform_admin and binding is None:
+            request.state.user_id = user.id
+            request.state.role = "platform_admin"
             return RequestContext(
                 user_id=user.id,
                 email=user.email,
@@ -109,6 +116,9 @@ async def get_current_context(
         if organization.status == "archived":
             raise AppError("TENANT_ARCHIVED", 403, "Tenant is archived")
 
+    request.state.user_id = user.id
+    request.state.organization_id = x_organization_id
+    request.state.role = binding.role if binding else "platform_admin"
     return RequestContext(
         user_id=user.id,
         email=user.email,

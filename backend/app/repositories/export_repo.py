@@ -60,3 +60,12 @@ class ExportRepository:
             .limit(limit)
         )
         return list(result.scalars().all())
+
+    async def count_active_jobs(self, project_id: int) -> int:
+        result = await self.session.execute(
+            select(func.count()).select_from(ExportJob).where(
+                ExportJob.reporting_project_id == project_id,
+                ExportJob.status.in_(("queued", "running")),
+            )
+        )
+        return result.scalar_one()

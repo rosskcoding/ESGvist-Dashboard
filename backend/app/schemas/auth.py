@@ -85,3 +85,18 @@ class UserRoleBindingCreateRequest(BaseModel):
     role: Literal["platform_admin", "admin", "esg_manager", "reviewer", "collector", "auditor"]
     scope_type: Literal["platform", "organization"]
     scope_id: int | None = None
+
+
+class OrganizationAuthSettingsUpdate(BaseModel):
+    allow_password_login: bool | None = None
+    allow_sso_login: bool | None = None
+    enforce_sso: bool | None = None
+
+
+class OrganizationAuthSettingsOut(BaseModel):
+    organization_id: int
+    allow_password_login: bool
+    allow_sso_login: bool
+    enforce_sso: bool
+    active_sso_provider_count: int
+    sso_available: bool

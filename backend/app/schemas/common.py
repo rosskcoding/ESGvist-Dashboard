@@ -22,3 +22,4 @@ class HealthResponse(BaseModel):
     status: str
     checks: dict[str, str] = {}
     version: str = "0.1.0"
+    uptime: int = 0

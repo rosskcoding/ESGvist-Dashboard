@@ -82,6 +82,12 @@ export default function LoginPage() {
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Signing in..." : "Sign in"}
           </Button>
+
+          <div className="rounded-md bg-slate-50 border border-slate-200 p-3 text-xs text-slate-500">
+            <p className="font-medium text-slate-600 mb-1">Dev credentials:</p>
+            <p>Email: <span className="font-mono text-slate-700">admin@esgvist.com</span></p>
+            <p>Password: <span className="font-mono text-slate-700">Admin12345</span></p>
+          </div>
         </form>
       </CardContent>
 

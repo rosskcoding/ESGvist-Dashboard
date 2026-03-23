@@ -5,6 +5,7 @@ from app.core.dependencies import RequestContext, get_current_context
 from app.core.exceptions import AppError
 from app.db.session import get_session
 from app.repositories.notification_repo import NotificationRepository
+from app.schemas.notifications import NotificationPreferencesOut, NotificationPreferencesUpdate
 from app.services.notification_service import NotificationService
 
 router = APIRouter(prefix="/api/notifications", tags=["Notifications"])
@@ -70,3 +71,25 @@ async def mark_all_read(
 ):
     org_id = _require_notification_access(ctx)
     return await _get_service(session).mark_all_read(ctx.user_id, org_id)
+
+
+@router.get("/preferences", response_model=NotificationPreferencesOut)
+async def get_preferences(
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    _require_notification_access(ctx)
+    return await _get_service(session).get_preferences(ctx.user_id)
+
+
+@router.patch("/preferences", response_model=NotificationPreferencesOut)
+async def update_preferences(
+    payload: NotificationPreferencesUpdate,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    _require_notification_access(ctx)
+    return await _get_service(session).update_preferences(
+        ctx.user_id,
+        payload.model_dump(exclude_unset=True),
+    )

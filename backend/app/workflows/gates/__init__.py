@@ -19,6 +19,7 @@ from app.workflows.gates.review_gate import (
 from app.workflows.gates.workflow_gate import (
     CommentRequiredGate,
     DataPointLockedGate,
+    ExportInProgressGate,
     LockedStateGate,
     WorkflowTransitionGate,
 )
@@ -48,5 +49,6 @@ __all__ = [
     "WorkflowTransitionGate",
     "CommentRequiredGate",
     "DataPointLockedGate",
+    "ExportInProgressGate",
     "LockedStateGate",
 ]

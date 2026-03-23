@@ -14,6 +14,7 @@ from app.db.models.delta import RequirementDelta
 from app.db.models.evidence import DataPointEvidence, Evidence, EvidenceFile, EvidenceLink
 from app.db.models.export_job import ExportJob
 from app.db.models.invitation import UserInvitation
+from app.db.models.idempotency_record import IdempotencyRecord
 from app.db.models.mapping import RequirementItemSharedElement
 from app.db.models.notification import Notification
 from app.db.models.organization import Organization
@@ -24,6 +25,7 @@ from app.db.models.requirement_item_evidence import RequirementItemEvidence
 from app.db.models.role_binding import RoleBinding
 from app.db.models.shared_element import SharedElement, SharedElementDimension
 from app.db.models.standard import DisclosureRequirement, Standard, StandardSection
+from app.db.models.sso import ExternalIdentity, SSOLoginState, SSOProvider
 from app.db.models.unit_reference import BoundaryApproach, Methodology, UnitReference
 from app.db.models.comment import Comment
 from app.db.models.webhook import WebhookDelivery, WebhookEndpoint
@@ -43,5 +45,6 @@ __all__ = [
     "Notification", "RequirementDelta",
     "UserInvitation", "RequirementItemEvidence", "AIInteraction",
     "Comment", "UnitReference", "Methodology", "BoundaryApproach",
-    "WebhookEndpoint", "WebhookDelivery", "ExportJob",
+    "WebhookEndpoint", "WebhookDelivery", "ExportJob", "IdempotencyRecord",
+    "SSOProvider", "ExternalIdentity", "SSOLoginState",
 ]

@@ -2,13 +2,17 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import AppError
 from app.core.dependencies import RequestContext, get_current_context
 from app.db.session import get_session
 from app.policies.auth_policy import AuthPolicy
 from app.repositories.audit_repo import AuditRepository
 from app.repositories.data_point_repo import DataPointRepository
 from app.repositories.evidence_repo import EvidenceRepository
+from app.repositories.export_repo import ExportRepository
+from app.repositories.idempotency_repo import IdempotencyRepository
 from app.services.workflow_service import WorkflowService
+from app.services.export_service import ExportService
 
 router = APIRouter(tags=["Workflow"])
 
@@ -19,7 +23,8 @@ class WorkflowAction(BaseModel):
 
 class GateCheckRequest(BaseModel):
     action: str
-    data_point_id: int
+    data_point_id: int | None = None
+    project_id: int | None = None
     comment: str | None = None
 
 
@@ -28,6 +33,15 @@ def _get_service(session: AsyncSession) -> WorkflowService:
         dp_repo=DataPointRepository(session),
         evidence_repo=EvidenceRepository(session),
         audit_repo=AuditRepository(session),
+    )
+
+
+def _get_export_service(session: AsyncSession) -> ExportService:
+    return ExportService(
+        session,
+        repo=ExportRepository(session),
+        audit_repo=AuditRepository(session),
+        idempotency_repo=IdempotencyRepository(session),
     )
 
 
@@ -91,6 +105,17 @@ async def gate_check(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    return await _get_service(session).gate_check(
-        payload.action, payload.data_point_id, ctx, payload.comment
+    if payload.data_point_id is not None:
+        return await _get_service(session).gate_check(
+            payload.action,
+            payload.data_point_id,
+            ctx,
+            payload.comment,
+        )
+    if payload.project_id is not None and payload.action == "start_export":
+        return await _get_export_service(session).gate_check_start_export(payload.project_id, ctx)
+    raise AppError(
+        "GATE_CHECK_RESOURCE_REQUIRED",
+        422,
+        "gate-check requires data_point_id for data point actions or project_id for start_export",
     )

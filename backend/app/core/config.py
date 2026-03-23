@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     # App
     debug: bool = True
     app_name: str = "ESGvist API"
+    app_version: str = "0.1.0"
+    slow_request_warning_ms: int = 1000
 
     # Self-service registration
     allow_self_registration: bool = True
@@ -34,6 +36,9 @@ class Settings(BaseSettings):
     ai_enabled: bool = False
     ai_provider: str = "static"
     ai_model: str = "static-ai"
+
+    # Storage
+    storage_backend: str = "local"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

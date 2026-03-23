@@ -5,6 +5,8 @@ from httpx import AsyncClient
 
 from app.core.config import settings
 from app.db.models.notification import Notification
+from app.repositories.notification_repo import NotificationRepository
+from app.services.notification_service import NotificationService
 from tests.conftest import TestSessionLocal
 
 
@@ -166,6 +168,72 @@ async def test_mark_all_read(client: AsyncClient, ctx: dict):
 
     count = await client.get("/api/notifications/unread-count", headers=ctx["headers"])
     assert count.json()["unread_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_notification_preferences_can_be_read_and_updated(client: AsyncClient, ctx: dict):
+    initial = await client.get("/api/notifications/preferences", headers=ctx["headers"])
+    assert initial.status_code == 200
+    assert initial.json() == {"email": True, "in_app": True, "email_info_level": False}
+
+    updated = await client.patch(
+        "/api/notifications/preferences",
+        json={"email": False, "email_info_level": True},
+        headers=ctx["headers"],
+    )
+    assert updated.status_code == 200
+    assert updated.json() == {"email": False, "in_app": True, "email_info_level": True}
+
+
+@pytest.mark.asyncio
+async def test_notification_preferences_affect_delivery_channels(client: AsyncClient, ctx: dict):
+    updated = await client.patch(
+        "/api/notifications/preferences",
+        json={"email": False, "in_app": True},
+        headers=ctx["headers"],
+    )
+    assert updated.status_code == 200
+
+    async with TestSessionLocal() as session:
+        service = NotificationService(NotificationRepository(session))
+        result = await service.notify(
+            user_id=1,
+            org_id=ctx["org_id"],
+            type="prefs_test_critical",
+            title="Prefs Critical",
+            message="Critical but email disabled",
+            severity="critical",
+            channel="both",
+        )
+        await session.commit()
+
+    assert result is not None
+    assert result["channel"] == "in_app"
+    assert result["email_sent"] is False
+
+    enable = await client.patch(
+        "/api/notifications/preferences",
+        json={"email": True, "email_info_level": True},
+        headers=ctx["headers"],
+    )
+    assert enable.status_code == 200
+
+    async with TestSessionLocal() as session:
+        service = NotificationService(NotificationRepository(session))
+        result = await service.notify(
+            user_id=1,
+            org_id=ctx["org_id"],
+            type="prefs_test_info",
+            title="Prefs Info",
+            message="Info with email enabled",
+            severity="info",
+            channel="both",
+        )
+        await session.commit()
+
+    assert result is not None
+    assert result["channel"] == "both"
+    assert result["email_sent"] is True
 
 
 @pytest.mark.asyncio

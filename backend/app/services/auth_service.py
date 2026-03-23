@@ -1,8 +1,9 @@
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.config import settings
+from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError
 from app.core.security import (
     create_access_token,
@@ -12,11 +13,18 @@ from app.core.security import (
     verify_password,
 )
 from app.db.models.organization import Organization
+from app.db.models.sso import SSOProvider
 from app.repositories.audit_repo import AuditRepository
 from app.repositories.refresh_token_repo import RefreshTokenRepository
 from app.repositories.role_binding_repo import RoleBindingRepository
 from app.repositories.user_repo import UserRepository
-from app.schemas.auth import TokenResponse, UserResponse, RoleBindingOut
+from app.schemas.auth import (
+    OrganizationAuthSettingsOut,
+    OrganizationAuthSettingsUpdate,
+    RoleBindingOut,
+    TokenResponse,
+    UserResponse,
+)
 
 
 class AuthService:
@@ -31,6 +39,101 @@ class AuthService:
         self.role_binding_repo = role_binding_repo
         self.refresh_token_repo = refresh_token_repo
         self.audit_repo = audit_repo
+
+    async def _get_organization_or_raise(self, organization_id: int) -> Organization:
+        result = await self.user_repo.session.execute(
+            select(Organization).where(Organization.id == organization_id)
+        )
+        organization = result.scalar_one_or_none()
+        if not organization:
+            raise AppError("NOT_FOUND", 404, f"Organization {organization_id} not found")
+        return organization
+
+    async def _count_active_sso_providers(self, organization_id: int) -> int:
+        result = await self.user_repo.session.execute(
+            select(func.count())
+            .select_from(SSOProvider)
+            .where(
+                SSOProvider.organization_id == organization_id,
+                SSOProvider.is_active.is_(True),
+            )
+        )
+        return int(result.scalar_one())
+
+    async def _serialize_org_auth_settings(self, organization: Organization) -> OrganizationAuthSettingsOut:
+        active_sso_provider_count = await self._count_active_sso_providers(organization.id)
+        return OrganizationAuthSettingsOut(
+            organization_id=organization.id,
+            allow_password_login=organization.allow_password_login,
+            allow_sso_login=organization.allow_sso_login,
+            enforce_sso=organization.enforce_sso,
+            active_sso_provider_count=active_sso_provider_count,
+            sso_available=organization.allow_sso_login and active_sso_provider_count > 0,
+        )
+
+    async def get_login_options(self, organization_id: int) -> OrganizationAuthSettingsOut:
+        organization = await self._get_organization_or_raise(organization_id)
+        return await self._serialize_org_auth_settings(organization)
+
+    async def get_organization_auth_settings(self, ctx: RequestContext) -> OrganizationAuthSettingsOut:
+        if not ctx.organization_id:
+            raise AppError("ORG_HEADER_REQUIRED", 400, "Organization context required")
+        organization = await self._get_organization_or_raise(ctx.organization_id)
+        return await self._serialize_org_auth_settings(organization)
+
+    async def update_organization_auth_settings(
+        self,
+        payload: OrganizationAuthSettingsUpdate,
+        ctx: RequestContext,
+    ) -> OrganizationAuthSettingsOut:
+        if not ctx.organization_id:
+            raise AppError("ORG_HEADER_REQUIRED", 400, "Organization context required")
+
+        organization = await self._get_organization_or_raise(ctx.organization_id)
+        active_sso_provider_count = await self._count_active_sso_providers(organization.id)
+
+        allow_password_login = (
+            payload.allow_password_login
+            if payload.allow_password_login is not None
+            else organization.allow_password_login
+        )
+        allow_sso_login = (
+            payload.allow_sso_login if payload.allow_sso_login is not None else organization.allow_sso_login
+        )
+        enforce_sso = payload.enforce_sso if payload.enforce_sso is not None else organization.enforce_sso
+
+        if not allow_password_login and not allow_sso_login:
+            raise AppError("INVALID_AUTH_SETTINGS", 422, "Organization must allow at least one login method")
+        if enforce_sso and allow_password_login:
+            raise AppError("INVALID_AUTH_SETTINGS", 422, "Password login must be disabled when SSO is enforced")
+        if enforce_sso and not allow_sso_login:
+            raise AppError("INVALID_AUTH_SETTINGS", 422, "SSO must stay enabled when SSO is enforced")
+        if (enforce_sso or not allow_password_login) and active_sso_provider_count == 0:
+            raise AppError("SSO_PROVIDER_REQUIRED", 422, "At least one active SSO provider is required")
+
+        changes: dict[str, bool] = {}
+        for field, value in (
+            ("allow_password_login", allow_password_login),
+            ("allow_sso_login", allow_sso_login),
+            ("enforce_sso", enforce_sso),
+        ):
+            if getattr(organization, field) != value:
+                setattr(organization, field, value)
+                changes[field] = value
+
+        await self.user_repo.session.flush()
+        if changes:
+            await self.audit_repo.log(
+                entity_type="Organization",
+                entity_id=organization.id,
+                action="organization_auth_settings_updated",
+                user_id=ctx.user_id,
+                organization_id=organization.id,
+                changes=changes,
+                performed_by_platform_admin=ctx.is_platform_admin,
+            )
+
+        return await self._serialize_org_auth_settings(organization)
 
     async def register(
         self, email: str, password: str, full_name: str, request_id: str | None = None
@@ -87,17 +190,34 @@ class AuthService:
 
         bindings = await self.role_binding_repo.get_bindings(user.id)
         if not any(binding.scope_type == "platform" and binding.role == "platform_admin" for binding in bindings):
-            org_scope_ids = [binding.scope_id for binding in bindings if binding.scope_type == "organization" and binding.scope_id is not None]
+            org_scope_ids = [
+                binding.scope_id
+                for binding in bindings
+                if binding.scope_type == "organization" and binding.scope_id is not None
+            ]
             if org_scope_ids:
                 result = await self.user_repo.session.execute(
-                    select(Organization.status).where(Organization.id.in_(org_scope_ids))
+                    select(Organization).where(Organization.id.in_(org_scope_ids))
                 )
-                statuses = {row[0] for row in result.all()}
-                if statuses and statuses.issubset({"suspended", "archived"}):
+                organizations = result.scalars().all()
+                statuses = {organization.status for organization in organizations}
+                if organizations and statuses.issubset({"suspended", "archived"}):
                     raise AppError(
                         code="TENANT_SUSPENDED",
                         status_code=403,
                         message="All tenant access for this account is suspended",
+                    )
+                active_organizations = [
+                    organization for organization in organizations if organization.status == "active"
+                ]
+                if active_organizations and any(
+                    organization.enforce_sso or not organization.allow_password_login
+                    for organization in active_organizations
+                ):
+                    raise AppError(
+                        code="SSO_REQUIRED",
+                        status_code=403,
+                        message="Password login is disabled for this organization. Use SSO instead",
                     )
 
         access = create_access_token(user.id, user.email)

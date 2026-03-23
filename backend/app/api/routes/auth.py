@@ -13,6 +13,8 @@ from app.repositories.user_repo import UserRepository
 from app.schemas.auth import (
     InvitationCreateRequest,
     LoginRequest,
+    OrganizationAuthSettingsOut,
+    OrganizationAuthSettingsUpdate,
     OrganizationUsersOut,
     RefreshRequest,
     RegisterRequest,
@@ -61,6 +63,11 @@ async def login(payload: LoginRequest, session: AsyncSession = Depends(get_sessi
     return await service.login(payload.email, payload.password)
 
 
+@router.get("/login-options", response_model=OrganizationAuthSettingsOut)
+async def get_login_options(organization_id: int, session: AsyncSession = Depends(get_session)):
+    return await _get_auth_service(session).get_login_options(organization_id)
+
+
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh(payload: RefreshRequest, session: AsyncSession = Depends(get_session)):
     service = _get_auth_service(session)
@@ -91,6 +98,25 @@ async def list_organization_users(
     session: AsyncSession = Depends(get_session),
 ):
     return await _get_organization_user_service(session).list_organization_users(ctx)
+
+
+@router.get("/organization/auth-settings", response_model=OrganizationAuthSettingsOut)
+async def get_organization_auth_settings(
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    AuthPolicy.require_manager_or_admin(ctx)
+    return await _get_auth_service(session).get_organization_auth_settings(ctx)
+
+
+@router.patch("/organization/auth-settings", response_model=OrganizationAuthSettingsOut)
+async def update_organization_auth_settings(
+    payload: OrganizationAuthSettingsUpdate,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    AuthPolicy.require_manager_or_admin(ctx)
+    return await _get_auth_service(session).update_organization_auth_settings(payload, ctx)
 
 
 @router.post("/invitations", status_code=status.HTTP_201_CREATED)

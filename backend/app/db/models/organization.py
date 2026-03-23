@@ -15,6 +15,9 @@ class Organization(Base, TimestampMixin):
     industry: Mapped[str | None] = mapped_column(String, nullable=True)
     default_currency: Mapped[str] = mapped_column(String, default="USD", nullable=False)
     default_reporting_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    allow_password_login: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    allow_sso_login: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    enforce_sso: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     setup_completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     status: Mapped[str] = mapped_column(String, default="active", nullable=False)
 
