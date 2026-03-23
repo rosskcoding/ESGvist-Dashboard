@@ -12,6 +12,7 @@ from app.api.routes import (
     requirement_items,
     shared_elements,
     standards,
+    workflow,
 )
 from app.core.config import settings
 from app.core.exceptions import AppError
@@ -56,6 +57,7 @@ def create_app() -> FastAPI:
     app.include_router(entities.router)
     app.include_router(projects.router)
     app.include_router(data_points.router)
+    app.include_router(workflow.router)
 
     return app
 
