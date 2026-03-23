@@ -56,7 +56,8 @@ type ConsolidationMethod = "full" | "proportional" | "equity_share";
 interface Boundary {
   id: number;
   name: string;
-  type: BoundaryType;
+  type?: BoundaryType;
+  boundary_type?: BoundaryType;
   description: string;
   is_default: boolean;
   entity_count: number;
@@ -605,8 +606,8 @@ export default function BoundariesPage() {
                     >
                       <TableCell className="font-medium">{b.name}</TableCell>
                       <TableCell>
-                        <Badge variant={BOUNDARY_TYPE_VARIANT[b.type]}>
-                          {b.type.replace(/_/g, " ")}
+                        <Badge variant={BOUNDARY_TYPE_VARIANT[(b.boundary_type ?? b.type ?? "custom")]}>
+                          {(b.boundary_type ?? b.type ?? "custom").replace(/_/g, " ")}
                         </Badge>
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
