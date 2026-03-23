@@ -1,0 +1,122 @@
+{
+  "energyEvidence": {
+    "id": 1,
+    "organization_id": 1,
+    "type": "file",
+    "title": "FY2025 Energy Ledger Extract",
+    "description": "Consolidated utility ledger export for UK generation entity",
+    "source_type": "manual",
+    "created_by": 6,
+    "created_at": "2026-03-23T14:21:49.007564Z"
+  },
+  "energyPoint": {
+    "id": 1,
+    "reporting_project_id": 1,
+    "shared_element_id": 1,
+    "entity_id": 2,
+    "facility_id": null,
+    "status": "draft",
+    "numeric_value": 128450.4,
+    "text_value": null,
+    "unit_code": "MWH",
+    "created_by": 6
+  },
+  "energyGate": {
+    "allowed": true,
+    "failedGates": [],
+    "warnings": []
+  },
+  "energySubmit": {
+    "id": 1,
+    "status": "in_review",
+    "warnings": []
+  },
+  "climateEvidence": {
+    "id": 2,
+    "organization_id": 1,
+    "type": "file",
+    "title": "Hamburg Wind Farm emissions workbook",
+    "description": "Metered combustion and purchased electricity workbook",
+    "source_type": "manual",
+    "created_by": 7,
+    "created_at": "2026-03-23T14:21:49.611697Z"
+  },
+  "scope1Point": {
+    "id": 2,
+    "reporting_project_id": 1,
+    "shared_element_id": 2,
+    "entity_id": 3,
+    "facility_id": 5,
+    "status": "draft",
+    "numeric_value": 5421.7,
+    "text_value": null,
+    "unit_code": "TCO2E",
+    "created_by": 7
+  },
+  "scope1Submit": {
+    "id": 2,
+    "status": "in_review",
+    "warnings": []
+  },
+  "scope2Point": {
+    "id": 3,
+    "reporting_project_id": 1,
+    "shared_element_id": 3,
+    "entity_id": 3,
+    "facility_id": null,
+    "status": "draft",
+    "numeric_value": 3180.2,
+    "text_value": null,
+    "unit_code": "TCO2E",
+    "created_by": 7
+  },
+  "scope2Submit": {
+    "id": 3,
+    "status": "in_review",
+    "warnings": []
+  },
+  "customEvidence": {
+    "id": 3,
+    "organization_id": 1,
+    "type": "file",
+    "title": "Water stress site screening memo",
+    "description": "Manual site screening memo for biodiversity pilot",
+    "source_type": "manual",
+    "created_by": 7,
+    "created_at": "2026-03-23T14:21:50.033730Z"
+  },
+  "customPoint": {
+    "id": 4,
+    "reporting_project_id": 1,
+    "shared_element_id": 5,
+    "entity_id": 5,
+    "facility_id": null,
+    "status": "draft",
+    "numeric_value": 1,
+    "text_value": null,
+    "unit_code": "COUNT",
+    "created_by": 7
+  },
+  "customSubmit": {
+    "id": 4,
+    "status": "in_review",
+    "warnings": []
+  },
+  "governancePoint": {
+    "id": 5,
+    "reporting_project_id": 1,
+    "shared_element_id": 4,
+    "entity_id": null,
+    "facility_id": null,
+    "status": "draft",
+    "numeric_value": null,
+    "text_value": "The board sustainability committee reviews climate and broader ESG risks quarterly, while management runs a monthly operating review.",
+    "unit_code": null,
+    "created_by": 3
+  },
+  "governanceSubmit": {
+    "id": 5,
+    "status": "in_review",
+    "warnings": []
+  }
+}

@@ -138,6 +138,14 @@ class CompletenessService:
             await self.repo.upsert_item_status(project_id, item_id, status, reason)
             return status
 
+        # Check evidence for approved data points (requires_evidence)
+        from app.db.models.requirement_item import RequirementItem as RIModel
+
+        ri = await self.repo.session.execute(
+            select(RIModel).where(RIModel.id == item_id)
+        )
+        requirement_item = ri.scalar_one_or_none()
+
         approved_entity_ids = {
             scope_entity_id
             for dp in data_points
@@ -145,7 +153,12 @@ class CompletenessService:
             for scope_entity_id in [self._scope_entity_id(dp)]
             if scope_entity_id is not None
         }
-        if boundary_scope and approved_entity_ids:
+        boundary_coverage_required = bool(
+            requirement_item
+            and requirement_item.granularity_rule
+            and requirement_item.granularity_rule.get("boundary_coverage_required")
+        )
+        if boundary_coverage_required and boundary_scope and approved_entity_ids:
             boundary_entity_ids = set(boundary_scope["entity_ids"])
             if boundary_entity_ids and approved_entity_ids != boundary_entity_ids:
                 missing_entity_names = self._missing_boundary_entity_names(approved_entity_ids, boundary_scope)
@@ -156,14 +169,6 @@ class CompletenessService:
                 )
                 await self.repo.upsert_item_status(project_id, item_id, status, reason)
                 return status
-
-        # Check evidence for approved data points (requires_evidence)
-        from app.db.models.requirement_item import RequirementItem as RIModel
-
-        ri = await self.repo.session.execute(
-            select(RIModel).where(RIModel.id == item_id)
-        )
-        requirement_item = ri.scalar_one_or_none()
 
         if requirement_item and requirement_item.requires_evidence:
             has_evidence = False

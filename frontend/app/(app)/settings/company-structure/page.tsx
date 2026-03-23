@@ -1225,7 +1225,7 @@ export default function CompanyStructurePage() {
   const { data: treeData, isLoading: treeLoading } =
     useApiQuery<EntityTreeResponse>(["entities", "tree"], "/entities/tree");
 
-  const entities = entitiesData?.entities ?? [];
+  const entities = entitiesData?.entities ?? entitiesData?.items ?? [];
   const ownershipLinks = entitiesData?.ownership_links ?? [];
   const controlLinks = entitiesData?.control_links ?? [];
   const boundaryMemberships = entitiesData?.boundary_memberships ?? {};

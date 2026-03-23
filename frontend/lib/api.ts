@@ -45,7 +45,12 @@ class ApiClient {
     });
 
     if (!response.ok) {
-      const error: ApiError = await response.json();
+      let error: ApiError;
+      try {
+        error = await response.json();
+      } catch {
+        throw new Error(`API error: ${response.status} ${response.statusText}`);
+      }
 
       if (response.status === 401) {
         // Try refresh
@@ -69,7 +74,10 @@ class ApiClient {
         }
       }
 
-      throw error;
+      const msg = error?.error?.message || `API error: ${response.status}`;
+      const err = new Error(msg);
+      (err as Error & { code?: string }).code = error?.error?.code;
+      throw err;
     }
 
     if (response.status === 204) {

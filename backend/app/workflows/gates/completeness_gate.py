@@ -2,10 +2,10 @@ from app.workflows.gates.base import Gate, GateFailure
 
 
 class RequirementIncompleteGate(Gate):
-    """Blocks approve if requirement item is incomplete."""
+    """Reserved for aggregate completeness checks, not individual approval."""
 
     def applies_to(self, action: str) -> bool:
-        return action in ("approve_data_point",)
+        return False
 
     async def evaluate(self, context: dict) -> GateFailure | None:
         item_statuses = context.get("item_statuses")

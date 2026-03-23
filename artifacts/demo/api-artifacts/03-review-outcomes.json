@@ -1,0 +1,29 @@
+{
+  "approvals": [
+    {
+      "id": 1,
+      "status": "approved",
+      "warnings": []
+    },
+    {
+      "id": 2,
+      "status": "approved",
+      "warnings": []
+    },
+    {
+      "id": 3,
+      "status": "approved",
+      "warnings": []
+    },
+    {
+      "id": 4,
+      "status": "approved",
+      "warnings": []
+    }
+  ],
+  "revision": {
+    "id": 5,
+    "status": "needs_revision",
+    "warnings": []
+  }
+}

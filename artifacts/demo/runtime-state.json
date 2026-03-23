@@ -3,5 +3,10 @@
   "customDisclosureId": 6,
   "customItemId": 8,
   "customSharedElementId": 5,
-  "customAssignmentId": 5
+  "customAssignmentId": 5,
+  "energyDataPointId": 1,
+  "scope1DataPointId": 2,
+  "scope2DataPointId": 3,
+  "customDataPointId": 4,
+  "governanceDataPointId": 5
 }
