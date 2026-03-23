@@ -3,8 +3,11 @@ import asyncio
 from collections.abc import Awaitable, Callable
 
 from app.db.session import async_session_factory
+from app.repositories.audit_repo import AuditRepository
+from app.repositories.export_repo import ExportRepository
 from app.repositories.notification_repo import NotificationRepository
 from app.repositories.webhook_repo import WebhookRepository
+from app.services.export_service import ExportService
 from app.services.sla_service import SLAService
 from app.services.webhook_service import WebhookService
 
@@ -41,11 +44,22 @@ class JobRunner:
             await session.commit()
             return result
 
+    async def run_export_jobs(self, limit: int = 25) -> dict:
+        async with self.session_factory() as session:
+            result = await ExportService(
+                session,
+                repo=ExportRepository(session),
+                audit_repo=AuditRepository(session),
+            ).process_queued_jobs(limit=limit)
+            await session.commit()
+            return result
+
     async def run_all(self, limit: int = 100) -> dict:
         return {
             "sla_check": await self.run_sla_check(),
             "project_deadlines": await self.run_project_deadlines(),
             "webhook_retries": await self.run_webhook_retries(limit=limit),
+            "export_jobs": await self.run_export_jobs(limit=limit),
         }
 
 
@@ -53,7 +67,7 @@ async def _main_async(argv: list[str] | None = None) -> dict:
     parser = argparse.ArgumentParser(description="Run scheduled ESGvist backend jobs")
     parser.add_argument(
         "job",
-        choices=("sla-check", "project-deadlines", "webhook-retries", "all"),
+        choices=("sla-check", "project-deadlines", "webhook-retries", "export-jobs", "all"),
         default="all",
         nargs="?",
     )
@@ -67,6 +81,8 @@ async def _main_async(argv: list[str] | None = None) -> dict:
         return await runner.run_project_deadlines()
     if args.job == "webhook-retries":
         return await runner.run_webhook_retries(limit=args.limit)
+    if args.job == "export-jobs":
+        return await runner.run_export_jobs(limit=args.limit)
     return await runner.run_all(limit=args.limit)
 
 

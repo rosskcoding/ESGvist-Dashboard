@@ -11,6 +11,7 @@ from app.core.dependencies import RequestContext
 from app.db.models.ai_interaction import AIInteraction
 from app.db.models.boundary import BoundaryMembership
 from app.db.models.completeness import RequirementItemDataPoint, RequirementItemStatus
+from app.db.models.data_point import DataPoint
 from app.db.models.evidence import DataPointEvidence
 from app.db.models.requirement_item import RequirementItem
 from app.db.models.standard import DisclosureRequirement, Standard

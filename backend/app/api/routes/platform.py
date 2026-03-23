@@ -11,8 +11,10 @@ from app.db.models.role_binding import RoleBinding
 from app.db.models.user import User
 from app.db.session import get_session
 from app.repositories.audit_repo import AuditRepository
+from app.repositories.export_repo import ExportRepository
 from app.repositories.notification_repo import NotificationRepository
 from app.repositories.webhook_repo import WebhookRepository
+from app.services.export_service import ExportService
 from app.services.sla_service import SLAService
 from app.services.webhook_service import WebhookService
 
@@ -396,6 +398,28 @@ async def run_webhook_retries(
     return result
 
 
+@router.post("/jobs/exports")
+async def run_export_jobs(
+    limit: int = Query(25, ge=1, le=500),
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    _require_platform(ctx)
+    result = await ExportService(
+        session,
+        repo=ExportRepository(session),
+        audit_repo=AuditRepository(session),
+    ).process_queued_jobs(limit=limit)
+    await _audit_platform(
+        session,
+        ctx,
+        entity_type="ScheduledJob",
+        action="platform_export_jobs_triggered",
+        changes=result,
+    )
+    return result
+
+
 @router.post("/jobs/run-all")
 async def run_all_jobs(
     limit: int = Query(100, ge=1, le=500),
@@ -409,10 +433,16 @@ async def run_all_jobs(
         repo=WebhookRepository(session),
         notification_repo=NotificationRepository(session),
     ).retry_due_deliveries(limit=limit)
+    export_jobs = await ExportService(
+        session,
+        repo=ExportRepository(session),
+        audit_repo=AuditRepository(session),
+    ).process_queued_jobs(limit=limit)
     result = {
         "sla_check": sla_result,
         "project_deadlines": project_deadlines,
         "webhook_retries": webhook_retries,
+        "export_jobs": export_jobs,
     }
     await _audit_platform(
         session,

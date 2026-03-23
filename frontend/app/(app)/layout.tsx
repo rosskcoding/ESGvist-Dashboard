@@ -6,6 +6,7 @@ import Link from "next/link";
 import { isAuthenticated, getMe, logout } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { Providers } from "./providers";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -163,6 +164,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
+    <Providers>
     <div className="flex min-h-screen">
       {/* Sidebar */}
       <aside className="flex w-64 flex-col border-r border-gray-200 bg-white">
@@ -309,5 +311,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
       </div>
     </div>
+    </Providers>
   );
 }

@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     # Self-service registration
     allow_self_registration: bool = True
 
+    # Email
+    email_enabled: bool = True
+    email_provider: str = "console"
+    email_from: str = "no-reply@esgvist.local"
+    email_fail_silently: bool = True
+
     # AI
     ai_enabled: bool = False
     ai_provider: str = "static"

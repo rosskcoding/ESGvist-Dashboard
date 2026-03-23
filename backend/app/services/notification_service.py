@@ -1,9 +1,12 @@
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.db.models.notification import Notification
 from app.db.models.role_binding import RoleBinding
+from app.db.models.user import User
+from app.infrastructure.email import BaseEmailSender, get_email_sender
 from app.repositories.notification_repo import NotificationRepository
 
 EVENT_ROUTING: dict[str, dict] = {
@@ -42,8 +45,9 @@ EVENT_ROUTING: dict[str, dict] = {
 
 
 class NotificationService:
-    def __init__(self, repo: NotificationRepository):
+    def __init__(self, repo: NotificationRepository, email_sender: BaseEmailSender | None = None):
         self.repo = repo
+        self.email_sender = email_sender or get_email_sender()
 
     def _resolve_channel(self, type: str, severity: str, channel: str | None) -> str:
         if channel:
@@ -53,10 +57,32 @@ class NotificationService:
             return routing["channel"]
         return "both" if severity in {"critical", "important"} else "in_app"
 
-    def _deliver_email(self, channel: str) -> tuple[bool, datetime | None]:
+    async def _deliver_email(
+        self,
+        *,
+        user_id: int,
+        channel: str,
+        title: str,
+        message: str,
+    ) -> tuple[bool, datetime | None]:
         if channel not in {"email", "both"}:
             return False, None
-        return True, datetime.now(timezone.utc)
+        result = await self.repo.session.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if not user or not user.email:
+            return False, None
+
+        try:
+            delivery = await self.email_sender.send(
+                to_email=user.email,
+                subject=title,
+                body=message,
+            )
+            return delivery.sent, delivery.sent_at
+        except Exception:
+            if settings.email_fail_silently:
+                return False, None
+            raise
 
     async def notify(
         self,
@@ -90,7 +116,12 @@ class NotificationService:
             return None  # Already notified, skip
 
         resolved_channel = self._resolve_channel(type, severity, channel)
-        email_sent, email_sent_at = self._deliver_email(resolved_channel)
+        email_sent, email_sent_at = await self._deliver_email(
+            user_id=user_id,
+            channel=resolved_channel,
+            title=title,
+            message=message,
+        )
         n = await self.repo.create(
             organization_id=org_id,
             user_id=user_id,

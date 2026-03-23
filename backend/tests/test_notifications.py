@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import pytest
 from httpx import AsyncClient
 
+from app.core.config import settings
 from app.db.models.notification import Notification
 from tests.conftest import TestSessionLocal
 
@@ -291,6 +292,109 @@ async def test_submit_event_notifies_reviewer(client: AsyncClient, ctx: dict):
     )
     assert reviewer_item["channel"] == "both"
     assert reviewer_item["email_sent"] is True
+
+
+@pytest.mark.asyncio
+async def test_email_delivery_can_be_disabled(monkeypatch, client: AsyncClient, ctx: dict):
+    monkeypatch.setattr(settings, "email_enabled", False)
+
+    admin_headers = {**ctx["headers"], "X-Organization-Id": str(ctx["org_id"])}
+    collector = await _invite_and_accept(
+        client,
+        admin_headers=admin_headers,
+        org_id=ctx["org_id"],
+        email="collector-disabled-email@co.com",
+        role="collector",
+        full_name="Collector Disabled Email",
+    )
+    reviewer = await _invite_and_accept(
+        client,
+        admin_headers=admin_headers,
+        org_id=ctx["org_id"],
+        email="reviewer-disabled-email@co.com",
+        role="reviewer",
+        full_name="Reviewer Disabled Email",
+    )
+
+    project = await client.post("/api/projects", json={"name": "Disabled Email Project"}, headers=admin_headers)
+    shared_element = await client.post(
+        "/api/shared-elements",
+        json={"code": "DE1", "name": "Disabled Email Metric"},
+        headers=admin_headers,
+    )
+
+    assignment = await client.post(
+        f"/api/projects/{project.json()['id']}/assignments",
+        json={
+            "shared_element_id": shared_element.json()["id"],
+            "collector_id": collector["user_id"],
+            "reviewer_id": reviewer["user_id"],
+        },
+        headers=admin_headers,
+    )
+    assert assignment.status_code == 201
+
+    reviewer_notifications = await client.get("/api/notifications", headers=reviewer["headers"])
+    reviewer_item = next(
+        item for item in reviewer_notifications.json()["items"] if item["type"] == "review_requested"
+    )
+    assert reviewer_item["channel"] == "both"
+    assert reviewer_item["email_sent"] is False
+    assert reviewer_item["email_sent_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_email_provider_failure_does_not_block_notification_when_fail_silent(
+    monkeypatch,
+    client: AsyncClient,
+    ctx: dict,
+):
+    monkeypatch.setattr(settings, "email_enabled", True)
+    monkeypatch.setattr(settings, "email_provider", "failing")
+    monkeypatch.setattr(settings, "email_fail_silently", True)
+
+    admin_headers = {**ctx["headers"], "X-Organization-Id": str(ctx["org_id"])}
+    collector = await _invite_and_accept(
+        client,
+        admin_headers=admin_headers,
+        org_id=ctx["org_id"],
+        email="collector-failing-email@co.com",
+        role="collector",
+        full_name="Collector Failing Email",
+    )
+    reviewer = await _invite_and_accept(
+        client,
+        admin_headers=admin_headers,
+        org_id=ctx["org_id"],
+        email="reviewer-failing-email@co.com",
+        role="reviewer",
+        full_name="Reviewer Failing Email",
+    )
+
+    project = await client.post("/api/projects", json={"name": "Failing Email Project"}, headers=admin_headers)
+    shared_element = await client.post(
+        "/api/shared-elements",
+        json={"code": "FE1", "name": "Failing Email Metric"},
+        headers=admin_headers,
+    )
+
+    assignment = await client.post(
+        f"/api/projects/{project.json()['id']}/assignments",
+        json={
+            "shared_element_id": shared_element.json()["id"],
+            "collector_id": collector["user_id"],
+            "reviewer_id": reviewer["user_id"],
+        },
+        headers=admin_headers,
+    )
+    assert assignment.status_code == 201
+
+    collector_notifications = await client.get("/api/notifications", headers=collector["headers"])
+    collector_item = next(
+        item for item in collector_notifications.json()["items"] if item["type"] == "assignment_created"
+    )
+    assert collector_item["channel"] == "both"
+    assert collector_item["email_sent"] is False
 
 
 @pytest.mark.asyncio

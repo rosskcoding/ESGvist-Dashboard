@@ -57,6 +57,18 @@ function DropdownMenuTrigger({
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & { asChild?: boolean }) {
   const { open, setOpen } = useDropdownMenuContext();
 
+  if (asChild && React.isValidElement(children)) {
+    return React.cloneElement(children as React.ReactElement<Record<string, unknown>>, {
+      onClick: (e: React.MouseEvent) => {
+        setOpen(!open);
+        const childOnClick = (children as React.ReactElement<Record<string, unknown>>).props?.onClick;
+        if (typeof childOnClick === "function") childOnClick(e);
+      },
+      "aria-expanded": open,
+      "aria-haspopup": "true" as const,
+    });
+  }
+
   return (
     <button
       type="button"
