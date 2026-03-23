@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.dependencies import RequestContext, get_current_context
 from app.db.session import get_session
 from app.services.reuse_service import ReuseService
 
@@ -13,6 +14,7 @@ async def find_reuse(
     shared_element_id: int = Query(...),
     unit_code: str | None = None,
     entity_id: int | None = None,
+    ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
     service = ReuseService(session)
@@ -22,6 +24,7 @@ async def find_reuse(
 @router.get("/api/data-points/{dp_id}/reuse-info")
 async def reuse_info(
     dp_id: int,
+    ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
     service = ReuseService(session)

@@ -18,6 +18,7 @@ def _get_service(session: AsyncSession) -> CompletenessService:
 async def bind_data_point(
     project_id: int,
     payload: BindRequest,
+    ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
     service = _get_service(session)
@@ -30,6 +31,7 @@ async def bind_data_point(
 async def get_item_status(
     project_id: int,
     item_id: int,
+    ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
     service = _get_service(session)
@@ -41,6 +43,7 @@ async def get_item_status(
 async def get_disclosure_status(
     project_id: int,
     disclosure_id: int,
+    ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
     service = _get_service(session)

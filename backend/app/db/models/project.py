@@ -46,6 +46,9 @@ class MetricAssignment(Base, TimestampMixin):
     entity_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("company_entities.id", ondelete="SET NULL"), nullable=True
     )
+    facility_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("company_entities.id", ondelete="SET NULL"), nullable=True
+    )
     collector_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )

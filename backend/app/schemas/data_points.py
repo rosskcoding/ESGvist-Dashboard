@@ -9,6 +9,7 @@ class DimensionIn(BaseModel):
 class DataPointCreate(BaseModel):
     shared_element_id: int
     entity_id: int | None = None
+    facility_id: int | None = None
     numeric_value: float | None = None
     text_value: str | None = None
     unit_code: str | None = None
@@ -20,6 +21,7 @@ class DataPointOut(BaseModel):
     reporting_project_id: int
     shared_element_id: int
     entity_id: int | None
+    facility_id: int | None = None
     status: str
     numeric_value: float | None
     text_value: str | None

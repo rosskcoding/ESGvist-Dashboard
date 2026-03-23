@@ -46,7 +46,7 @@ class CommentRequiredGate(Gate):
 
 class DataPointLockedGate(Gate):
     def applies_to(self, action: str) -> bool:
-        return action == "edit_data_point"
+        return action in ("edit_data_point", "unlink_evidence")
 
     async def evaluate(self, context: dict) -> GateFailure | None:
         dp = context.get("data_point")
@@ -55,5 +55,23 @@ class DataPointLockedGate(Gate):
                 code="DATA_POINT_LOCKED",
                 gate_type="workflow",
                 message=f"Cannot edit data point in status '{dp.status}'",
+            )
+        return None
+
+
+class LockedStateGate(Gate):
+    """Blocks reopening a published project."""
+
+    def applies_to(self, action: str) -> bool:
+        return action in ("reopen_project", "unpublish_project")
+
+    async def evaluate(self, context: dict) -> GateFailure | None:
+        project = context.get("project")
+        if project and getattr(project, "status", "") == "published":
+            return GateFailure(
+                code="LOCKED_STATE",
+                gate_type="workflow",
+                message="Project is published and cannot be reopened",
+                severity="blocker",
             )
         return None

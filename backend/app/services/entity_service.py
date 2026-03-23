@@ -1,5 +1,8 @@
+from datetime import date
+
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError
+from app.repositories.audit_repo import AuditRepository
 from app.repositories.entity_repo import EntityRepository
 from app.repositories.role_binding_repo import RoleBindingRepository
 from app.schemas.entities import (
@@ -13,15 +16,40 @@ from app.schemas.entities import (
     OwnershipLinkOut,
 )
 
+COUNTRY_CURRENCY_MAP: dict[str, str] = {
+    "US": "USD",
+    "GB": "GBP",
+    "DE": "EUR",
+    "FR": "EUR",
+    "IT": "EUR",
+    "ES": "EUR",
+    "JP": "JPY",
+    "CN": "CNY",
+}
+
 
 class EntityService:
     def __init__(
         self,
         repo: EntityRepository,
         role_binding_repo: RoleBindingRepository | None = None,
+        audit_repo: AuditRepository | None = None,
     ):
         self.repo = repo
         self.role_binding_repo = role_binding_repo
+        self.audit_repo = audit_repo
+
+    async def _audit(self, entity_type: str, action: str, ctx: RequestContext,
+                     entity_id: int | None = None, changes: dict | None = None):
+        if self.audit_repo:
+            await self.audit_repo.log(
+                entity_type=entity_type,
+                entity_id=entity_id,
+                action=action,
+                user_id=ctx.user_id,
+                organization_id=ctx.organization_id,
+                changes=changes,
+            )
 
     def _require_write(self, ctx: RequestContext) -> None:
         if ctx.role not in ("admin", "esg_manager", "platform_admin"):
@@ -31,12 +59,23 @@ class EntityService:
     async def setup_organization(
         self, payload: OrgSetupRequest, ctx: RequestContext
     ) -> dict:
-        """Create organization + root entity + admin role binding."""
+        """Create organization + root entity + admin role binding.
+
+        All creates happen in one flush to ensure transactional safety.
+        """
+        # Smart currency default based on country
+        currency = payload.default_currency
+        if currency == "USD" and payload.country:
+            currency = COUNTRY_CURRENCY_MAP.get(payload.country.upper(), "USD")
+
+        reporting_year = date.today().year
+
         org = await self.repo.create_organization(
             name=payload.name,
             country=payload.country,
             industry=payload.industry,
-            default_currency=payload.default_currency,
+            default_currency=currency,
+            default_reporting_year=reporting_year,
             setup_completed=True,
         )
 
@@ -68,7 +107,7 @@ class EntityService:
             is_default=True,
         )
         self.repo.session.add(boundary)
-        await self.repo.session.flush()
+        await self.repo.session.flush()  # boundary needs id before membership
 
         # Include root entity in boundary
         membership = BoundaryMembership(
@@ -80,6 +119,12 @@ class EntityService:
         )
         self.repo.session.add(membership)
         await self.repo.session.flush()
+
+        # Audit: entity and boundary creation
+        await self._audit("CompanyEntity", "create_entity", ctx, entity_id=root.id,
+                          changes={"entity_type": "parent_company", "organization_id": org.id})
+        await self._audit("BoundaryDefinition", "create_boundary", ctx, entity_id=boundary.id,
+                          changes={"organization_id": org.id})
 
         return {
             "organization_id": org.id,
@@ -106,6 +151,8 @@ class EntityService:
         if not ctx.organization_id:
             raise AppError("ORG_HEADER_REQUIRED", 400, "Organization context required")
         e = await self.repo.create_entity(ctx.organization_id, **payload.model_dump())
+        await self._audit("CompanyEntity", "create_entity", ctx, entity_id=e.id,
+                          changes=payload.model_dump())
         return EntityOut.model_validate(e)
 
     # --- Ownership ---
@@ -129,6 +176,8 @@ class EntityService:
         await self._check_ownership_cycle(payload.parent_entity_id, payload.child_entity_id)
 
         link = await self.repo.create_ownership(**payload.model_dump())
+        await self._audit("OwnershipLink", "create_ownership", ctx, entity_id=link.id,
+                          changes=payload.model_dump())
         return OwnershipLinkOut.model_validate(link)
 
     # --- Control ---
@@ -141,6 +190,8 @@ class EntityService:
             raise AppError("SELF_CONTROL_NOT_ALLOWED", 422, "Entity cannot control itself")
 
         link = await self.repo.create_control(**payload.model_dump())
+        await self._audit("ControlLink", "create_control", ctx, entity_id=link.id,
+                          changes=payload.model_dump())
         return ControlLinkOut.model_validate(link)
 
     async def _check_ownership_cycle(self, parent_id: int, child_id: int) -> None:

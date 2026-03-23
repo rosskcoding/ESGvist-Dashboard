@@ -58,9 +58,102 @@ class AssignmentCreated(DomainEvent):
 
 
 @dataclass
+class AssignmentUpdated(DomainEvent):
+    assignment_id: int = 0
+    changes: dict = field(default_factory=dict)
+
+
+@dataclass
 class EvidenceCreated(DomainEvent):
     evidence_id: int = 0
     type: str = ""
+
+
+@dataclass
+class EvidenceLinked(DomainEvent):
+    evidence_id: int = 0
+    data_point_id: int = 0
+    linked_by: int = 0
+
+
+@dataclass
+class EvidenceUnlinked(DomainEvent):
+    evidence_id: int = 0
+    data_point_id: int = 0
+    unlinked_by: int = 0
+
+
+@dataclass
+class EntityCreated(DomainEvent):
+    entity_id: int = 0
+    organization_id: int = 0
+    entity_type: str = ""
+
+
+@dataclass
+class EntityUpdated(DomainEvent):
+    entity_id: int = 0
+    changes: dict = field(default_factory=dict)
+
+
+@dataclass
+class OwnershipCreated(DomainEvent):
+    parent_entity_id: int = 0
+    child_entity_id: int = 0
+    ownership_percent: float = 0
+
+
+@dataclass
+class OwnershipUpdated(DomainEvent):
+    link_id: int = 0
+    changes: dict = field(default_factory=dict)
+
+
+@dataclass
+class ControlCreated(DomainEvent):
+    controlling_entity_id: int = 0
+    controlled_entity_id: int = 0
+
+
+@dataclass
+class ControlUpdated(DomainEvent):
+    link_id: int = 0
+    changes: dict = field(default_factory=dict)
+
+
+@dataclass
+class BoundaryCreated(DomainEvent):
+    boundary_id: int = 0
+    organization_id: int = 0
+
+
+@dataclass
+class BoundaryUpdated(DomainEvent):
+    boundary_id: int = 0
+    changes: dict = field(default_factory=dict)
+
+
+@dataclass
+class SnapshotSaved(DomainEvent):
+    snapshot_id: int = 0
+    project_id: int = 0
+    boundary_id: int = 0
+
+
+@dataclass
+class ManualBoundaryOverride(DomainEvent):
+    boundary_id: int = 0
+    entity_id: int = 0
+    included: bool = True
+    overridden_by: int = 0
+
+
+@dataclass
+class GateChecked(DomainEvent):
+    data_point_id: int = 0
+    action: str = ""
+    allowed: bool = True
+    failed_codes: list = field(default_factory=list)
 
 
 class EventBus:
@@ -69,11 +162,13 @@ class EventBus:
     def __init__(self):
         self._handlers: dict[type, list[Callable]] = defaultdict(list)
 
-    def subscribe(self, event_type: type, handler: Callable):
+    def subscribe(self, event_type, handler: Callable):
         self._handlers[event_type].append(handler)
 
     async def publish(self, event: DomainEvent):
-        handlers = self._handlers.get(type(event), [])
+        handlers = list(self._handlers.get(type(event), []))
+        # Also invoke wildcard subscribers
+        handlers.extend(self._handlers.get("*", []))
         for handler in handlers:
             try:
                 await handler(event)

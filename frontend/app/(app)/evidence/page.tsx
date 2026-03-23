@@ -114,11 +114,11 @@ export default function EvidencePage() {
 
   const { data, isLoading, error, refetch } = useApiQuery<EvidenceResponse>(
     ["evidence", organizationId],
-    `/evidence?organization_id=${organizationId}`
+    `/evidences?organization_id=${organizationId}`
   );
 
   const deleteMutation = useApiMutation<void, void>(
-    deleteTarget ? `/evidence/${deleteTarget.id}` : "/evidence",
+    deleteTarget ? `/evidences/${deleteTarget.id}` : "/evidences",
     "DELETE",
     {
       onSuccess: () => {
@@ -129,7 +129,7 @@ export default function EvidencePage() {
   );
 
   const uploadMutation = useApiMutation<EvidenceItem, FormData>(
-    `/evidence?organization_id=${organizationId}`,
+    `/evidences?organization_id=${organizationId}`,
     "POST",
     {
       onSuccess: () => {
@@ -141,7 +141,7 @@ export default function EvidencePage() {
   const addLinkMutation = useApiMutation<
     EvidenceItem,
     { title: string; url: string; description: string; type: "link" }
-  >(`/evidence?organization_id=${organizationId}`, "POST", {
+  >(`/evidences?organization_id=${organizationId}`, "POST", {
     onSuccess: () => {
       setAddLinkOpen(false);
       setLinkTitle("");

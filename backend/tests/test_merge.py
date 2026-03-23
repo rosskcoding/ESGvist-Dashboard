@@ -97,7 +97,7 @@ async def ctx(client: AsyncClient) -> dict:
 
 @pytest.mark.asyncio
 async def test_merged_view_common_elements(client: AsyncClient, ctx: dict):
-    resp = await client.get(f"/api/projects/{ctx['project_id']}/merge")
+    resp = await client.get(f"/api/projects/{ctx['project_id']}/merge", headers=ctx["headers"])
     assert resp.status_code == 200
     data = resp.json()
 
@@ -109,7 +109,7 @@ async def test_merged_view_common_elements(client: AsyncClient, ctx: dict):
 
 @pytest.mark.asyncio
 async def test_merged_view_orphans(client: AsyncClient, ctx: dict):
-    resp = await client.get(f"/api/projects/{ctx['project_id']}/merge")
+    resp = await client.get(f"/api/projects/{ctx['project_id']}/merge", headers=ctx["headers"])
     data = resp.json()
 
     # Financial Impact has no shared element mapping → orphan
@@ -119,7 +119,7 @@ async def test_merged_view_orphans(client: AsyncClient, ctx: dict):
 
 @pytest.mark.asyncio
 async def test_merged_view_summary(client: AsyncClient, ctx: dict):
-    resp = await client.get(f"/api/projects/{ctx['project_id']}/merge")
+    resp = await client.get(f"/api/projects/{ctx['project_id']}/merge", headers=ctx["headers"])
     summary = resp.json()["summary"]
 
     assert summary["common"] == 1
@@ -129,7 +129,7 @@ async def test_merged_view_summary(client: AsyncClient, ctx: dict):
 
 @pytest.mark.asyncio
 async def test_coverage(client: AsyncClient, ctx: dict):
-    resp = await client.get(f"/api/projects/{ctx['project_id']}/merge/coverage")
+    resp = await client.get(f"/api/projects/{ctx['project_id']}/merge/coverage", headers=ctx["headers"])
     assert resp.status_code == 200
     assert "GRI" in resp.json()["coverage"]
     assert "IFRS_S2" in resp.json()["coverage"]
@@ -139,6 +139,6 @@ async def test_coverage(client: AsyncClient, ctx: dict):
 async def test_merged_view_no_standards(client: AsyncClient, ctx: dict):
     # New project without standards
     proj = await client.post("/api/projects", json={"name": "Empty"}, headers=ctx["headers"])
-    resp = await client.get(f"/api/projects/{proj.json()['id']}/merge")
+    resp = await client.get(f"/api/projects/{proj.json()['id']}/merge", headers=ctx["headers"])
     assert resp.status_code == 200
     assert resp.json()["summary"]["total"] == 0

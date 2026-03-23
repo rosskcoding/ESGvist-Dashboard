@@ -54,7 +54,7 @@ async def test_threaded_comments(client: AsyncClient, ctx: dict):
     assert reply.status_code == 201
 
     # List threaded
-    resp = await client.get("/api/comments/data-point/1")
+    resp = await client.get("/api/comments/data-point/1", headers=ctx["headers"])
     assert resp.status_code == 200
     threads = resp.json()
     assert len(threads) == 1  # one root
@@ -142,7 +142,7 @@ async def test_impact_requirement_change(client: AsyncClient, ctx: dict):
         headers=ctx["headers"],
     )
 
-    resp = await client.get(f"/api/impact/requirement-item/{item.json()['id']}")
+    resp = await client.get(f"/api/impact/requirement-item/{item.json()['id']}", headers=ctx["headers"])
     assert resp.status_code == 200
     assert "affected_standards" in resp.json()
 
@@ -157,7 +157,8 @@ async def test_impact_boundary_preview(client: AsyncClient, ctx: dict):
     proj = await client.post("/api/projects", json={"name": "P"}, headers=ctx["headers"])
 
     resp = await client.get(
-        f"/api/impact/boundary/preview?project_id={proj.json()['id']}&new_boundary_id={b.json()['id']}"
+        f"/api/impact/boundary/preview?project_id={proj.json()['id']}&new_boundary_id={b.json()['id']}",
+        headers=ctx["headers"],
     )
     assert resp.status_code == 200
     assert "added_count" in resp.json()
@@ -208,40 +209,43 @@ async def test_effective_ownership(client: AsyncClient, ctx: dict):
 # === REFERENCES (справочники) ===
 
 @pytest.mark.asyncio
-async def test_units_crud(client: AsyncClient):
+async def test_units_crud(client: AsyncClient, ctx: dict):
     resp = await client.post(
         "/api/references/units",
         json={"code": "tCO2e", "name": "Tonnes CO2 equivalent", "category": "emissions"},
+        headers=ctx["headers"],
     )
     assert resp.status_code == 201
 
-    resp = await client.get("/api/references/units")
+    resp = await client.get("/api/references/units", headers=ctx["headers"])
     assert resp.status_code == 200
     assert len(resp.json()) >= 1
 
 
 @pytest.mark.asyncio
-async def test_methodologies_crud(client: AsyncClient):
+async def test_methodologies_crud(client: AsyncClient, ctx: dict):
     resp = await client.post(
         "/api/references/methodologies",
         json={"code": "GHG_PROTOCOL", "name": "GHG Protocol"},
+        headers=ctx["headers"],
     )
     assert resp.status_code == 201
 
-    resp = await client.get("/api/references/methodologies")
+    resp = await client.get("/api/references/methodologies", headers=ctx["headers"])
     assert resp.status_code == 200
     assert len(resp.json()) >= 1
 
 
 @pytest.mark.asyncio
-async def test_boundary_approaches_crud(client: AsyncClient):
+async def test_boundary_approaches_crud(client: AsyncClient, ctx: dict):
     resp = await client.post(
         "/api/references/boundary-approaches",
         json={"code": "OPERATIONAL_CONTROL", "name": "Operational Control"},
+        headers=ctx["headers"],
     )
     assert resp.status_code == 201
 
-    resp = await client.get("/api/references/boundary-approaches")
+    resp = await client.get("/api/references/boundary-approaches", headers=ctx["headers"])
     assert resp.status_code == 200
     assert len(resp.json()) >= 1
 

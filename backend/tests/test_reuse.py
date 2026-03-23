@@ -46,7 +46,8 @@ async def ctx(client: AsyncClient) -> dict:
 @pytest.mark.asyncio
 async def test_find_reuse_candidates(client: AsyncClient, ctx: dict):
     resp = await client.get(
-        f"/api/projects/{ctx['project_id']}/data-points/find-reuse?shared_element_id={ctx['element_id']}"
+        f"/api/projects/{ctx['project_id']}/data-points/find-reuse?shared_element_id={ctx['element_id']}",
+        headers=ctx["headers"],
     )
     assert resp.status_code == 200
     assert len(resp.json()) == 1
@@ -56,7 +57,8 @@ async def test_find_reuse_candidates(client: AsyncClient, ctx: dict):
 @pytest.mark.asyncio
 async def test_find_reuse_no_match(client: AsyncClient, ctx: dict):
     resp = await client.get(
-        f"/api/projects/{ctx['project_id']}/data-points/find-reuse?shared_element_id=9999"
+        f"/api/projects/{ctx['project_id']}/data-points/find-reuse?shared_element_id=9999",
+        headers=ctx["headers"],
     )
     assert resp.status_code == 200
     assert len(resp.json()) == 0
@@ -68,15 +70,16 @@ async def test_reuse_info_single_binding(client: AsyncClient, ctx: dict):
     await client.post(
         f"/api/projects/{ctx['project_id']}/bindings",
         json={"requirement_item_id": ctx["item_id"], "data_point_id": ctx["dp_id"]},
+        headers=ctx["headers"],
     )
 
-    resp = await client.get(f"/api/data-points/{ctx['dp_id']}/reuse-info")
+    resp = await client.get(f"/api/data-points/{ctx['dp_id']}/reuse-info", headers=ctx["headers"])
     assert resp.status_code == 200
     assert resp.json()["binding_count"] == 1
 
 
 @pytest.mark.asyncio
 async def test_reuse_info_no_bindings(client: AsyncClient, ctx: dict):
-    resp = await client.get(f"/api/data-points/{ctx['dp_id']}/reuse-info")
+    resp = await client.get(f"/api/data-points/{ctx['dp_id']}/reuse-info", headers=ctx["headers"])
     assert resp.status_code == 200
     assert resp.json()["binding_count"] == 0

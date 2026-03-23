@@ -84,7 +84,7 @@ async def test_list_data_points(client: AsyncClient, ctx: dict):
             headers=ctx["headers"],
         )
 
-    resp = await client.get(f"/api/projects/{ctx['project_id']}/data-points")
+    resp = await client.get(f"/api/projects/{ctx['project_id']}/data-points", headers=ctx["headers"])
     assert resp.status_code == 200
     assert resp.json()["total"] == 3
 
@@ -98,7 +98,7 @@ async def test_get_data_point(client: AsyncClient, ctx: dict):
     )
     dp_id = create.json()["id"]
 
-    resp = await client.get(f"/api/data-points/{dp_id}")
+    resp = await client.get(f"/api/data-points/{dp_id}", headers=ctx["headers"])
     assert resp.status_code == 200
     assert resp.json()["numeric_value"] == 42
 

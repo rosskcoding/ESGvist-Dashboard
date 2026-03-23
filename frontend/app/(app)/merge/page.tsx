@@ -138,7 +138,7 @@ export default function MergePage() {
 
   const { data, isLoading, error } = useApiQuery<MergeData>(
     ["merge", projectId],
-    `/merge?project_id=${projectId}`
+    `/projects/${projectId}/merge`
   );
 
   const standards = data?.standards ?? [];

@@ -44,31 +44,19 @@ class GateFailure:
 
 @dataclass
 class GateBlockedError(AppError):
-    failed_gates: list[GateFailure] = field(default_factory=list)
-    warnings: list[GateFailure] = field(default_factory=list)
+    code: str = "GATE_BLOCKED"
+    status_code: int = 422
+    message: str = "Action blocked by gate checks"
+    failed_gates: list[dict] = field(default_factory=list)
+    warnings: list[dict] = field(default_factory=list)
 
     def to_response(self, request_id: str) -> dict:
         return {
             "error": {
                 "code": self.code,
                 "message": self.message,
-                "details": [
-                    {
-                        "code": g.code,
-                        "type": g.gate_type,
-                        "message": g.message,
-                        "severity": g.severity,
-                    }
-                    for g in self.failed_gates
-                ],
-                "warnings": [
-                    {
-                        "code": w.code,
-                        "type": w.gate_type,
-                        "message": w.message,
-                    }
-                    for w in self.warnings
-                ],
+                "details": self.failed_gates,
+                "warnings": self.warnings,
                 "requestId": request_id,
             }
         }

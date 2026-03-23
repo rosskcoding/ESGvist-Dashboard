@@ -35,8 +35,8 @@ class StandardSection(Base, TimestampMixin):
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     standard = relationship("Standard", back_populates="sections")
-    parent = relationship("StandardSection", remote_side="StandardSection.id", lazy="noload")
-    children = relationship("StandardSection", lazy="noload")
+    parent = relationship("StandardSection", remote_side=[id], back_populates="children", lazy="noload")
+    children = relationship("StandardSection", back_populates="parent", overlaps="parent", lazy="noload")
 
 
 class DisclosureRequirement(Base, TimestampMixin):

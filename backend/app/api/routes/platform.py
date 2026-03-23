@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.dependencies import RequestContext, get_current_context
 from app.core.exceptions import AppError
 from app.db.models.organization import Organization
@@ -51,6 +52,31 @@ async def list_tenants(
         })
 
     return {"items": items, "total": total}
+
+
+class TenantCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=500)
+    country: str | None = None
+    industry: str | None = None
+
+
+@router.post("/tenants", status_code=status.HTTP_201_CREATED)
+async def create_tenant(
+    payload: TenantCreate,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    _require_platform(ctx)
+
+    org = Organization(
+        name=payload.name,
+        country=payload.country,
+        industry=payload.industry,
+        setup_completed=False,
+    )
+    session.add(org)
+    await session.flush()
+    return {"id": org.id, "name": org.name, "created": True}
 
 
 @router.get("/tenants/{tenant_id}")
@@ -132,6 +158,46 @@ async def reactivate_tenant(
     org.setup_completed = True
     await session.flush()
     return {"id": org.id, "status": "active"}
+
+
+@router.patch("/tenants/{tenant_id}/archive")
+async def archive_tenant(
+    tenant_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    _require_platform(ctx)
+    result = await session.execute(select(Organization).where(Organization.id == tenant_id))
+    org = result.scalar_one_or_none()
+    if not org:
+        raise AppError("NOT_FOUND", 404, f"Tenant {tenant_id} not found")
+
+    org.setup_completed = False
+    await session.flush()
+    return {"id": org.id, "status": "archived"}
+
+
+# --- Self-registration config ---
+@router.get("/config/self-registration")
+async def get_self_registration_config(
+    ctx: RequestContext = Depends(get_current_context),
+):
+    _require_platform(ctx)
+    return {"allow_self_registration": settings.allow_self_registration}
+
+
+class SelfRegistrationUpdate(BaseModel):
+    allow_self_registration: bool
+
+
+@router.patch("/config/self-registration")
+async def update_self_registration_config(
+    payload: SelfRegistrationUpdate,
+    ctx: RequestContext = Depends(get_current_context),
+):
+    _require_platform(ctx)
+    settings.allow_self_registration = payload.allow_self_registration
+    return {"allow_self_registration": settings.allow_self_registration}
 
 
 # --- Platform Users ---

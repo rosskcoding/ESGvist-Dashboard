@@ -79,7 +79,7 @@ async def test_batch_reject_with_comment(client: AsyncClient, ctx: dict):
 # --- Export / Readiness ---
 @pytest.mark.asyncio
 async def test_readiness_check_empty(client: AsyncClient, ctx: dict):
-    resp = await client.get(f"/api/projects/{ctx['project_id']}/export/readiness")
+    resp = await client.get(f"/api/projects/{ctx['project_id']}/export/readiness", headers=ctx["headers"])
     assert resp.status_code == 200
     data = resp.json()
     assert "ready" in data

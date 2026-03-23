@@ -1,5 +1,6 @@
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError
+from app.repositories.audit_repo import AuditRepository
 from app.repositories.project_repo import ProjectRepository
 from app.schemas.projects import (
     AssignmentCreate,
@@ -14,8 +15,21 @@ from app.schemas.projects import (
 
 
 class ProjectService:
-    def __init__(self, repo: ProjectRepository):
+    def __init__(self, repo: ProjectRepository, audit_repo: AuditRepository | None = None):
         self.repo = repo
+        self.audit_repo = audit_repo
+
+    async def _audit(self, entity_type: str, action: str, ctx: RequestContext,
+                     entity_id: int | None = None, changes: dict | None = None):
+        if self.audit_repo:
+            await self.audit_repo.log(
+                entity_type=entity_type,
+                entity_id=entity_id,
+                action=action,
+                user_id=ctx.user_id,
+                organization_id=ctx.organization_id,
+                changes=changes,
+            )
 
     def _require_manager(self, ctx: RequestContext) -> None:
         if ctx.role not in ("admin", "esg_manager", "platform_admin"):
@@ -61,6 +75,8 @@ class ProjectService:
             )
 
         a = await self.repo.create_assignment(project_id, **payload.model_dump())
+        await self._audit("MetricAssignment", "assignment_created", ctx, entity_id=a.id,
+                          changes=payload.model_dump())
         return AssignmentOut.model_validate(a)
 
     async def list_assignments(self, project_id: int) -> list[AssignmentOut]:
@@ -74,6 +90,8 @@ class ProjectService:
         if not ctx.organization_id:
             raise AppError("ORG_HEADER_REQUIRED", 400, "Organization context required")
         b = await self.repo.create_boundary(ctx.organization_id, **payload.model_dump())
+        await self._audit("BoundaryDefinition", "create_boundary", ctx, entity_id=b.id,
+                          changes=payload.model_dump())
         return BoundaryDefOut.model_validate(b)
 
     async def list_boundaries(self, ctx: RequestContext) -> list[BoundaryDefOut]:
@@ -88,4 +106,6 @@ class ProjectService:
         if p.status == "published":
             raise AppError("PROJECT_LOCKED", 422, "Cannot change boundary for published project")
         p = await self.repo.update_project(project_id, boundary_definition_id=boundary_id)
+        await self._audit("ReportingProject", "apply_boundary_to_project", ctx, entity_id=project_id,
+                          changes={"boundary_id": boundary_id})
         return ProjectOut.model_validate(p)

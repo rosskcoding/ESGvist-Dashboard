@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import CurrentUser, get_current_user
+from app.core.dependencies import CurrentUser, RequestContext, get_current_context, get_current_user
 from app.db.session import get_session
 from app.services.comment_service import CommentService
 
@@ -35,7 +35,7 @@ async def create_comment(
 
 
 @router.get("/data-point/{dp_id}")
-async def list_comments(dp_id: int, session: AsyncSession = Depends(get_session)):
+async def list_comments(dp_id: int, ctx: RequestContext = Depends(get_current_context), session: AsyncSession = Depends(get_session)):
     service = CommentService(session)
     return await service.list_for_data_point(dp_id)
 

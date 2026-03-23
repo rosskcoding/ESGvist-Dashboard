@@ -48,3 +48,29 @@ class AuthPolicy:
         """Auditor cannot perform write operations."""
         if ctx.role == "auditor":
             raise AppError("FORBIDDEN", 403, "Auditor has read-only access")
+
+    @staticmethod
+    def require_write_access(ctx: RequestContext) -> None:
+        """Block auditor and ensure org context is present."""
+        if ctx.role == "auditor":
+            raise AppError("FORBIDDEN", 403, "Auditor has read-only access")
+        if not ctx.organization_id and not ctx.is_platform_admin:
+            raise AppError("ORG_HEADER_REQUIRED", 400, "Organization context required for write operations")
+
+    @staticmethod
+    def require_reviewer(ctx: RequestContext) -> None:
+        """Only reviewer (or admin/manager/platform_admin) can approve/reject."""
+        if ctx.role not in ("reviewer", "admin", "esg_manager", "platform_admin"):
+            raise AppError(
+                "FORBIDDEN", 403,
+                "Only reviewers can perform approve/reject actions"
+            )
+
+    @staticmethod
+    def require_collector_or_manager(ctx: RequestContext) -> None:
+        """Only collector, esg_manager, admin, or platform_admin can enter data."""
+        if ctx.role not in ("collector", "esg_manager", "admin", "platform_admin"):
+            raise AppError(
+                "FORBIDDEN", 403,
+                "Only collectors or managers can enter data"
+            )

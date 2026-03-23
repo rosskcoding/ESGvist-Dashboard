@@ -11,6 +11,7 @@ router = APIRouter(tags=["Export"])
 @router.get("/api/projects/{project_id}/export/readiness")
 async def readiness_check(
     project_id: int,
+    ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
     service = ExportService(session)

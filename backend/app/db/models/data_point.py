@@ -17,6 +17,9 @@ class DataPoint(Base, TimestampMixin):
     entity_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("company_entities.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    facility_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("company_entities.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     status: Mapped[str] = mapped_column(String, default="draft", nullable=False)
     numeric_value: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
     text_value: Mapped[str | None] = mapped_column(Text, nullable=True)

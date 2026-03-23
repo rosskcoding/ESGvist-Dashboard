@@ -52,7 +52,7 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=["X-Request-ID"],
+        expose_headers=["X-Request-ID", "X-Request-Duration"],
     )
 
     # Exception handlers
@@ -92,6 +92,11 @@ def create_app() -> FastAPI:
     app.include_router(references.router)
     app.include_router(snapshots.router)
     app.include_router(dashboard.router)
+
+    # Wire event bus
+    from app.events.bus import get_event_bus
+    from app.events.handlers.audit_handler import AuditEventHandler
+    get_event_bus().subscribe("*", AuditEventHandler())
 
     return app
 

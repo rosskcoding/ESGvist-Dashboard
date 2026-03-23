@@ -81,6 +81,7 @@ async def create_snapshot(
 @router.get("/api/projects/{project_id}/boundary/snapshot")
 async def get_snapshot(
     project_id: int,
+    ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
     snap = (await session.execute(

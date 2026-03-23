@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import RequestContext, get_current_context
 from app.db.session import get_session
+from app.policies.auth_policy import AuthPolicy
 from app.repositories.project_repo import ProjectRepository
 from app.schemas.projects import (
     AssignmentCreate,
@@ -14,13 +15,14 @@ from app.schemas.projects import (
     ProjectOut,
     ProjectStandardAdd,
 )
+from app.repositories.audit_repo import AuditRepository
 from app.services.project_service import ProjectService
 
 router = APIRouter(tags=["Projects"])
 
 
 def _get_service(session: AsyncSession) -> ProjectService:
-    return ProjectService(repo=ProjectRepository(session))
+    return ProjectService(repo=ProjectRepository(session), audit_repo=AuditRepository(session))
 
 
 # --- Projects ---
@@ -30,6 +32,7 @@ async def create_project(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
+    AuthPolicy.auditor_read_only(ctx)
     return await _get_service(session).create_project(payload, ctx)
 
 
@@ -46,6 +49,7 @@ async def list_projects(
 @router.get("/api/projects/{project_id}", response_model=ProjectOut)
 async def get_project(
     project_id: int,
+    ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
     return await _get_service(session).get_project(project_id)
@@ -58,6 +62,7 @@ async def add_standard(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
+    AuthPolicy.auditor_read_only(ctx)
     return await _get_service(session).add_standard(project_id, payload, ctx)
 
 
@@ -73,12 +78,14 @@ async def create_assignment(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
+    AuthPolicy.auditor_read_only(ctx)
     return await _get_service(session).create_assignment(project_id, payload, ctx)
 
 
 @router.get("/api/projects/{project_id}/assignments", response_model=list[AssignmentOut])
 async def list_assignments(
     project_id: int,
+    ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
     return await _get_service(session).list_assignments(project_id)
@@ -91,6 +98,7 @@ async def create_boundary(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
+    AuthPolicy.auditor_read_only(ctx)
     return await _get_service(session).create_boundary(payload, ctx)
 
 
@@ -109,4 +117,5 @@ async def apply_boundary(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
+    AuthPolicy.auditor_read_only(ctx)
     return await _get_service(session).apply_boundary(project_id, boundary_id, ctx)

@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.dependencies import RequestContext, get_current_context
 from app.db.models.unit_reference import BoundaryApproach, Methodology, UnitReference
 from app.db.session import get_session
 
@@ -17,7 +18,7 @@ class RefCreate(BaseModel):
 
 
 @router.get("/units")
-async def list_units(session: AsyncSession = Depends(get_session)):
+async def list_units(ctx: RequestContext = Depends(get_current_context), session: AsyncSession = Depends(get_session)):
     result = await session.execute(select(UnitReference).order_by(UnitReference.code))
     return [{"id": u.id, "code": u.code, "name": u.name, "category": u.category} for u in result.scalars().all()]
 
@@ -31,7 +32,7 @@ async def create_unit(payload: RefCreate, session: AsyncSession = Depends(get_se
 
 
 @router.get("/methodologies")
-async def list_methodologies(session: AsyncSession = Depends(get_session)):
+async def list_methodologies(ctx: RequestContext = Depends(get_current_context), session: AsyncSession = Depends(get_session)):
     result = await session.execute(select(Methodology).order_by(Methodology.code))
     return [{"id": m.id, "code": m.code, "name": m.name, "description": m.description} for m in result.scalars().all()]
 
@@ -45,7 +46,7 @@ async def create_methodology(payload: RefCreate, session: AsyncSession = Depends
 
 
 @router.get("/boundary-approaches")
-async def list_approaches(session: AsyncSession = Depends(get_session)):
+async def list_approaches(ctx: RequestContext = Depends(get_current_context), session: AsyncSession = Depends(get_session)):
     result = await session.execute(select(BoundaryApproach).order_by(BoundaryApproach.code))
     return [{"id": b.id, "code": b.code, "name": b.name} for b in result.scalars().all()]
 

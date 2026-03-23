@@ -223,11 +223,13 @@ function AddAssignmentDialog({
   onOpenChange,
   users,
   entities,
+  projectId,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   users: User[];
   entities: Entity[];
+  projectId: number;
 }) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState({
@@ -241,7 +243,7 @@ function AddAssignmentDialog({
   });
 
   const mutation = useApiMutation<Assignment, typeof form>(
-    "/assignments",
+    `/projects/${projectId}/assignments`,
     "POST",
     {
       onSuccess: () => {
@@ -480,13 +482,13 @@ export default function AssignmentsPage() {
 
   const { data, isLoading, error } = useApiQuery<AssignmentsResponse>(
     ["assignments", projectId],
-    `/assignments?project_id=${projectId}`
+    `/projects/${projectId}/assignments`
   );
 
   const updateMutation = useApiMutation<
     Assignment,
     { id: number; field: string; value: string }
-  >("/assignments/inline-update", "PATCH", {
+  >(`/projects/${projectId}/assignments/inline-update`, "PATCH", {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["assignments"] });
     },
@@ -495,7 +497,7 @@ export default function AssignmentsPage() {
   const bulkMutation = useApiMutation<
     void,
     { ids: number[]; field: string; value: string }
-  >("/assignments/bulk-update", "PATCH", {
+  >(`/projects/${projectId}/assignments/bulk-update`, "PATCH", {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["assignments"] });
       setSelectedIds(new Set());
@@ -940,6 +942,7 @@ export default function AssignmentsPage() {
         onOpenChange={setAddDialogOpen}
         users={users}
         entities={entities}
+        projectId={projectId}
       />
       {bulkAction && (
         <BulkActionDialog

@@ -4,6 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import RequestContext, get_current_context
 from app.db.session import get_session
+from app.policies.auth_policy import AuthPolicy
+from app.repositories.audit_repo import AuditRepository
 from app.repositories.data_point_repo import DataPointRepository
 from app.services.workflow_service import WorkflowService
 
@@ -21,7 +23,10 @@ class GateCheckRequest(BaseModel):
 
 
 def _get_service(session: AsyncSession) -> WorkflowService:
-    return WorkflowService(dp_repo=DataPointRepository(session))
+    return WorkflowService(
+        dp_repo=DataPointRepository(session),
+        audit_repo=AuditRepository(session),
+    )
 
 
 @router.post("/api/data-points/{dp_id}/submit")
@@ -30,7 +35,9 @@ async def submit(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    return await _get_service(session).submit(dp_id, ctx)
+    AuthPolicy.auditor_read_only(ctx)
+    service = _get_service(session)
+    return await service.submit(dp_id, ctx, assignment_repo=service.dp_repo)
 
 
 @router.post("/api/data-points/{dp_id}/approve")
@@ -40,6 +47,7 @@ async def approve(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
+    AuthPolicy.auditor_read_only(ctx)
     return await _get_service(session).approve(dp_id, payload.comment, ctx)
 
 
@@ -50,6 +58,7 @@ async def reject(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
+    AuthPolicy.auditor_read_only(ctx)
     return await _get_service(session).reject(dp_id, payload.comment, ctx)
 
 
@@ -60,6 +69,7 @@ async def request_revision(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
+    AuthPolicy.auditor_read_only(ctx)
     return await _get_service(session).request_revision(dp_id, payload.comment, ctx)
 
 
@@ -70,6 +80,7 @@ async def rollback(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
+    AuthPolicy.auditor_read_only(ctx)
     return await _get_service(session).rollback(dp_id, payload.comment, ctx)
 
 

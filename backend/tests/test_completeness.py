@@ -71,7 +71,8 @@ async def ctx(client: AsyncClient) -> dict:
 async def test_item_status_missing_no_binding(client: AsyncClient, ctx: dict):
     """No binding → missing."""
     resp = await client.get(
-        f"/api/projects/{ctx['project_id']}/completeness/items/{ctx['item1_id']}"
+        f"/api/projects/{ctx['project_id']}/completeness/items/{ctx['item1_id']}",
+        headers=ctx["headers"],
     )
     assert resp.status_code == 200
     assert resp.json()["status"] == "missing"
@@ -82,6 +83,7 @@ async def test_bind_data_point(client: AsyncClient, ctx: dict):
     resp = await client.post(
         f"/api/projects/{ctx['project_id']}/bindings",
         json={"requirement_item_id": ctx["item1_id"], "data_point_id": ctx["dp_id"]},
+        headers=ctx["headers"],
     )
     assert resp.status_code == 201
     assert "binding_id" in resp.json()
@@ -93,10 +95,12 @@ async def test_item_status_partial_not_approved(client: AsyncClient, ctx: dict):
     await client.post(
         f"/api/projects/{ctx['project_id']}/bindings",
         json={"requirement_item_id": ctx["item1_id"], "data_point_id": ctx["dp_id"]},
+        headers=ctx["headers"],
     )
 
     resp = await client.get(
-        f"/api/projects/{ctx['project_id']}/completeness/items/{ctx['item1_id']}"
+        f"/api/projects/{ctx['project_id']}/completeness/items/{ctx['item1_id']}",
+        headers=ctx["headers"],
     )
     assert resp.json()["status"] == "partial"
 
@@ -107,6 +111,7 @@ async def test_item_status_complete_after_approve(client: AsyncClient, ctx: dict
     await client.post(
         f"/api/projects/{ctx['project_id']}/bindings",
         json={"requirement_item_id": ctx["item1_id"], "data_point_id": ctx["dp_id"]},
+        headers=ctx["headers"],
     )
 
     # Set data point to approved
@@ -121,7 +126,8 @@ async def test_item_status_complete_after_approve(client: AsyncClient, ctx: dict
         await session.commit()
 
     resp = await client.get(
-        f"/api/projects/{ctx['project_id']}/completeness/items/{ctx['item1_id']}"
+        f"/api/projects/{ctx['project_id']}/completeness/items/{ctx['item1_id']}",
+        headers=ctx["headers"],
     )
     assert resp.json()["status"] == "complete"
 
@@ -130,7 +136,8 @@ async def test_item_status_complete_after_approve(client: AsyncClient, ctx: dict
 async def test_disclosure_status_missing(client: AsyncClient, ctx: dict):
     """No items complete → missing."""
     resp = await client.get(
-        f"/api/projects/{ctx['project_id']}/completeness/disclosures/{ctx['disclosure_id']}"
+        f"/api/projects/{ctx['project_id']}/completeness/disclosures/{ctx['disclosure_id']}",
+        headers=ctx["headers"],
     )
     assert resp.json()["status"] == "missing"
     assert resp.json()["completion_percent"] == 0
@@ -143,6 +150,7 @@ async def test_disclosure_status_partial(client: AsyncClient, ctx: dict):
     await client.post(
         f"/api/projects/{ctx['project_id']}/bindings",
         json={"requirement_item_id": ctx["item1_id"], "data_point_id": ctx["dp_id"]},
+        headers=ctx["headers"],
     )
 
     from tests.conftest import TestSessionLocal
@@ -156,12 +164,13 @@ async def test_disclosure_status_partial(client: AsyncClient, ctx: dict):
         await session.commit()
 
     # Calculate item1 first
-    await client.get(f"/api/projects/{ctx['project_id']}/completeness/items/{ctx['item1_id']}")
+    await client.get(f"/api/projects/{ctx['project_id']}/completeness/items/{ctx['item1_id']}", headers=ctx["headers"])
     # Calculate item2 (missing)
-    await client.get(f"/api/projects/{ctx['project_id']}/completeness/items/{ctx['item2_id']}")
+    await client.get(f"/api/projects/{ctx['project_id']}/completeness/items/{ctx['item2_id']}", headers=ctx["headers"])
 
     resp = await client.get(
-        f"/api/projects/{ctx['project_id']}/completeness/disclosures/{ctx['disclosure_id']}"
+        f"/api/projects/{ctx['project_id']}/completeness/disclosures/{ctx['disclosure_id']}",
+        headers=ctx["headers"],
     )
     assert resp.json()["status"] == "partial"
     assert resp.json()["completion_percent"] == 50.0
@@ -181,10 +190,12 @@ async def test_disclosure_status_complete(client: AsyncClient, ctx: dict):
     await client.post(
         f"/api/projects/{ctx['project_id']}/bindings",
         json={"requirement_item_id": ctx["item1_id"], "data_point_id": ctx["dp_id"]},
+        headers=ctx["headers"],
     )
     await client.post(
         f"/api/projects/{ctx['project_id']}/bindings",
         json={"requirement_item_id": ctx["item2_id"], "data_point_id": dp2.json()["id"]},
+        headers=ctx["headers"],
     )
 
     # Approve both
@@ -199,11 +210,12 @@ async def test_disclosure_status_complete(client: AsyncClient, ctx: dict):
         await session.commit()
 
     # Calculate both items
-    await client.get(f"/api/projects/{ctx['project_id']}/completeness/items/{ctx['item1_id']}")
-    await client.get(f"/api/projects/{ctx['project_id']}/completeness/items/{ctx['item2_id']}")
+    await client.get(f"/api/projects/{ctx['project_id']}/completeness/items/{ctx['item1_id']}", headers=ctx["headers"])
+    await client.get(f"/api/projects/{ctx['project_id']}/completeness/items/{ctx['item2_id']}", headers=ctx["headers"])
 
     resp = await client.get(
-        f"/api/projects/{ctx['project_id']}/completeness/disclosures/{ctx['disclosure_id']}"
+        f"/api/projects/{ctx['project_id']}/completeness/disclosures/{ctx['disclosure_id']}",
+        headers=ctx["headers"],
     )
     assert resp.json()["status"] == "complete"
     assert resp.json()["completion_percent"] == 100.0

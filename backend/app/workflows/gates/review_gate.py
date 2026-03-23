@@ -1,6 +1,25 @@
 from app.workflows.gates.base import Gate, GateFailure
 
 
+class ReviewNotCompletedGate(Gate):
+    """Blocks publish/export if no review has been performed."""
+
+    def applies_to(self, action: str) -> bool:
+        return action in ("publish_project", "start_export")
+
+    async def evaluate(self, context: dict) -> GateFailure | None:
+        reviewed_count = context.get("reviewed_count", 0)
+        total_count = context.get("total_data_point_count", 0)
+        if total_count > 0 and reviewed_count == 0:
+            return GateFailure(
+                code="REVIEW_NOT_COMPLETED",
+                gate_type="review",
+                message="No data points have been reviewed — at least one review is required",
+                severity="blocker",
+            )
+        return None
+
+
 class UnresolvedReviewGate(Gate):
     """Blocks publish if there are unresolved review items."""
 
