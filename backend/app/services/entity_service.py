@@ -58,9 +58,33 @@ class EntityService:
                 created_by=ctx.user_id,
             )
 
+        # Create default boundary
+        from app.db.models.boundary import BoundaryDefinition, BoundaryMembership
+
+        boundary = BoundaryDefinition(
+            organization_id=org.id,
+            name="Financial Reporting Default",
+            boundary_type="financial_reporting_default",
+            is_default=True,
+        )
+        self.repo.session.add(boundary)
+        await self.repo.session.flush()
+
+        # Include root entity in boundary
+        membership = BoundaryMembership(
+            boundary_definition_id=boundary.id,
+            entity_id=root.id,
+            included=True,
+            inclusion_source="automatic",
+            consolidation_method="full",
+        )
+        self.repo.session.add(membership)
+        await self.repo.session.flush()
+
         return {
             "organization_id": org.id,
             "root_entity_id": root.id,
+            "boundary_id": boundary.id,
         }
 
     # --- Entities ---
@@ -101,6 +125,9 @@ class EntityService:
                 f"Total ownership would be {current_sum + payload.ownership_percent}%"
             )
 
+        # Cycle detection: child cannot own parent (directly or indirectly)
+        await self._check_ownership_cycle(payload.parent_entity_id, payload.child_entity_id)
+
         link = await self.repo.create_ownership(**payload.model_dump())
         return OwnershipLinkOut.model_validate(link)
 
@@ -115,3 +142,30 @@ class EntityService:
 
         link = await self.repo.create_control(**payload.model_dump())
         return ControlLinkOut.model_validate(link)
+
+    async def _check_ownership_cycle(self, parent_id: int, child_id: int) -> None:
+        """Prevent cycles: check if child already owns parent (directly or indirectly)."""
+        from sqlalchemy import select
+        from app.db.models.company_entity import OwnershipLink
+
+        visited = set()
+        stack = [child_id]
+
+        while stack:
+            current = stack.pop()
+            if current == parent_id:
+                raise AppError(
+                    "OWNERSHIP_CYCLE_DETECTED", 422,
+                    "Adding this ownership link would create a cycle"
+                )
+            if current in visited:
+                continue
+            visited.add(current)
+
+            # Find entities that current entity owns
+            q = select(OwnershipLink.child_entity_id).where(
+                OwnershipLink.parent_entity_id == current
+            )
+            result = await self.repo.session.execute(q)
+            for row in result.all():
+                stack.append(row[0])

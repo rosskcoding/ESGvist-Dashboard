@@ -8,6 +8,7 @@ from app.api.routes import (
     auth,
     comments,
     completeness,
+    dashboard,
     data_points,
     deltas,
     entities,
@@ -26,6 +27,7 @@ from app.api.routes import (
     reuse,
     review,
     shared_elements,
+    snapshots,
     standards,
     workflow,
 )
@@ -88,6 +90,8 @@ def create_app() -> FastAPI:
     app.include_router(invitations.router)
     app.include_router(impact.router)
     app.include_router(references.router)
+    app.include_router(snapshots.router)
+    app.include_router(dashboard.router)
 
     return app
 

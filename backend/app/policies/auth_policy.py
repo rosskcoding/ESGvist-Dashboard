@@ -42,3 +42,9 @@ class AuthPolicy:
         """Reviewer can only act on assigned reviews."""
         if ctx.role == "reviewer" and reviewer_id != ctx.user_id:
             raise AppError("FORBIDDEN", 403, "You can only review data assigned to you")
+
+    @staticmethod
+    def auditor_read_only(ctx: RequestContext) -> None:
+        """Auditor cannot perform write operations."""
+        if ctx.role == "auditor":
+            raise AppError("FORBIDDEN", 403, "Auditor has read-only access")

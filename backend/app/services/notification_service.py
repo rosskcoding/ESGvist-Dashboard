@@ -1,3 +1,6 @@
+from sqlalchemy import select
+
+from app.db.models.notification import Notification
 from app.repositories.notification_repo import NotificationRepository
 
 
@@ -15,7 +18,25 @@ class NotificationService:
         entity_type: str | None = None,
         entity_id: int | None = None,
         severity: str = "info",
-    ) -> dict:
+        triggered_by: int | None = None,
+    ) -> dict | None:
+        # No self-notify: don't notify the user who triggered the action
+        if triggered_by and triggered_by == user_id:
+            return None
+
+        # Deduplication: don't create duplicate notification for same user+type+entity
+        existing = await self.repo.session.execute(
+            select(Notification).where(
+                Notification.user_id == user_id,
+                Notification.type == type,
+                Notification.entity_type == entity_type,
+                Notification.entity_id == entity_id,
+                Notification.is_read == False,
+            )
+        )
+        if existing.scalar_one_or_none():
+            return None  # Already notified, skip
+
         n = await self.repo.create(
             organization_id=org_id,
             user_id=user_id,

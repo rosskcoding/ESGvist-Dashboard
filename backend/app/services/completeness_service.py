@@ -31,12 +31,28 @@ class CompletenessService:
             await self.repo.upsert_item_status(project_id, item_id, status, reason)
             return status
 
-        # Check evidence for approved data points
-        for dp in data_points:
-            if dp.status == "approved":
-                ev_count = await self.repo.count_evidence_for_dp(dp.id)
-                # Evidence check only blocks if item requires it
-                # (simplified — full check would look at requirement_item.requires_evidence)
+        # Check evidence for approved data points (requires_evidence)
+        from app.db.models.requirement_item import RequirementItem as RIModel
+        from sqlalchemy import select
+
+        ri = await self.repo.session.execute(
+            select(RIModel).where(RIModel.id == item_id)
+        )
+        requirement_item = ri.scalar_one_or_none()
+
+        if requirement_item and requirement_item.requires_evidence:
+            has_evidence = False
+            for dp in data_points:
+                if dp.status == "approved":
+                    ev_count = await self.repo.count_evidence_for_dp(dp.id)
+                    if ev_count > 0:
+                        has_evidence = True
+                        break
+            if not has_evidence:
+                status = "partial"
+                reason = "Missing required evidence"
+                await self.repo.upsert_item_status(project_id, item_id, status, reason)
+                return status
 
         status = "complete"
         reason = None
