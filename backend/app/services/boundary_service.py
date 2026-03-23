@@ -186,6 +186,17 @@ class BoundaryService:
             return ProjectBoundaryOut()
 
         boundary = await self._get_boundary_or_raise(project.boundary_definition_id, ctx)
+        memberships = list(
+            (
+                await self.session.execute(
+                    select(BoundaryMembership).where(
+                        BoundaryMembership.boundary_definition_id == project.boundary_definition_id
+                    )
+                )
+            ).scalars().all()
+        )
+        entities_in_scope = sum(1 for membership in memberships if membership.included)
+        excluded_entities = sum(1 for membership in memberships if not membership.included)
         snapshot = (
             await self.session.execute(
                 select(BoundarySnapshot).where(BoundarySnapshot.reporting_project_id == project_id)
@@ -202,6 +213,10 @@ class BoundaryService:
             snapshot_id=snapshot.id if snapshot else None,
             snapshot_locked=snapshot_locked,
             snapshot_date=snapshot.created_at.isoformat() if snapshot and snapshot.created_at else None,
+            snapshot_status="locked" if snapshot_locked else ("draft" if snapshot else "not_created"),
+            snapshot_created_at=snapshot.created_at.isoformat() if snapshot and snapshot.created_at else None,
+            entities_in_scope=entities_in_scope,
+            excluded_entities=excluded_entities,
         )
 
     async def replace_memberships(

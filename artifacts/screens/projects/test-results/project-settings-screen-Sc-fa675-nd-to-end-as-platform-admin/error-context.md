@@ -1,0 +1,183 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e7] [cursor=pointer]:
+    - img [ref=e8]
+  - alert [ref=e11]
+  - generic [ref=e12]:
+    - complementary [ref=e13]:
+      - link "ESGvist" [ref=e15] [cursor=pointer]:
+        - /url: /dashboard
+      - navigation [ref=e16]:
+        - generic [ref=e17]:
+          - paragraph [ref=e18]: Main
+          - generic [ref=e19]:
+            - link "Dashboard" [ref=e20] [cursor=pointer]:
+              - /url: /dashboard
+              - img [ref=e21]
+              - text: Dashboard
+            - link "Collection" [ref=e26] [cursor=pointer]:
+              - /url: /collection
+              - img [ref=e27]
+              - text: Collection
+            - link "Validation" [ref=e30] [cursor=pointer]:
+              - /url: /validation
+              - img [ref=e31]
+              - text: Validation
+            - link "Merge View" [ref=e34] [cursor=pointer]:
+              - /url: /merge
+              - img [ref=e35]
+              - text: Merge View
+        - generic [ref=e39]:
+          - paragraph [ref=e40]: Reporting
+          - generic [ref=e41]:
+            - link "Projects" [ref=e42] [cursor=pointer]:
+              - /url: /projects
+              - img [ref=e43]
+              - text: Projects
+            - link "Completeness" [ref=e45] [cursor=pointer]:
+              - /url: /completeness
+              - img [ref=e46]
+              - text: Completeness
+            - link "Report / Export" [ref=e49] [cursor=pointer]:
+              - /url: /report
+              - img [ref=e50]
+              - text: Report / Export
+            - link "Audit Log" [ref=e55] [cursor=pointer]:
+              - /url: /audit
+              - img [ref=e56]
+              - text: Audit Log
+        - generic [ref=e59]:
+          - paragraph [ref=e60]: Settings
+          - generic [ref=e61]:
+            - link "Organization" [ref=e62] [cursor=pointer]:
+              - /url: /settings
+              - img [ref=e63]
+              - text: Organization
+            - link "Profile" [ref=e66] [cursor=pointer]:
+              - /url: /settings/profile
+              - img [ref=e67]
+              - text: Profile
+            - link "Company Structure" [ref=e71] [cursor=pointer]:
+              - /url: /settings/company-structure
+              - img [ref=e72]
+              - text: Company Structure
+            - link "Assignments" [ref=e76] [cursor=pointer]:
+              - /url: /settings/assignments
+              - img [ref=e77]
+              - text: Assignments
+            - link "Standards" [ref=e89] [cursor=pointer]:
+              - /url: /settings/standards
+              - img [ref=e90]
+              - text: Standards
+            - link "Shared Elements" [ref=e92] [cursor=pointer]:
+              - /url: /settings/shared-elements
+              - img [ref=e93]
+              - text: Shared Elements
+            - link "Users" [ref=e99] [cursor=pointer]:
+              - /url: /settings/users
+              - img [ref=e100]
+              - text: Users
+            - link "Boundaries" [ref=e105] [cursor=pointer]:
+              - /url: /settings/boundaries
+              - img [ref=e106]
+              - text: Boundaries
+            - link "Webhooks" [ref=e108] [cursor=pointer]:
+              - /url: /settings/webhooks
+              - img [ref=e109]
+              - text: Webhooks
+        - generic [ref=e113]:
+          - paragraph [ref=e114]: Platform
+          - link "Tenants" [ref=e116] [cursor=pointer]:
+            - /url: /platform/tenants
+            - img [ref=e117]
+            - text: Tenants
+    - generic [ref=e120]:
+      - banner [ref=e121]:
+        - generic [ref=e122]:
+          - img [ref=e123]
+          - generic [ref=e126]: Search...
+        - generic [ref=e127]:
+          - button "AI Copilot" [ref=e128]:
+            - img
+            - text: AI Copilot
+          - button [ref=e129]:
+            - img
+          - button "RA Ross Admin platform_admin" [ref=e131]:
+            - generic [ref=e132]: RA
+            - generic [ref=e133]:
+              - paragraph [ref=e134]: Ross Admin
+              - paragraph [ref=e135]: platform_admin
+            - img
+      - generic [ref=e136]:
+        - main [ref=e137]:
+          - generic [ref=e138]:
+            - generic [ref=e140]:
+              - generic [ref=e141]:
+                - heading "Project Settings Flow 1774281038528" [level=2] [ref=e142]
+                - generic [ref=e143]: Draft
+              - paragraph [ref=e144]: "Project Settings · ID #2"
+            - generic [ref=e145]:
+              - tablist [ref=e146]:
+                - tab "General" [ref=e147]:
+                  - img [ref=e148]
+                  - text: General
+                - tab "Standards" [selected] [ref=e151]:
+                  - img [ref=e152]
+                  - text: Standards
+                - tab "Boundary" [ref=e155]:
+                  - img [ref=e156]
+                  - text: Boundary
+                - tab "Team" [ref=e159]:
+                  - img [ref=e160]
+                  - text: Team
+              - tabpanel [ref=e165]:
+                - generic [ref=e166]:
+                  - generic [ref=e167]:
+                    - generic [ref=e168]:
+                      - generic [ref=e169]: Attached Standards
+                      - generic [ref=e170]: Reporting frameworks linked to this project
+                    - button "Add Standard" [ref=e171]:
+                      - img
+                      - text: Add Standard
+                  - paragraph [ref=e173]: No standards attached yet. Add a standard to begin.
+            - dialog [ref=e174]:
+              - generic [ref=e175]:
+                - heading "Add Standard" [level=2] [ref=e177]
+                - generic [ref=e179]:
+                  - generic [ref=e180]: Standard
+                  - combobox "Standard" [active] [ref=e181]:
+                    - option "Select a standard..." [disabled]
+                    - option "GRI - Global Reporting Initiative" [selected]
+                    - option "IFRS-S1 - IFRS S1 General Requirements"
+                    - option "IFRS-S2 - IFRS S2 Climate-related Disclosures"
+                    - option "ESRS - European Sustainability Reporting Standards"
+                    - option "NW-CUSTOM - Northwind Custom Reporting Standard"
+                - generic [ref=e182]:
+                  - button "Cancel" [ref=e183]
+                  - button "Add" [ref=e184]
+                - button "Close" [ref=e185]:
+                  - img [ref=e186]
+        - complementary [ref=e189]:
+          - generic [ref=e190]:
+            - generic [ref=e191]:
+              - img [ref=e192]
+              - heading "AI Assistant" [level=3] [ref=e195]
+            - button [ref=e196]:
+              - img
+          - generic [ref=e198]:
+            - img [ref=e199]
+            - paragraph [ref=e202]: How can I help?
+            - paragraph [ref=e203]: Ask questions about your ESG reporting
+            - generic [ref=e204]:
+              - paragraph [ref=e205]: Quick prompts
+              - button "Explain this metric" [ref=e206]
+              - button "What data is missing?" [ref=e207]
+              - button "Help me understand boundary" [ref=e208]
+              - button "Suggest next steps" [ref=e209]
+          - generic [ref=e211]:
+            - textbox "Ask the AI assistant..." [ref=e213]
+            - button [disabled]:
+              - img
+```

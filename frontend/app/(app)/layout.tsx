@@ -84,7 +84,12 @@ const navGroups: NavGroup[] = [
   {
     title: "Reporting",
     items: [
-      { label: "Projects", href: "/projects", icon: FolderKanban },
+      {
+        label: "Projects",
+        href: "/projects",
+        icon: FolderKanban,
+        requiredRoles: ["admin", "esg_manager", "platform_admin"],
+      },
       {
         label: "Completeness",
         href: "/completeness",

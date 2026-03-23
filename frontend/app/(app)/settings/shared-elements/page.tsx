@@ -418,17 +418,19 @@ export default function SharedElementsPage() {
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [linkElementId, setLinkElementId] = useState<number>(0);
 
-  const { data: elements, isLoading: elementsLoading } = useApiQuery<
-    SharedElement[]
+  const { data: elementsData, isLoading: elementsLoading } = useApiQuery<
+    any
   >(["shared-elements"], "/shared-elements");
+  const elements: SharedElement[] = Array.isArray(elementsData) ? elementsData : elementsData?.items ?? [];
 
-  const { data: mappings, isLoading: mappingsLoading } = useApiQuery<Mapping[]>(
+  const { data: mappingsData, isLoading: mappingsLoading } = useApiQuery<any>(
     ["mappings"],
     "/mappings"
   );
+  const mappings: Mapping[] = Array.isArray(mappingsData) ? mappingsData : mappingsData?.items ?? [];
 
   const filteredElements = useMemo(() => {
-    if (!elements) return [];
+    if (!elements.length) return [];
     let result = elements;
     if (search) {
       const q = search.toLowerCase();
@@ -447,9 +449,8 @@ export default function SharedElementsPage() {
   // Group mappings by shared element
   const mappingsByElement = useMemo(() => {
     const map = new Map<number, Mapping[]>();
-    const mappingList = Array.isArray(mappings) ? mappings : (mappings as any)?.items ?? [];
-    if (mappingList.length > 0) {
-      for (const m of mappingList) {
+    if (mappings.length > 0) {
+      for (const m of mappings) {
         const arr = map.get(m.shared_element_id) ?? [];
         arr.push(m);
         map.set(m.shared_element_id, arr);

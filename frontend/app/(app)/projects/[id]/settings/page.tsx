@@ -47,7 +47,9 @@ import {
   CheckCircle2,
   XCircle,
   Camera,
+  ShieldAlert,
 } from "lucide-react";
+import { api } from "@/lib/api";
 
 interface ProjectDetail {
   id: number;
@@ -77,16 +79,19 @@ interface AvailableStandard {
 interface BoundaryOption {
   id: number;
   name: string;
-  entity_count: number;
+  entity_count?: number;
 }
 
 interface ProjectBoundary {
   boundary_id: number | null;
-  boundary_name: string;
+  boundary_name: string | null;
+  boundary_type?: string | null;
   entities_in_scope: number;
   excluded_entities: number;
   snapshot_status: "locked" | "draft" | "not_created";
   snapshot_created_at: string | null;
+  snapshot_locked?: boolean;
+  snapshot_date?: string | null;
 }
 
 interface AssignmentSummary {
@@ -112,6 +117,11 @@ const statusConfig: Record<
   review: { label: "In Review", variant: "warning" },
   published: { label: "Published", variant: "success" },
 };
+
+function isForbidden(error: Error | null) {
+  const code = (error as Error & { code?: string } | null)?.code;
+  return code === "FORBIDDEN" || /not allowed|access denied|forbidden/i.test(error?.message || "");
+}
 
 export default function ProjectSettingsPage() {
   const params = useParams();
@@ -148,7 +158,9 @@ export default function ProjectSettingsPage() {
       `/projects/${projectId}/boundary`
     );
 
-  const { data: boundaryOptions } = useApiQuery<{ items: BoundaryOption[] }>(
+  const { data: boundaryOptionsData } = useApiQuery<
+    { items: BoundaryOption[] } | BoundaryOption[]
+  >(
     ["boundaries"],
     "/boundaries"
   );
@@ -205,25 +217,33 @@ export default function ProjectSettingsPage() {
     { onSuccess: () => refetchBoundary() }
   );
 
-  // Gate check before workflow transitions
-  const gateCheckMutation = useApiMutation<GateCheckResult, void>(
-    "",
-    "POST"
-  );
-
   const handleWorkflowAction = async (
     action: "activate" | "start-review" | "publish"
   ) => {
-    // First run gate check
     try {
-      const result = await gateCheckMutation.mutateAsync(undefined);
+      const workflowAction =
+        action === "activate"
+          ? "start_project"
+          : action === "start-review"
+            ? "review_project"
+            : "publish_project";
+      const result = await api.post<GateCheckResult & { failed_gates?: Array<{ message?: string }> }>(
+        "/gate-check",
+        { project_id: Number(projectId), action: workflowAction }
+      );
       if (result && !result.passed) {
-        setGateBlockers(result.blockers);
+        const blockers =
+          result.blockers?.length
+            ? result.blockers
+            : (result.failed_gates || [])
+                .map((gate) => gate.message)
+                .filter((message): message is string => !!message);
+        setGateBlockers(blockers);
         setGateDialogOpen(true);
         return;
       }
     } catch {
-      // If gate check fails, proceed anyway (endpoint might not exist yet)
+      // Preserve workflow action even if the pre-flight check is temporarily unavailable.
     }
 
     switch (action) {
@@ -243,6 +263,23 @@ export default function ProjectSettingsPage() {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+      </div>
+    );
+  }
+
+  if (projectError && isForbidden(projectError)) {
+    return (
+      <div className="space-y-6">
+        <h2 className="text-2xl font-bold text-slate-900">Project Settings</h2>
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <ShieldAlert className="mb-3 h-10 w-10 text-red-500" />
+            <p className="text-sm font-medium text-slate-900">Access denied</p>
+            <p className="mt-1 text-sm text-slate-500">
+              Only admin and ESG manager roles can access project settings.
+            </p>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -274,7 +311,9 @@ export default function ProjectSettingsPage() {
     snapshot_created_at: null,
   };
   const team = teamData?.items ?? [];
-  const boundaries = boundaryOptions?.items ?? [];
+  const boundaries = Array.isArray(boundaryOptionsData)
+    ? boundaryOptionsData
+    : (boundaryOptionsData?.items ?? []);
   const allStandards = availableStandards?.items ?? [];
 
   const isWorkflowBusy =
@@ -354,7 +393,9 @@ export default function ProjectSettingsPage() {
                 <div>
                   <p className="text-sm font-medium text-slate-700">Created</p>
                   <p className="mt-1 text-sm">
-                    {new Date(project.created_at).toLocaleString()}
+                    {project.created_at
+                      ? new Date(project.created_at).toLocaleString()
+                      : "Not available"}
                   </p>
                 </div>
               </CardContent>
@@ -530,7 +571,7 @@ export default function ProjectSettingsPage() {
                   label="Boundary"
                   options={boundaries.map((b) => ({
                     value: String(b.id),
-                    label: `${b.name} (${b.entity_count} entities)`,
+                    label: `${b.name} (${b.entity_count ?? 0} entities)`,
                   }))}
                   placeholder="Select a boundary..."
                   value={

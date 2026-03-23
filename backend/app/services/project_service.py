@@ -18,6 +18,7 @@ from app.db.models.boundary_snapshot import BoundarySnapshot
 from app.db.models.project import MetricAssignment, ReportingProject, ReportingProjectStandard
 from app.db.models.role_binding import RoleBinding
 from app.db.models.shared_element import SharedElement
+from app.db.models.standard import DisclosureRequirement, Standard
 from app.db.models.user import User
 from app.events.bus import (
     AssignmentCreated,
@@ -30,8 +31,11 @@ from app.events.bus import (
 )
 from app.policies.auth_policy import AuthPolicy
 from app.repositories.audit_repo import AuditRepository
+from app.repositories.completeness_repo import CompletenessRepository
 from app.repositories.project_repo import ProjectRepository
 from app.schemas.projects import (
+    ProjectAssignmentSummaryListOut,
+    ProjectAssignmentSummaryOut,
     AssignmentBulkUpdate,
     AssignmentCreate,
     AssignmentInlineUpdate,
@@ -45,6 +49,8 @@ from app.schemas.projects import (
     ProjectCreate,
     ProjectListOut,
     ProjectOut,
+    ProjectStandardSummaryListOut,
+    ProjectStandardSummaryOut,
     ProjectStandardAdd,
 )
 from app.workflows.gates.base import GateEngine
@@ -57,6 +63,7 @@ class ProjectService:
     def __init__(self, repo: ProjectRepository, audit_repo: AuditRepository | None = None):
         self.repo = repo
         self.audit_repo = audit_repo
+        self.completeness_repo = CompletenessRepository(repo.session)
         self.project_gate_engine = GateEngine(
             [
                 NoRequirementsGate(),
@@ -84,6 +91,46 @@ class ProjectService:
     def _require_manager(self, ctx: RequestContext) -> None:
         if ctx.role not in ("admin", "esg_manager", "platform_admin"):
             raise AppError("FORBIDDEN", 403, "Only admin/esg_manager can manage projects")
+
+    async def _project_completion_percentage(self, project_id: int) -> float:
+        items_with_disclosures = await self.completeness_repo.list_project_items(project_id)
+        item_ids = [item.id for item, _disclosure in items_with_disclosures]
+        statuses = await self.completeness_repo.list_project_item_statuses(project_id, item_ids)
+        status_by_item = {status.requirement_item_id: status.status for status in statuses}
+
+        complete = partial = missing = 0
+        for item_id in item_ids:
+            status = status_by_item.get(item_id, "missing")
+            if status == "not_applicable":
+                continue
+            if status == "complete":
+                complete += 1
+            elif status == "partial":
+                partial += 1
+            else:
+                missing += 1
+        total = complete + partial + missing
+        return round((complete / total) * 100, 1) if total else 0.0
+
+    async def _build_project_out(self, project: ReportingProject) -> ProjectOut:
+        standards = await self.completeness_repo.list_project_standards(project.id)
+        return ProjectOut.model_validate(
+            {
+                "id": project.id,
+                "organization_id": project.organization_id,
+                "name": project.name,
+                "status": project.status,
+                "reporting_year": project.reporting_year,
+                "deadline": project.deadline,
+                "boundary_definition_id": project.boundary_definition_id,
+                "created_at": project.created_at,
+                "updated_at": project.updated_at,
+                "reporting_period_start": None,
+                "reporting_period_end": None,
+                "standard_codes": [code for _standard_id, code, _standard_name in standards],
+                "completion_percentage": await self._project_completion_percentage(project.id),
+            }
+        )
 
     @staticmethod
     def _coerce_assignment_status(assignment: MetricAssignment, matching_points: list[DataPoint]) -> str:
@@ -586,20 +633,24 @@ class ProjectService:
         if not ctx.organization_id:
             raise AppError("ORG_HEADER_REQUIRED", 400, "Organization context required")
         p = await self.repo.create_project(ctx.organization_id, **payload.model_dump())
-        return ProjectOut.model_validate(p)
+        return await self._build_project_out(p)
 
     async def list_projects(self, ctx: RequestContext, page: int = 1, page_size: int = 20) -> ProjectListOut:
+        self._require_manager(ctx)
         if not ctx.organization_id:
             raise AppError("ORG_HEADER_REQUIRED", 400, "Organization context required")
         items, total = await self.repo.list_projects(ctx.organization_id, page, page_size)
         return ProjectListOut(
-            items=[ProjectOut.model_validate(p) for p in items],
+            items=[await self._build_project_out(p) for p in items],
             total=total,
         )
 
     async def get_project(self, project_id: int, ctx: RequestContext) -> ProjectOut:
-        p = await get_project_for_ctx(self.repo.session, project_id, ctx)
-        return ProjectOut.model_validate(p)
+        self._require_manager(ctx)
+        p = await get_project_for_ctx(
+            self.repo.session, project_id, ctx, allow_collectors=False, allow_reviewers=False
+        )
+        return await self._build_project_out(p)
 
     async def add_standard(self, project_id: int, payload: ProjectStandardAdd, ctx: RequestContext):
         self._require_manager(ctx)
@@ -613,6 +664,134 @@ class ProjectService:
             changes=payload.model_dump(),
         )
         return {"project_id": project_id, "standard_id": payload.standard_id}
+
+    async def list_project_standards(
+        self, project_id: int, ctx: RequestContext
+    ) -> ProjectStandardSummaryListOut:
+        self._require_manager(ctx)
+        await get_project_for_ctx(
+            self.repo.session, project_id, ctx, allow_collectors=False, allow_reviewers=False
+        )
+
+        standards = await self.completeness_repo.list_project_standards(project_id)
+        disclosure_counts = {
+            standard_id: disclosure_count
+            for standard_id, disclosure_count in (
+                await self.repo.session.execute(
+                    select(
+                        DisclosureRequirement.standard_id,
+                        func.count(DisclosureRequirement.id),
+                    )
+                    .join(
+                        ReportingProjectStandard,
+                        ReportingProjectStandard.standard_id == DisclosureRequirement.standard_id,
+                    )
+                    .where(ReportingProjectStandard.reporting_project_id == project_id)
+                    .group_by(DisclosureRequirement.standard_id)
+                )
+            ).all()
+        }
+
+        items: list[ProjectStandardSummaryOut] = []
+        for standard_id, code, name in standards:
+            items_with_disclosures = await self.completeness_repo.list_project_items(project_id, standard_id)
+            item_ids = [item.id for item, _disclosure in items_with_disclosures]
+            statuses = await self.completeness_repo.list_project_item_statuses(project_id, item_ids)
+            status_by_item = {status.requirement_item_id: status.status for status in statuses}
+
+            complete = partial = missing = 0
+            for item_id in item_ids:
+                status = status_by_item.get(item_id, "missing")
+                if status == "not_applicable":
+                    continue
+                if status == "complete":
+                    complete += 1
+                elif status == "partial":
+                    partial += 1
+                else:
+                    missing += 1
+            total = complete + partial + missing
+            items.append(
+                ProjectStandardSummaryOut(
+                    id=standard_id,
+                    standard_id=standard_id,
+                    standard_name=name,
+                    code=code,
+                    disclosure_count=disclosure_counts.get(standard_id, 0),
+                    completion_percentage=round((complete / total) * 100, 1) if total else 0.0,
+                )
+            )
+
+        return ProjectStandardSummaryListOut(items=items)
+
+    async def get_assignment_summary(
+        self, project_id: int, ctx: RequestContext
+    ) -> ProjectAssignmentSummaryListOut:
+        self._require_manager(ctx)
+        await get_project_for_ctx(
+            self.repo.session, project_id, ctx, allow_collectors=False, allow_reviewers=False
+        )
+        assignments = await self.repo.list_assignments(project_id)
+        data_points = list(
+            (
+                await self.repo.session.execute(
+                    select(DataPoint).where(DataPoint.reporting_project_id == project_id)
+                )
+            ).scalars().all()
+        )
+
+        user_ids = sorted(
+            {
+                user_id
+                for assignment in assignments
+                for user_id in (
+                    assignment.collector_id,
+                    assignment.reviewer_id,
+                    assignment.backup_collector_id,
+                )
+                if user_id is not None
+            }
+        )
+        users = {}
+        if user_ids:
+            users = {
+                user.id: user
+                for user in (
+                    await self.repo.session.execute(select(User).where(User.id.in_(user_ids)))
+                ).scalars().all()
+            }
+
+        summary_by_user: dict[tuple[int, str], ProjectAssignmentSummaryOut] = {}
+        for assignment in assignments:
+            matching_points = [
+                point for point in data_points if assignment_matches_data_point(assignment, point)
+            ]
+            completed = assignment_completed(assignment, matching_points)
+            for role, user_id in (
+                ("collector", assignment.collector_id),
+                ("reviewer", assignment.reviewer_id),
+                ("backup_collector", assignment.backup_collector_id),
+            ):
+                if user_id is None:
+                    continue
+                user = users.get(user_id)
+                bucket = summary_by_user.setdefault(
+                    (user_id, role),
+                    ProjectAssignmentSummaryOut(
+                        id=user_id,
+                        user_name=user.full_name if user else f"User {user_id}",
+                        email=user.email if user else "",
+                        role=role,
+                        assigned_disclosures=0,
+                        completed=0,
+                    ),
+                )
+                bucket.assigned_disclosures += 1
+                if completed:
+                    bucket.completed += 1
+
+        items = sorted(summary_by_user.values(), key=lambda item: (item.role, item.user_name.lower()))
+        return ProjectAssignmentSummaryListOut(items=items)
 
     # --- Assignments ---
     async def create_assignment(
@@ -763,13 +942,40 @@ class ProjectService:
         b = await self.repo.create_boundary(ctx.organization_id, **payload.model_dump())
         await self._audit("BoundaryDefinition", "create_boundary", ctx, entity_id=b.id,
                           changes=payload.model_dump())
-        return BoundaryDefOut.model_validate(b)
+        return BoundaryDefOut.model_validate({**BoundaryDefOut.model_validate(b).model_dump(), "entity_count": 0})
 
     async def list_boundaries(self, ctx: RequestContext) -> list[BoundaryDefOut]:
         if not ctx.organization_id:
             raise AppError("ORG_HEADER_REQUIRED", 400, "Organization context required")
         items = await self.repo.list_boundaries(ctx.organization_id)
-        return [BoundaryDefOut.model_validate(b) for b in items]
+        boundary_ids = [boundary.id for boundary in items]
+        entity_counts = {}
+        if boundary_ids:
+            entity_counts = {
+                boundary_id: entity_count
+                for boundary_id, entity_count in (
+                    await self.repo.session.execute(
+                        select(
+                            BoundaryMembership.boundary_definition_id,
+                            func.count(BoundaryMembership.id),
+                        )
+                        .where(
+                            BoundaryMembership.boundary_definition_id.in_(boundary_ids),
+                            BoundaryMembership.included == True,
+                        )
+                        .group_by(BoundaryMembership.boundary_definition_id)
+                    )
+                ).all()
+            }
+        return [
+            BoundaryDefOut.model_validate(
+                {
+                    **BoundaryDefOut.model_validate(boundary).model_dump(),
+                    "entity_count": entity_counts.get(boundary.id, 0),
+                }
+            )
+            for boundary in items
+        ]
 
     async def apply_boundary(self, project_id: int, boundary_id: int, ctx: RequestContext) -> ProjectOut:
         self._require_manager(ctx)

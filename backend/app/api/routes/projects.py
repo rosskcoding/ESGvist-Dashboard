@@ -20,8 +20,10 @@ from app.schemas.projects import (
     BoundaryDefOut,
     ProjectBoundaryOut,
     ProjectCreate,
+    ProjectAssignmentSummaryListOut,
     ProjectListOut,
     ProjectOut,
+    ProjectStandardSummaryListOut,
     ProjectStandardAdd,
 )
 from app.repositories.audit_repo import AuditRepository
@@ -85,6 +87,15 @@ async def add_standard(
     return await _get_service(session).add_standard(project_id, payload, ctx)
 
 
+@router.get("/api/projects/{project_id}/standards", response_model=ProjectStandardSummaryListOut)
+async def list_project_standards(
+    project_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _get_service(session).list_project_standards(project_id, ctx)
+
+
 # --- Assignments ---
 @router.post(
     "/api/projects/{project_id}/assignments",
@@ -108,6 +119,15 @@ async def list_assignments(
     session: AsyncSession = Depends(get_session),
 ):
     return await _get_service(session).list_assignments(project_id, ctx)
+
+
+@router.get("/api/projects/{project_id}/assignments/summary", response_model=ProjectAssignmentSummaryListOut)
+async def get_assignment_summary(
+    project_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _get_service(session).get_assignment_summary(project_id, ctx)
 
 
 @router.patch("/api/projects/{project_id}/assignments/inline-update", response_model=AssignmentMatrixRowOut)
@@ -241,8 +261,28 @@ async def start_project(
     return await _get_service(session).start_project(project_id, ctx)
 
 
+@router.post("/api/projects/{project_id}/activate")
+async def activate_project(
+    project_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    AuthPolicy.auditor_read_only(ctx)
+    return await _get_service(session).start_project(project_id, ctx)
+
+
 @router.post("/api/projects/{project_id}/review")
 async def review_project(
+    project_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    AuthPolicy.auditor_read_only(ctx)
+    return await _get_service(session).review_project(project_id, ctx)
+
+
+@router.post("/api/projects/{project_id}/start-review")
+async def start_project_review(
     project_id: int,
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),

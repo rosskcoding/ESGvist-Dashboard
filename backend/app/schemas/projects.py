@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
@@ -17,6 +17,12 @@ class ProjectOut(BaseModel):
     reporting_year: int | None
     deadline: date | None
     boundary_definition_id: int | None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    reporting_period_start: date | None = None
+    reporting_period_end: date | None = None
+    standard_codes: list[str] = Field(default_factory=list)
+    completion_percentage: float = 0.0
 
     model_config = {"from_attributes": True}
 
@@ -134,6 +140,7 @@ class BoundaryDefOut(BaseModel):
     boundary_type: str
     description: str | None
     is_default: bool
+    entity_count: int = 0
 
     model_config = {"from_attributes": True}
 
@@ -188,3 +195,33 @@ class ProjectBoundaryOut(BaseModel):
     snapshot_id: int | None = None
     snapshot_locked: bool = False
     snapshot_date: str | None = None
+    snapshot_status: str = "not_created"
+    snapshot_created_at: str | None = None
+    entities_in_scope: int = 0
+    excluded_entities: int = 0
+
+
+class ProjectStandardSummaryOut(BaseModel):
+    id: int
+    standard_id: int
+    standard_name: str
+    code: str
+    disclosure_count: int
+    completion_percentage: float
+
+
+class ProjectStandardSummaryListOut(BaseModel):
+    items: list[ProjectStandardSummaryOut]
+
+
+class ProjectAssignmentSummaryOut(BaseModel):
+    id: int
+    user_name: str
+    email: str
+    role: str
+    assigned_disclosures: int
+    completed: int
+
+
+class ProjectAssignmentSummaryListOut(BaseModel):
+    items: list[ProjectAssignmentSummaryOut]

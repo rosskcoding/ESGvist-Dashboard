@@ -34,6 +34,7 @@ import {
   AlertTriangle,
   FolderOpen,
   Settings,
+  ShieldAlert,
 } from "lucide-react";
 
 interface Project {
@@ -68,6 +69,11 @@ const statusConfig: Record<
   published: { label: "Published", variant: "success" },
 };
 
+function isForbidden(error: Error | null) {
+  const code = (error as Error & { code?: string } | null)?.code;
+  return code === "FORBIDDEN" || /not allowed|access denied|forbidden/i.test(error?.message || "");
+}
+
 export default function ProjectsPage() {
   const router = useRouter();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -96,6 +102,7 @@ export default function ProjectsPage() {
   };
 
   const projects = data?.items ?? [];
+  const accessDenied = !!error && isForbidden(error);
 
   return (
     <div className="space-y-6">
@@ -107,10 +114,12 @@ export default function ProjectsPage() {
             Manage your ESG reporting projects
           </p>
         </div>
-        <Button onClick={() => setDialogOpen(true)}>
-          <Plus className="h-4 w-4" />
-          Create Project
-        </Button>
+        {!accessDenied && (
+          <Button onClick={() => setDialogOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Create Project
+          </Button>
+        )}
       </div>
 
       {/* Content */}
@@ -118,6 +127,16 @@ export default function ProjectsPage() {
         <div className="flex min-h-[300px] items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
         </div>
+      ) : accessDenied ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <ShieldAlert className="mb-3 h-10 w-10 text-red-500" />
+            <p className="text-sm font-medium text-slate-900">Access denied</p>
+            <p className="mt-1 text-sm text-slate-500">
+              Only admin and ESG manager roles can access project management.
+            </p>
+          </CardContent>
+        </Card>
       ) : error ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
