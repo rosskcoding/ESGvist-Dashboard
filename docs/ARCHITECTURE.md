@@ -1,8 +1,8 @@
 # ESGvist — System Architecture
 
-**Версия:** 1.0
+**Версия:** 2.0
 **Дата:** 2026-03-22
-**Статус:** На согласовании
+**Статус:** Согласован (стек утверждён)
 
 ---
 
@@ -51,24 +51,66 @@
 
 ---
 
-## 2. Technology Stack (предварительно)
+## 2. Technology Stack
+
+**Статус:** Согласован (2026-03-22)
+
+### 2.1. Backend (Python)
+
+| Layer | Technology | Версия | Обоснование |
+|-------|-----------|--------|-------------|
+| **Framework** | FastAPI | 0.110+ | Async, типизация, auto-docs (OpenAPI), DI через Depends() |
+| **ORM** | SQLAlchemy 2.0 (async) | 2.0+ | Mature, async support, CTE, window functions, raw SQL |
+| **Migrations** | Alembic | 1.13+ | Стандарт для SQLAlchemy, autogenerate |
+| **Validation** | Pydantic v2 | 2.6+ | Нативная интеграция с FastAPI, JSON Schema |
+| **Auth** | python-jose + passlib | — | JWT (access 15min + refresh 7d) + bcrypt; SSO (SAML/OAuth) в Phase 3 |
+| **DB Driver** | asyncpg | 0.29+ | Async PostgreSQL driver, высокая производительность |
+| **File Storage** | aioboto3 | — | Async S3/MinIO client |
+| **Background Tasks** | arq (MVP) → Celery (Phase 2+) | — | Redis-based task queue |
+| **Event Bus** | In-process (MVP) → Redis Pub/Sub (Phase 2) | — | Простота MVP; Redis при необходимости масштабирования |
+| **Logging** | structlog | 24.1+ | Structured JSON logs |
+| **Linting** | ruff | 0.3+ | Fast Python linter + formatter (заменяет black + isort + flake8) |
+| **Type Checking** | mypy | 1.8+ | Static type checking |
+| **Testing** | pytest + pytest-asyncio + httpx | — | Async test support, API integration tests |
+
+### 2.2. Frontend (TypeScript)
+
+| Layer | Technology | Версия | Обоснование |
+|-------|-----------|--------|-------------|
+| **Framework** | React + Next.js (App Router) | 14+ | File-based routing, layouts, loading states |
+| **Language** | TypeScript | 5.3+ | Типизация, developer experience |
+| **Styling** | Tailwind CSS | 3.4+ | Utility-first, быстрая разработка |
+| **UI Kit** | shadcn/ui | — | Копируемые компоненты, Tailwind-native, полный контроль, a11y |
+| **Server State** | TanStack Query (React Query) | 5+ | Кэширование, invalidation, optimistic updates |
+| **Client State** | Zustand | 4+ | UI state (sidebar, filters, modals), минимальный boilerplate |
+| **Forms** | React Hook Form + Zod | — | Производительность, Zod resolver для единой валидации |
+| **Tables** | TanStack Table | 8+ | Collection Table, Assignments Matrix, Review queue — headless |
+| **Tree / Graph** | React Flow | 11+ | Company Structure визуализация (ownership, control, boundary) |
+| **Charts** | Recharts | 2+ | Dashboard (completion bars, heatmaps, coverage charts) |
+| **Testing** | Vitest + Playwright | — | Vitest для unit/integration (3-5x быстрее Jest), Playwright для E2E |
+
+### 2.3. Infrastructure
 
 | Layer | Technology | Обоснование |
 |-------|-----------|-------------|
-| **Frontend** | React + Next.js + TypeScript | SPA с SSR, типизация, экосистема |
-| **Styling** | Tailwind CSS | Utility-first, быстрая разработка |
-| **State** | Zustand или React Query | Серверный state → React Query; клиентский → Zustand |
-| **API** | REST (JSON) | Простота, достаточно для MVP |
-| **Backend** | Node.js + TypeScript | Единый язык с фронтом, производительность |
-| **ORM** | Prisma | Type-safe queries, миграции, introspection |
-| **Auth** | JWT + bcrypt | MVP; SSO (SAML/OAuth) в Phase 3 |
-| **DB** | PostgreSQL 15+ | JSONB, CTE, window functions, GIN indexes |
+| **API** | REST (JSON) | Простота, достаточно для MVP; OpenAPI auto-docs через FastAPI |
+| **DB** | PostgreSQL 16 | JSONB, CTE, window functions, GIN indexes, partial indexes |
 | **File Storage** | MinIO (dev) / S3 (prod) | S3-совместимый API, self-hosted для dev |
-| **Event Bus** | In-process EventEmitter (MVP) | Простота; Kafka/RabbitMQ в Phase 3 при необходимости |
-| **Testing** | Jest + Playwright | Unit + integration + E2E |
-| **CI/CD** | GitHub Actions | Автоматизация тестов и деплоя |
+| **Cache / Queue** | Redis | Сессии (Phase 2), очереди задач (arq), кэш |
+| **CI/CD** | GitHub Actions | Lint + test + build на каждый PR |
+| **Dev** | Docker Compose | PostgreSQL + MinIO + Redis + API + Web — одной командой |
+| **Prod (MVP)** | Single VPS + Docker Compose + Nginx | Достаточно для single-tenant, 5-20 пользователей |
+| **Prod (Phase 3)** | AWS: ECS + RDS + S3 + ElastiCache | Масштабирование |
 
-> **Открытый вопрос:** финальный выбор стека требует согласования (см. TZ-ESGvist-v1 раздел 14, вопросы 1–2).
+### 2.4. Monorepo
+
+| Компонент | Технология | Обоснование |
+|-----------|-----------|-------------|
+| **Package Manager** | pnpm | Быстрее npm, workspace support (для frontend/TS) |
+| **Monorepo** | Turborepo | Кэширование сборок, параллельные таски (только frontend) |
+| **Python Backend** | отдельно в том же репо | Poetry/uv для зависимостей, не входит в Turborepo pipeline |
+
+> **Архитектурные требования к backend** — см. TZ-BackendArchitecture.md (слоение, DI, events, policies, workflows).
 
 ---
 
@@ -182,33 +224,38 @@ POST /api/projects/:id/merge/preview     — impact preview добавления
 
 **Ответственность:**
 - CRUD для `data_points`, `data_point_dimensions`
-- CRUD для `attachments` (evidence)
 - CRUD для `methodologies`, `boundaries`, `source_records`
+
+> **Evidence модуль** вынесен в отдельный сервис — см. TZ-Evidence.md (evidences, evidence_files, evidence_links, data_point_evidences, requirement_item_evidences).
 - **Identity Rule** — определение reuse
 - Binding management (`requirement_item_data_points`)
 
 **Identity Rule (reuse detection):**
 
-```typescript
-interface IdentityKey {
-  shared_element_id: number;
-  organization_id: number;
-  reporting_period_id: number;
-  unit_code: string;
-  boundary_id: number | null;
-  methodology_id: number | null;
-  dimensions: Map<string, string>; // полный match
-}
+```python
+@dataclass
+class IdentityKey:
+    shared_element_id: int
+    organization_id: int
+    reporting_period_id: int
+    unit_code: str
+    boundary_id: int | None
+    methodology_id: int | None
+    entity_id: int | None          # company entity scope
+    facility_id: int | None        # facility scope
+    dimensions: dict[str, str]     # полный match
 
-function findReusableDataPoint(key: IdentityKey): DataPoint | null {
-  // Поиск существующего DataPoint с идентичными параметрами
-  // Если найден → предложить reuse
-  // Если не найден → создать новый
-}
+
+async def find_reusable_data_point(key: IdentityKey) -> DataPoint | None:
+    """Поиск существующего DataPoint с идентичными параметрами.
+    Если найден → предложить reuse.
+    Если не найден → создать новый.
+    """
+    ...
 ```
 
 **Правила:**
-- Если все 7 параметров совпадают → reuse (создаётся binding, не DataPoint)
+- Если все 9 параметров совпадают → reuse (создаётся binding, не DataPoint)
 - Если хотя бы один отличается → новый DataPoint
 - При редактировании multi-bound DataPoint → warning с impact list
 
@@ -219,15 +266,16 @@ GET/PUT        /api/data-points/:id
 GET/POST       /api/data-points/:id/dimensions
 GET            /api/data-points/find-reuse?...   — поиск по Identity Rule
 POST           /api/data-points/:id/bind         — создать binding
-GET/POST       /api/attachments
-POST           /api/attachments/:id/bind
+GET/POST       /api/evidences                 — CRUD evidence (file/link)
+POST           /api/data-points/:id/evidences  — привязать evidence к data point
 ```
 
 **Events emitted:**
 - `DataPointCreated`
 - `DataPointUpdated` → triggers Completeness Engine
 - `DataPointBound` → triggers Completeness Engine
-- `AttachmentUploaded`
+- `EvidenceCreated`
+- `EvidenceLinkedToDP`
 
 ---
 
@@ -269,17 +317,19 @@ POST           /api/attachments/:id/bind
 
 **Transition rules:**
 
-```typescript
-const TRANSITIONS: Record<Status, AllowedTransition[]> = {
-  draft:           [{ to: 'submitted',      role: ['collector', 'esg_manager'] }],
-  submitted:       [{ to: 'in_review',      role: ['system'] }],
-  in_review:       [{ to: 'approved',       role: ['reviewer', 'esg_manager'] },
-                    { to: 'rejected',        role: ['reviewer', 'esg_manager'], requireComment: true },
-                    { to: 'needs_revision',  role: ['reviewer', 'esg_manager'], requireComment: true }],
-  approved:        [{ to: 'draft',           role: ['esg_manager'], requireComment: true }],
-  rejected:        [{ to: 'submitted',       role: ['collector'] }],
-  needs_revision:  [{ to: 'submitted',       role: ['collector'] }],
-};
+```python
+# app/domain/workflow_state.py
+
+TRANSITIONS: dict[str, list[dict]] = {
+    "draft":           [{"to": "submitted",      "roles": ["collector", "esg_manager"]}],
+    "submitted":       [{"to": "in_review",      "roles": ["system"]}],
+    "in_review":       [{"to": "approved",       "roles": ["reviewer", "esg_manager"]},
+                        {"to": "rejected",        "roles": ["reviewer", "esg_manager"], "require_comment": True},
+                        {"to": "needs_revision",  "roles": ["reviewer", "esg_manager"], "require_comment": True}],
+    "approved":        [{"to": "draft",           "roles": ["esg_manager"], "require_comment": True}],
+    "rejected":        [{"to": "submitted",       "roles": ["collector"]}],
+    "needs_revision":  [{"to": "submitted",       "roles": ["collector"]}],
+}
 ```
 
 **Locking rules:**
@@ -368,70 +418,73 @@ disclosure_requirement_statuses  (missing / partial / complete + completion_perc
 
 **Algorithm:**
 
-```typescript
-async function calculateItemStatus(
-  projectId: number,
-  requirementItemId: number
-): Promise<'missing' | 'partial' | 'complete' | 'not_applicable'> {
+```python
+# app/services/completeness_service.py
 
-  // 1. Find bindings
-  const bindings = await db.requirementItemDataPoints.findMany({
-    where: { reporting_project_id: projectId, requirement_item_id: requirementItemId }
-  });
+async def calculate_item_status(
+    self,
+    project_id: int,
+    requirement_item_id: int,
+) -> str:  # 'missing' | 'partial' | 'complete' | 'not_applicable'
 
-  if (bindings.length === 0) return 'missing';
+    # 1. Find bindings
+    bindings = await self.binding_repo.find_by_project_and_item(
+        project_id, requirement_item_id
+    )
+    if not bindings:
+        return "missing"
 
-  // 2. Check data_point status
-  const dataPoints = await Promise.all(
-    bindings.map(b => db.dataPoints.findUnique({ where: { id: b.data_point_id } }))
-  );
+    # 2. Check data_point status
+    data_points = await self.data_point_repo.get_by_ids(
+        [b.data_point_id for b in bindings]
+    )
+    has_approved = any(dp.status == "approved" for dp in data_points)
+    if not has_approved:
+        return "partial"  # data exists but not approved
 
-  const hasApproved = dataPoints.some(dp => dp.status === 'approved');
-  if (!hasApproved) return 'partial'; // data exists but not approved
+    # 3. Check dimension rules
+    item = await self.requirement_item_repo.get_by_id(requirement_item_id)
+    if not await self._check_dimension_rules(item.granularity_rule, data_points):
+        return "partial"
 
-  // 3. Check dimension rules
-  const item = await db.requirementItems.findUnique({ where: { id: requirementItemId } });
-  const dimensionsSatisfied = await checkDimensionRules(item.granularity_rule, dataPoints);
-  if (!dimensionsSatisfied) return 'partial';
+    # 4. Check evidence (if requires_evidence or item_type = 'document')
+    if item.requires_evidence or item.item_type == "document":
+        evidence_count = await self.evidence_repo.count_for_item(
+            requirement_item_id, [b.data_point_id for b in bindings]
+        )
+        if evidence_count == 0:
+            return "partial"
 
-  // 4. Check evidence (if item_type = 'document')
-  if (item.item_type === 'document') {
-    const attachments = await db.attachments.count({
-      where: { requirement_item_id: requirementItemId }
-    });
-    if (attachments === 0) return 'partial';
-  }
+    # 5. Check validation rules
+    if not await self._check_validation_rules(item.validation_rule, data_points):
+        return "partial"
 
-  // 5. Check validation rules
-  const validationPassed = await checkValidationRules(item.validation_rule, dataPoints);
-  if (!validationPassed) return 'partial';
+    return "complete"
 
-  return 'complete';
-}
 
-async function aggregateDisclosureStatus(
-  projectId: number,
-  disclosureId: number
-): Promise<{ status: string, completion_percent: number }> {
+async def aggregate_disclosure_status(
+    self,
+    project_id: int,
+    disclosure_id: int,
+) -> dict:  # {"status": str, "completion_percent": float}
 
-  const items = await db.requirementItems.findMany({
-    where: { disclosure_requirement_id: disclosureId, is_required: true }
-  });
+    items = await self.requirement_item_repo.find_required_by_disclosure(disclosure_id)
 
-  const statuses = await Promise.all(
-    items.map(i => db.requirementItemStatuses.findUnique({
-      where: { reporting_project_id_requirement_item_id: { reporting_project_id: projectId, requirement_item_id: i.id } }
-    }))
-  );
+    statuses = []
+    for item in items:
+        status = await self.status_repo.get_item_status(project_id, item.id)
+        statuses.append(status)
 
-  const complete = statuses.filter(s => s?.status === 'complete').length;
-  const total = statuses.filter(s => s?.status !== 'not_applicable').length;
+    complete = sum(1 for s in statuses if s and s.status == "complete")
+    total = sum(1 for s in statuses if not s or s.status != "not_applicable")
 
-  return {
-    status: complete === total ? 'complete' : complete > 0 ? 'partial' : 'missing',
-    completion_percent: total > 0 ? (complete / total) * 100 : 0
-  };
-}
+    if total == 0:
+        return {"status": "complete", "completion_percent": 100.0}
+
+    return {
+        "status": "complete" if complete == total else ("partial" if complete > 0 else "missing"),
+        "completion_percent": (complete / total) * 100,
+    }
 ```
 
 **Performance requirements:**
@@ -517,7 +570,8 @@ GET /api/audit-log     — с фильтрами (entity_type, entity_id, user_i
 ### 4.1. Architecture
 
 ```
-MVP: In-process EventEmitter (synchronous-ish, same Node.js process)
+MVP: In-process async event bus (Python asyncio, same FastAPI process)
+Phase 2: Redis Pub/Sub for cross-process events
 Phase 3: External event bus (Kafka/RabbitMQ) if needed for scale
 ```
 
@@ -555,24 +609,96 @@ Phase 3: External event bus (Kafka/RabbitMQ) if needed for scale
 
 ### 4.3. Event Types
 
-```typescript
-// Core events
-type DomainEvent =
-  | { type: 'DataPointCreated';      payload: { dataPointId: number; projectId: number } }
-  | { type: 'DataPointUpdated';      payload: { dataPointId: number; changedFields: string[] } }
-  | { type: 'DataPointSubmitted';    payload: { dataPointId: number; submittedBy: number } }
-  | { type: 'DataPointApproved';     payload: { dataPointId: number; reviewedBy: number } }
-  | { type: 'DataPointRejected';     payload: { dataPointId: number; reviewedBy: number; comment: string } }
-  | { type: 'DataPointRolledBack';   payload: { dataPointId: number; rolledBackBy: number; reason: string } }
-  | { type: 'DataPointBound';        payload: { dataPointId: number; requirementItemId: number; projectId: number } }
-  | { type: 'StandardAdded';         payload: { projectId: number; standardId: number } }
-  | { type: 'StandardRemoved';       payload: { projectId: number; standardId: number } }
-  | { type: 'MappingChanged';        payload: { mappingId: number; changeType: 'created' | 'updated' | 'deleted' } }
-  | { type: 'MergeCompleted';        payload: { projectId: number } }
-  | { type: 'RequirementItemChanged';payload: { itemId: number; changedFields: string[] } }
-  | { type: 'AssignmentCreated';     payload: { assignmentId: number; collectorId: number } }
-  | { type: 'DeadlineApproaching';   payload: { assignmentId: number; daysRemaining: number } }
-  | { type: 'SLABreached';           payload: { assignmentId: number; level: 1 | 2 } };
+```python
+# app/events/types.py
+
+from dataclasses import dataclass, field
+from datetime import datetime
+
+
+@dataclass
+class DomainEvent:
+    timestamp: datetime = field(default_factory=datetime.utcnow)
+
+# Data Point events
+@dataclass
+class DataPointCreated(DomainEvent):
+    data_point_id: int = 0
+    project_id: int = 0
+
+@dataclass
+class DataPointUpdated(DomainEvent):
+    data_point_id: int = 0
+    changed_fields: list[str] = field(default_factory=list)
+
+@dataclass
+class DataPointSubmitted(DomainEvent):
+    data_point_id: int = 0
+    submitted_by: int = 0
+
+@dataclass
+class DataPointApproved(DomainEvent):
+    data_point_id: int = 0
+    reviewed_by: int = 0
+
+@dataclass
+class DataPointRejected(DomainEvent):
+    data_point_id: int = 0
+    reviewed_by: int = 0
+    comment: str = ""
+
+@dataclass
+class DataPointRolledBack(DomainEvent):
+    data_point_id: int = 0
+    rolled_back_by: int = 0
+    reason: str = ""
+
+@dataclass
+class DataPointBound(DomainEvent):
+    data_point_id: int = 0
+    requirement_item_id: int = 0
+    project_id: int = 0
+
+# Standard / Mapping events
+@dataclass
+class StandardAdded(DomainEvent):
+    project_id: int = 0
+    standard_id: int = 0
+
+@dataclass
+class StandardRemoved(DomainEvent):
+    project_id: int = 0
+    standard_id: int = 0
+
+@dataclass
+class MappingChanged(DomainEvent):
+    mapping_id: int = 0
+    change_type: str = ""  # 'created' | 'updated' | 'deleted'
+
+@dataclass
+class MergeCompleted(DomainEvent):
+    project_id: int = 0
+
+@dataclass
+class RequirementItemChanged(DomainEvent):
+    item_id: int = 0
+    changed_fields: list[str] = field(default_factory=list)
+
+# Assignment / SLA events
+@dataclass
+class AssignmentCreated(DomainEvent):
+    assignment_id: int = 0
+    collector_id: int = 0
+
+@dataclass
+class DeadlineApproaching(DomainEvent):
+    assignment_id: int = 0
+    days_remaining: int = 0
+
+@dataclass
+class SLABreached(DomainEvent):
+    assignment_id: int = 0
+    level: int = 1  # 1 or 2
 ```
 
 ---
@@ -692,7 +818,9 @@ Reviewer opens /validation
         ▼
 ┌─── Data Layer ──────────────────────────────────────┐
 │ data_points ← data_point_dimensions                  │
-│ data_points ← attachments                            │
+│ data_points ← data_point_evidences ← evidences       │
+│                                      ← evidence_files│
+│                                      ← evidence_links│
 │ data_points ← data_point_versions                    │
 │ data_points ← comments                               │
 │ methodologies, boundaries, source_records            │
@@ -747,14 +875,16 @@ Phase 3:
 
 ### 7.2. Authorization (RBAC)
 
-```typescript
-const ROLES = {
-  admin:       { level: 100, description: 'Full system access' },
-  esg_manager: { level: 80,  description: 'Project + assignment + publish' },
-  reviewer:    { level: 60,  description: 'Review + approve/reject' },
-  collector:   { level: 40,  description: 'Data entry (assigned only)' },
-  auditor:     { level: 20,  description: 'Read-only + audit log' },
-};
+```python
+# app/domain/roles.py
+
+ROLES = {
+    "admin":       {"level": 100, "description": "Full system access"},
+    "esg_manager": {"level": 80,  "description": "Project + assignment + publish"},
+    "reviewer":    {"level": 60,  "description": "Review + approve/reject"},
+    "collector":   {"level": 40,  "description": "Data entry (assigned only)"},
+    "auditor":     {"level": 20,  "description": "Read-only + audit log"},
+}
 ```
 
 **Row-level security:**
@@ -763,13 +893,15 @@ const ROLES = {
 - ESG-manager sees all project data
 - Auditor sees all data (read-only)
 
+> **Подробная реализация RBAC + object-level policies** — см. TZ-BackendArchitecture.md раздел 5.6 и ERROR-MODEL.md раздел 2.
+
 ### 7.3. API security
 
 - HTTPS only (TLS 1.3)
 - CORS whitelist
 - Rate limiting: 100 req/min per user
-- Input validation: Zod schemas on all endpoints
-- SQL injection: Prisma parameterized queries
+- Input validation: Pydantic v2 schemas on all endpoints
+- SQL injection: SQLAlchemy parameterized queries
 - File upload: type + size validation, virus scan (Phase 3)
 
 ---
@@ -783,9 +915,9 @@ const ROLES = {
 │            Docker Compose              │
 │                                        │
 │  ┌──────────┐  ┌──────────┐           │
-│  │ Next.js  │  │ Node.js  │           │
+│  │ Next.js  │  │ FastAPI  │           │
 │  │ Frontend │  │ API      │           │
-│  │ :3000    │  │ :4000    │           │
+│  │ :3000    │  │ :8000    │           │
 │  └──────────┘  └──────────┘           │
 │                                        │
 │  ┌──────────┐  ┌──────────┐           │
@@ -793,10 +925,10 @@ const ROLES = {
 │  │ :5432    │  │  :9000   │           │
 │  └──────────┘  └──────────┘           │
 │                                        │
-│  ┌──────────┐                         │
-│  │  Nginx   │ (reverse proxy)         │
-│  │  :443    │                         │
-│  └──────────┘                         │
+│  ┌──────────┐  ┌──────────┐           │
+│  │  Redis   │  │  Nginx   │           │
+│  │  :6379   │  │  :443    │           │
+│  └──────────┘  └──────────┘           │
 └────────────────────────────────────────┘
 ```
 
@@ -828,7 +960,7 @@ ElastiCache Redis (sessions, cache)
 
 ### 9.1. Logging
 
-- Structured JSON logs (pino / winston)
+- Structured JSON logs (structlog)
 - Log levels: error, warn, info, debug
 - Request/response logging (API gateway)
 - Audit log (business events → `audit_log` table)
@@ -851,43 +983,116 @@ GET /api/health/storage — file storage connectivity
 
 ---
 
-## 10. Folder Structure (предварительно)
+## 10. Folder Structure
 
 ```
 esgvist/
-├── apps/
-│   ├── web/                    # Next.js frontend
-│   │   ├── app/               # App router pages
-│   │   ├── components/        # React components
-│   │   ├── lib/               # Utilities, hooks
-│   │   └── styles/            # Tailwind config
-│   │
-│   └── api/                    # Node.js backend
-│       ├── src/
-│       │   ├── modules/
-│       │   │   ├── standards/  # Standard Service
-│       │   │   ├── mapping/    # Mapping Service
-│       │   │   ├── merge/      # Merge Engine
-│       │   │   ├── data/       # Data Service
-│       │   │   ├── workflow/   # Workflow Service
-│       │   │   ├── review/     # Review Service
-│       │   │   ├── completeness/ # Completeness Engine
-│       │   │   ├── reporting/  # Reporting Service
-│       │   │   ├── notifications/ # Notification Service
-│       │   │   └── audit/      # Audit Service
-│       │   ├── common/         # Shared utilities
-│       │   ├── events/         # Event bus
-│       │   └── middleware/     # Auth, validation, error handling
-│       ├── prisma/
-│       │   ├── schema.prisma  # DB schema
-│       │   ├── migrations/    # Migration files
-│       │   └── seed/          # Seed data
-│       └── tests/
+├── backend/                         # Python (FastAPI)
+│   ├── app/
+│   │   ├── api/                     # HTTP layer (routers)
+│   │   │   └── routes/
+│   │   │       ├── auth.py
+│   │   │       ├── standards.py
+│   │   │       ├── disclosures.py
+│   │   │       ├── shared_elements.py
+│   │   │       ├── data_points.py
+│   │   │       ├── evidence.py
+│   │   │       ├── review.py
+│   │   │       ├── projects.py
+│   │   │       ├── assignments.py
+│   │   │       ├── entities.py      # company structure
+│   │   │       ├── boundaries.py    # boundary management
+│   │   │       ├── merge.py
+│   │   │       ├── completeness.py
+│   │   │       ├── reporting.py
+│   │   │       ├── notifications.py
+│   │   │       └── audit.py
+│   │   ├── schemas/                 # Pydantic DTOs
+│   │   ├── domain/                  # Business entities & invariants
+│   │   ├── services/                # Business logic
+│   │   ├── repositories/            # Data access (SQLAlchemy)
+│   │   ├── policies/                # Access rules & validations
+│   │   ├── workflows/               # Multi-step processes
+│   │   ├── events/                  # Event bus + handlers
+│   │   ├── infrastructure/          # S3, email, queue
+│   │   ├── db/
+│   │   │   ├── models/              # SQLAlchemy ORM models
+│   │   │   ├── migrations/          # Alembic migrations
+│   │   │   └── seed/                # Seed data
+│   │   ├── core/                    # Config, security, DI, exceptions
+│   │   └── main.py                  # FastAPI app factory
+│   ├── tests/
+│   ├── pyproject.toml               # Poetry/uv dependencies
+│   └── alembic.ini
+│
+├── frontend/                        # TypeScript (Next.js)
+│   ├── app/                         # App Router pages
+│   │   ├── (auth)/                  # Login, register
+│   │   ├── dashboard/               # Overview
+│   │   ├── collection/              # Data entry + wizard
+│   │   ├── validation/              # Review split panel
+│   │   ├── merge/                   # Merge View
+│   │   ├── report/                  # Export + readiness check
+│   │   ├── evidence/                # Evidence repository
+│   │   └── settings/
+│   │       ├── standards/           # Standard catalog
+│   │       ├── company-structure/   # Company Structure & Boundary
+│   │       ├── assignments/         # Assignment matrix
+│   │       ├── projects/            # Project settings
+│   │       └── users/               # User management
+│   ├── components/
+│   │   ├── ui/                      # shadcn/ui components
+│   │   ├── layout/                  # Topbar, sidebar, context bar
+│   │   ├── tables/                  # TanStack Table wrappers
+│   │   ├── tree/                    # Recursive tree component
+│   │   ├── graph/                   # React Flow wrappers
+│   │   └── charts/                  # Recharts wrappers
+│   ├── lib/
+│   │   ├── api/                     # API client (fetch + React Query)
+│   │   ├── hooks/                   # Custom hooks
+│   │   ├── stores/                  # Zustand stores
+│   │   └── utils/                   # Helpers
+│   ├── package.json
+│   └── tsconfig.json
 │
 ├── packages/
-│   └── shared/                 # Shared types, constants
+│   └── shared/                      # Shared types, constants, Zod schemas
 │
-├── docker-compose.yml
-├── .github/workflows/          # CI/CD
-└── docs/                       # TZ, Architecture, Backlog
+├── docker-compose.yml               # PostgreSQL + MinIO + Redis + API + Web
+├── docker-compose.prod.yml
+├── turbo.json                       # Turborepo config (frontend only)
+├── pnpm-workspace.yaml              # pnpm workspaces (frontend + packages)
+├── .github/workflows/               # CI/CD
+│   ├── backend.yml                  # Python: ruff + mypy + pytest
+│   ├── frontend.yml                 # TS: lint + vitest + build
+│   └── e2e.yml                      # Playwright E2E
+└── docs/                            # TZ, Architecture, Backlog
 ```
+
+> **Подробная структура backend** — см. TZ-BackendArchitecture.md раздел 4.
+
+---
+
+## 11. Связь с документацией
+
+| Документ | Описание |
+|----------|----------|
+| **TZ-ESGvist-v1.md** | Полное ТЗ: PostgreSQL-схема (40+ таблиц), бизнес-правила |
+| **TZ-BackendArchitecture.md** | Layered architecture (FastAPI): routers, services, repos, policies, workflows, events |
+| **TZ-PlatformAdmin.md** | Platform admin, role_bindings, tenant management, scope-aware roles |
+| **TZ-PermissionMatrix.md** | Master Role & Permission Matrix (16 матриц, 6 ролей) |
+| **TZ-WorkflowGateMatrix.md** | Gate Engine: 26 gate codes, transitions для всех сущностей |
+| **TZ-CompanyStructure.md** | Company Structure & Boundary Manager: entities, ownership, control, boundary |
+| **TZ-BoundaryIntegration.md** | Интеграция boundary со всеми экранами (10 экранов) |
+| **TZ-OrgSetup.md** | Onboarding: Organization Setup Wizard (5 шагов) |
+| **TZ-AIAssistance.md** | AI Layer: explain, copilot, review assist, 8 AI Gates |
+| **TZ-Evidence.md** | Evidence модуль: evidences, files, links, привязки M:N, requires_evidence |
+| **TZ-Admin.md** | ТЗ администратора: стандарты, shared elements, mapping, impact analysis |
+| **TZ-ESGManager.md** | ТЗ ESG-менеджера: проекты, assignments, мониторинг, SLA, export |
+| **TZ-Reviewer.md** | ТЗ ревьюера: split panel, approve/reject, batch, threaded comments |
+| **TZ-User.md** | ТЗ сборщика: ввод данных, reuse, дельты, workflow |
+| **TZ-Notifications.md** | Notifications & Events: in-app, email, webhooks (Phase 2) |
+| **TZ-NFR.md** | Non-Functional Requirements: latency SLA, security, observability |
+| **ERROR-MODEL.md** | Unified error model + Permission Policy (RBAC + object-level) |
+| **SPRINT-PLAN.md** | 22 спринта, 3 фазы, ~970 SP |
+| **BACKLOG.md** | 8+ эпиков, 22+ фич, ~80+ тасок |

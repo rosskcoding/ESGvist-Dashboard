@@ -2,7 +2,7 @@
 
 **Модуль:** доказательная база ESG-данных
 **Версия:** 1.0
-**Статус:** На согласовании
+**Статус:** Согласован
 
 ---
 
@@ -162,30 +162,27 @@ IF requirement_item.requires_evidence = true:
 
 **Связь с Completeness Engine:**
 
-```typescript
-// В calculateItemStatus добавить проверку:
-if (item.requiresEvidence) {
-  const evidenceCount = await db.dataPointEvidences.count({
-    where: { dataPointId: binding.dataPointId }
-  }) + await db.requirementItemEvidences.count({
-    where: { requirementItemId: item.id }
-  });
+```python
+# В completeness_service.calculate_item_status добавить проверку:
+if item.requires_evidence:
+    evidence_count = await evidence_repo.count_for_data_point(binding.data_point_id)
+    evidence_count += await evidence_repo.count_for_requirement_item(item.id)
 
-  if (evidenceCount === 0) return 'partial';
-}
+    if evidence_count == 0:
+        return "partial"
 ```
 
 **Связь с Workflow Service:**
 
-```typescript
-// В approve transition добавить проверку:
-if (requirementItem.requiresEvidence) {
-  const hasEvidence = await checkEvidenceExists(dataPointId, requirementItemId);
-  if (!hasEvidence) {
-    throw new AppError('EVIDENCE_REQUIRED', 422,
-      'This data point requires supporting evidence before approval.');
-  }
-}
+```python
+# В policies/review_policy.py добавить проверку:
+if requirement_item.requires_evidence:
+    has_evidence = await evidence_repo.exists_for(data_point_id, requirement_item_id)
+    if not has_evidence:
+        raise AppError(
+            "EVIDENCE_REQUIRED", 422,
+            "This data point requires supporting evidence before approval."
+        )
 ```
 
 ### 4.7. Evidence в Review UI
@@ -438,15 +435,42 @@ IF any linked requirement_item.requires_evidence == true
 
 ## 9. Events (Event-Driven Layer)
 
-```typescript
-type EvidenceEvent =
-  | { type: 'EvidenceCreated';         payload: { evidenceId: number; type: 'file' | 'link' } }
-  | { type: 'EvidenceUpdated';         payload: { evidenceId: number; changedFields: string[] } }
-  | { type: 'EvidenceDeleted';         payload: { evidenceId: number } }
-  | { type: 'EvidenceLinkedToDP';      payload: { evidenceId: number; dataPointId: number } }
-  | { type: 'EvidenceUnlinkedFromDP';  payload: { evidenceId: number; dataPointId: number } }
-  | { type: 'EvidenceLinkedToRI';      payload: { evidenceId: number; requirementItemId: number } }
-  | { type: 'EvidenceUnlinkedFromRI';  payload: { evidenceId: number; requirementItemId: number } };
+```python
+# app/events/types.py (расширение)
+
+@dataclass
+class EvidenceCreated(DomainEvent):
+    evidence_id: int = 0
+    type: str = ""  # 'file' | 'link'
+
+@dataclass
+class EvidenceUpdated(DomainEvent):
+    evidence_id: int = 0
+    changed_fields: list[str] = field(default_factory=list)
+
+@dataclass
+class EvidenceDeleted(DomainEvent):
+    evidence_id: int = 0
+
+@dataclass
+class EvidenceLinkedToDP(DomainEvent):
+    evidence_id: int = 0
+    data_point_id: int = 0
+
+@dataclass
+class EvidenceUnlinkedFromDP(DomainEvent):
+    evidence_id: int = 0
+    data_point_id: int = 0
+
+@dataclass
+class EvidenceLinkedToRI(DomainEvent):
+    evidence_id: int = 0
+    requirement_item_id: int = 0
+
+@dataclass
+class EvidenceUnlinkedFromRI(DomainEvent):
+    evidence_id: int = 0
+    requirement_item_id: int = 0
 ```
 
 **Trigger chains:**

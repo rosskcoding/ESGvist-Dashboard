@@ -2,7 +2,7 @@
 
 **Версия:** 1.0
 **Дата:** 2026-03-22
-**Статус:** На согласовании
+**Статус:** Согласован
 
 ---
 
@@ -668,8 +668,8 @@
 
 | # | Task | Type | Priority | SP |
 |---|------|------|----------|---|
-| 8.3.1 | Миграция: таблица `attachments` | Backend | Must | 2 |
-| 8.3.2 | API: upload + bind + list `/api/attachments` | Backend | Must | 5 |
+| 8.3.1 | Миграция: таблицы `evidences`, `evidence_files`, `evidence_links`, `data_point_evidences`, `requirement_item_evidences` (см. TZ-Evidence.md) | Backend | Must | 3 |
+| 8.3.2 | API: CRUD `/api/evidences` + upload + link/unlink to data_points and requirement_items | Backend | Must | 5 |
 | 8.3.3 | File storage integration (S3 / MinIO) | Backend | Must | 5 |
 | 8.3.4 | UI: evidence repository (список, фильтры, upload) | Frontend | Must | 5 |
 | 8.3.5 | UI: inline attach в форме ввода данных | Frontend | Must | 3 |

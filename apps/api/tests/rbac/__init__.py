@@ -1,3 +1,0 @@
-"""RBAC policy tests package."""
-
-

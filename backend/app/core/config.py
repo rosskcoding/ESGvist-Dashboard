@@ -1,0 +1,30 @@
+from pydantic_settings import BaseSettings
+
+
+class Settings(BaseSettings):
+    # Database
+    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/esgvist"
+
+    # Redis
+    redis_url: str = "redis://localhost:6379/0"
+
+    # JWT
+    jwt_secret: str = "change-me-in-production"
+    jwt_algorithm: str = "HS256"
+    jwt_access_ttl_minutes: int = 15
+    jwt_refresh_ttl_days: int = 7
+
+    # CORS
+    cors_origins: list[str] = ["http://localhost:3000"]
+
+    # App
+    debug: bool = True
+    app_name: str = "ESGvist API"
+
+    # Self-service registration
+    allow_self_registration: bool = True
+
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+
+
+settings = Settings()

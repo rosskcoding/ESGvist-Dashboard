@@ -2,7 +2,7 @@
 
 **Модуль:** ввод и управление ESG-данными
 **Версия:** 1.0
-**Статус:** На согласовании
+**Статус:** Согласован
 
 ---
 
@@ -152,9 +152,9 @@
 - видеть обязательность evidence (если requirement_item.item_type = `document`);
 - просматривать загруженные файлы.
 
-**Связь с БД:** `attachments`
+**Связь с БД:** `evidences`, `evidence_files`, `evidence_links`, `data_point_evidences`, `requirement_item_evidences` (см. TZ-Evidence.md)
 
-**UI:** Evidence repository + привязка при вводе данных
+**UI:** Evidence repository (`/evidence`) + привязка при вводе данных (drag-and-drop в wizard)
 
 ### 3.8. Контроль полноты
 

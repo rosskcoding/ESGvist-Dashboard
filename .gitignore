@@ -9,6 +9,8 @@ venv/
 dist/
 build/
 *.egg-info/
+.next/
+out/
 
 # IDE
 .idea/
@@ -25,14 +27,15 @@ Thumbs.db
 .env.local
 .env.*.local
 
-# Uploads & artifacts
-apps/api/uploads/
-backups/*.sql
-
 # Docker
-apps/api/_tmp_pydeps_pytest/
+docker-compose.override.yml
 
 # Test
 .coverage
 htmlcov/
 .pytest_cache/
+test.db
+
+# Uploads
+uploads/
+backups/*.sql

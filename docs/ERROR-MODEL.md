@@ -2,7 +2,7 @@
 
 **Версия:** 1.0
 **Дата:** 2026-03-22
-**Статус:** На согласовании
+**Статус:** Согласован
 
 ---
 
@@ -41,23 +41,27 @@
 | `details` | array | Массив конкретных проблем (field + reason). Может быть пустым |
 | `requestId` | string (UUID) | ID запроса для трассировки в логах |
 
-### 1.3. TypeScript типы
+### 1.3. Python типы (Pydantic)
 
-```typescript
-interface ErrorResponse {
-  error: {
-    code: ErrorCode;
-    message: string;
-    details: ErrorDetail[];
-    requestId: string;
-  };
-}
+```python
+from pydantic import BaseModel
 
-interface ErrorDetail {
-  field?: string;
-  reason: string;
-  expected?: string;  // ожидаемое значение (опционально)
-}
+
+class ErrorDetail(BaseModel):
+    field: str | None = None
+    reason: str
+    expected: str | None = None  # ожидаемое значение (опционально)
+
+
+class ErrorBody(BaseModel):
+    code: str
+    message: str
+    details: list[ErrorDetail] = []
+    requestId: str
+
+
+class ErrorResponse(BaseModel):
+    error: ErrorBody
 ```
 
 ---
@@ -94,6 +98,16 @@ interface ErrorDetail {
 | `EVIDENCE_REQUIRED` | 422 | Требуется evidence для данного requirement_item |
 | `STANDARD_IN_USE` | 409 | Стандарт нельзя удалить, есть привязанные данные |
 | `PROJECT_LOCKED` | 422 | Проект в статусе review/published — редактирование заблокировано |
+| `AI_RATE_LIMITED` | 429 | Превышен лимит AI-запросов для роли пользователя |
+| `AI_TOOL_FORBIDDEN` | 403 | AI tool недоступен для роли пользователя |
+| `AI_PROMPT_INJECTION` | 400 | Обнаружена попытка prompt injection |
+| `AI_UNAVAILABLE` | 503 | AI сервис недоступен, используется fallback |
+| `PLATFORM_ADMIN_REQUIRED` | 403 | Требуется роль platform_admin |
+| `TENANT_SUSPENDED` | 403 | Tenant приостановлен — доступ заблокирован |
+| `TENANT_ARCHIVED` | 410 | Tenant архивирован — данные read-only |
+| `CANNOT_ASSIGN_PLATFORM_ROLE` | 403 | Tenant admin не может назначить platform_admin |
+| `LAST_ADMIN_CANNOT_LEAVE` | 422 | Нельзя удалить единственного admin из tenant |
+| `ORG_HEADER_REQUIRED` | 400 | Заголовок X-Organization-Id обязателен для tenant endpoints |
 
 ---
 
@@ -138,7 +152,7 @@ interface ErrorDetail {
     "code": "EVIDENCE_REQUIRED",
     "message": "This data point requires supporting evidence before approval.",
     "details": [
-      { "field": "attachments", "reason": "At least one attachment is required for item_type='document'." }
+      { "field": "evidence", "reason": "At least one evidence is required (requires_evidence=true)." }
     ],
     "requestId": "req_124"
   }
@@ -300,23 +314,39 @@ components:
 ### 2.1. Принцип: RBAC + Object-Level Checks
 
 ```
+Layer 0: Platform Scope
+         platform_admin — доступ ко всем tenants и platform endpoints
+
 Layer 1: Role-Based Access Control (RBAC)
-         Роль определяет базовый доступ к endpoint
+         Tenant-scoped роль определяет базовый доступ к endpoint
 
 Layer 2: Object-Level Checks
          Дополнительная проверка по объекту:
          - assignment принадлежит пользователю
          - project в нужном статусе
-         - организация совпадает
+         - организация совпадает (tenant isolation)
 ```
+
+> **Полная модель ролей:** см. TZ-PlatformAdmin.md — scope-aware role_bindings, JWT без роли, X-Organization-Id header.
 
 ---
 
 ### 2.2. Общие правила по ролям
 
-#### admin (level 100)
+#### platform_admin (platform scope)
 
-**Полный доступ к:**
+**Полный доступ на уровне платформы:**
+- создание / управление tenants
+- назначение tenant admins
+- просмотр всех организаций
+- platform-level settings
+- support override (с audit log)
+
+**Не является рабочей tenant-ролью.** Подробнее: TZ-PlatformAdmin.md.
+
+#### admin (level 100, tenant scope)
+
+**Полный доступ внутри своей организации:**
 - standards, sections, disclosure requirements, requirement items
 - shared elements, mappings
 - users, assignments
@@ -324,6 +354,7 @@ Layer 2: Object-Level Checks
 
 **Ограничения:**
 - approve/reject как override action (с audit log)
+- **не может** создавать tenants, видеть другие организации
 
 #### esg_manager (level 80)
 
@@ -342,7 +373,7 @@ Layer 2: Object-Level Checks
 **Доступ к:**
 - свои assignments, свои data points
 - create/update draft, submit
-- upload attachments
+- upload evidence (файлы/ссылки)
 - read/reply comments
 
 **Не может:**
@@ -418,7 +449,7 @@ Layer 2: Object-Level Checks
 | `GET /data-points/:id` | ✅ | ✅ | ⚠️ own | ⚠️ assigned | ✅ |
 | `GET /data-points/find-reuse` | ✅ | ✅ | ⚠️ own draft | ❌ | ❌ |
 | `POST /data-points/:id/submit` | ✅ | ✅ | ⚠️ own draft | ❌ | ❌ |
-| `POST /data-points/:id/attachments` | ✅ | ✅ | ⚠️ own editable | ❌ | ❌ |
+| `POST /data-points/:id/evidences` | ✅ | ✅ | ⚠️ own editable | ❌ | ❌ |
 
 #### Review
 
@@ -460,47 +491,45 @@ Layer 2: Object-Level Checks
 
 ### 2.4. Object-Level Permission Rules
 
-```typescript
-// Rule 1: Tenant isolation
-function checkTenantIsolation(user: User, resource: { organizationId: number }): boolean {
-  return user.organizationId === resource.organizationId;
-}
+```python
+# app/policies/auth_policy.py
 
-// Rule 2: Collector ownership
-function canCollectorEditDataPoint(user: User, dataPoint: DataPoint, assignment: Assignment): boolean {
-  return (
-    user.role === 'collector' &&
-    assignment.collectorId === user.id &&
-    ['draft', 'rejected', 'needs_revision'].includes(dataPoint.status)
-  );
-}
+# Rule 1: Tenant isolation
+def check_tenant_isolation(user, resource) -> bool:
+    return user.organization_id == resource.organization_id
 
-// Rule 3: Reviewer scope
-function canReviewerApprove(user: User, dataPoint: DataPoint, assignment: Assignment): boolean {
-  return (
-    user.role === 'reviewer' &&
-    assignment.reviewerId === user.id &&
-    ['submitted', 'in_review'].includes(dataPoint.status)
-  );
-}
+# Rule 2: Collector ownership
+def can_collector_edit_data_point(user, data_point, assignment) -> bool:
+    return (
+        user.role == "collector"
+        and assignment.collector_id == user.id
+        and data_point.status in ("draft", "rejected", "needs_revision")
+    )
 
-// Rule 4: Merge visibility
-function canViewMerge(user: User): boolean {
-  return ['admin', 'esg_manager', 'reviewer', 'auditor'].includes(user.role);
-}
+# Rule 3: Reviewer scope
+def can_reviewer_approve(user, data_point, assignment) -> bool:
+    return (
+        user.role == "reviewer"
+        and assignment.reviewer_id == user.id
+        and data_point.status in ("submitted", "in_review")
+    )
 
-// Rule 5: Project lock
-function canEditInProject(user: User, project: Project): boolean {
-  if (project.status === 'published') return user.role === 'admin'; // override only
-  if (project.status === 'review') return ['admin', 'esg_manager'].includes(user.role);
-  return true;
-}
+# Rule 4: Merge visibility
+def can_view_merge(user) -> bool:
+    return user.role in ("admin", "esg_manager", "reviewer", "auditor")
 
-// Rule 6: Approved lock
-function canEditApprovedDataPoint(user: User): boolean {
-  return ['admin', 'esg_manager'].includes(user.role);
-  // ESG-manager must explicitly rollback status first
-}
+# Rule 5: Project lock
+def can_edit_in_project(user, project) -> bool:
+    if project.status == "published":
+        return user.role == "admin"  # override only
+    if project.status == "review":
+        return user.role in ("admin", "esg_manager")
+    return True
+
+# Rule 6: Approved lock
+def can_edit_approved_data_point(user) -> bool:
+    return user.role in ("admin", "esg_manager")
+    # ESG-manager must explicitly rollback status first
 ```
 
 ---
@@ -509,70 +538,73 @@ function canEditApprovedDataPoint(user: User): boolean {
 
 **Рекомендуемый подход:** централизованный policy layer, не разбросанный по контроллерам.
 
-```typescript
-// middleware/permissions.ts
-interface PermissionCheck {
-  roles: Role[];
-  objectRules?: ((user: User, resource: any) => boolean)[];
+```python
+# app/core/permissions.py
+from dataclasses import dataclass, field
+from typing import Callable
+from app.core.exceptions import AppError
+
+
+@dataclass
+class PermissionCheck:
+    roles: list[str]
+    object_rules: list[Callable] = field(default_factory=list)
+
+
+PERMISSIONS: dict[str, PermissionCheck] = {
+    "POST /standards": PermissionCheck(
+        roles=["admin"],
+    ),
+    "GET /projects/{id}/merge": PermissionCheck(
+        roles=["admin", "esg_manager", "reviewer", "auditor"],
+        object_rules=[check_tenant_isolation],
+    ),
+    "POST /data-points/{id}/submit": PermissionCheck(
+        roles=["admin", "esg_manager", "collector"],
+        object_rules=[check_tenant_isolation, can_collector_edit_data_point],
+    ),
+    "POST /review/{id}/approve": PermissionCheck(
+        roles=["admin", "reviewer"],
+        object_rules=[check_tenant_isolation, can_reviewer_approve],
+    ),
 }
 
-const PERMISSIONS: Record<string, PermissionCheck> = {
-  'POST /standards': {
-    roles: ['admin'],
-  },
-  'GET /projects/:id/merge': {
-    roles: ['admin', 'esg_manager', 'reviewer', 'auditor'],
-    objectRules: [checkTenantIsolation],
-  },
-  'POST /data-points/:id/submit': {
-    roles: ['admin', 'esg_manager', 'collector'],
-    objectRules: [checkTenantIsolation, canCollectorEditDataPoint],
-  },
-  'POST /review/:id/approve': {
-    roles: ['admin', 'reviewer'],
-    objectRules: [checkTenantIsolation, canReviewerApprove],
-  },
-};
 
-// Usage in middleware
-function authorize(endpoint: string) {
-  return async (req, res, next) => {
-    const permission = PERMISSIONS[endpoint];
-    if (!permission) return res.status(403).json(forbidden());
+# Usage as FastAPI dependency
+async def authorize(endpoint: str, user, resource=None):
+    permission = PERMISSIONS.get(endpoint)
+    if not permission:
+        raise AppError("FORBIDDEN", 403, "Access denied")
 
-    // Layer 1: Role check
-    if (!permission.roles.includes(req.user.role)) {
-      return res.status(403).json(forbidden());
-    }
+    # Layer 1: Role check
+    if user.role not in permission.roles:
+        raise AppError("FORBIDDEN", 403, "Access denied")
 
-    // Layer 2: Object-level checks
-    if (permission.objectRules) {
-      const resource = await loadResource(req);
-      for (const rule of permission.objectRules) {
-        if (!rule(req.user, resource)) {
-          return res.status(403).json(forbidden());
-        }
-      }
-    }
-
-    next();
-  };
-}
+    # Layer 2: Object-level checks
+    if resource and permission.object_rules:
+        for rule in permission.object_rules:
+            if not rule(user, resource):
+                raise AppError("FORBIDDEN", 403, "Access denied")
 ```
+
+> **Подробная реализация policy layer** — см. TZ-BackendArchitecture.md раздел 5.6.
 
 ---
 
 ### 2.6. JWT Claims
 
-```typescript
-interface JWTPayload {
-  sub: number;              // user.id
-  email: string;
-  role: Role;               // 'admin' | 'esg_manager' | 'collector' | 'reviewer' | 'auditor'
-  organizationId: number;
-  iat: number;              // issued at
-  exp: number;              // expiration
-}
+```python
+# app/core/security.py
+from pydantic import BaseModel
+
+
+class JWTPayload(BaseModel):
+    sub: int                  # user.id
+    email: str
+    role: str                 # 'admin' | 'esg_manager' | 'collector' | 'reviewer' | 'auditor'
+    organization_id: int
+    iat: int                  # issued at
+    exp: int                  # expiration
 ```
 
 ---

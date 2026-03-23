@@ -1,32 +1,36 @@
 # ESGvist — Поспринтовый план реализации
 
-**Версия:** 1.0
+**Версия:** 2.0
 **Дата:** 2026-03-22
 **Спринт:** 2 недели
-**Команда (предварительно):** 2 backend + 2 frontend + 1 QA
+**Команда (предварительно):** 2 backend (Python) + 2 frontend (TS) + 1 QA
 **Velocity:** ~40 SP/sprint
+**Стек:** FastAPI + SQLAlchemy 2.0 | Next.js + shadcn/ui | PostgreSQL + Redis
 
 ---
 
 ## Обзор фаз
 
 ```
-Phase 1: MVP (Спринты 1–11)
-  └── Один стандарт (GRI), полный workflow, completeness, export
+Phase 1: MVP (Спринты 1–13)
+  └── Auth, standards, data entry, workflow, review,
+      completeness, evidence, notifications, export,
+      org setup, company structure, boundary
 
-Phase 2: Multi-Standard + Merge (Спринты 12–16)
-  └── IFRS S2, SASB, merge engine, delta, merge view
+Phase 2: Multi-Standard + Merge + AI (Спринты 14–19)
+  └── IFRS S2, SASB, merge engine, delta, merge view,
+      AI assistance layer, gate engine
 
-Phase 3: Advanced (Спринты 17–19)
-  └── Webhooks, SSO, analytics, XBRL
+Phase 3: Advanced (Спринты 20–22)
+  └── Platform admin, webhooks, SSO, analytics, XBRL
 ```
 
 | Phase | Спринты | Недели | SP |
 |-------|---------|--------|-----|
-| MVP | 1–11 | 22 | ~440 |
-| Multi-Standard | 12–16 | 10 | ~200 |
-| Advanced | 17–19 | 6 | ~120 |
-| **Итого** | **19** | **38** | **~760** |
+| MVP | 1–13 | 26 | ~560 |
+| Multi-Standard + AI | 14–19 | 12 | ~260 |
+| Advanced | 20–22 | 6 | ~150 |
+| **Итого** | **22** | **44** | **~970** |
 
 ---
 
@@ -36,27 +40,28 @@ Phase 3: Advanced (Спринты 17–19)
 
 ### Sprint 1 — Foundation + Auth
 
-**Цель:** Инфраструктура, CI/CD, auth, базовые модели
+**Цель:** Инфраструктура, CI/CD, auth, базовые модели, layered architecture
 
 #### Backend
 
 | # | Task | SP |
 |---|------|---|
-| 1 | Инициализация проекта: monorepo (apps/api + apps/web + packages/shared) | 3 |
-| 2 | Docker Compose: PostgreSQL + MinIO + API + Web | 3 |
-| 3 | Prisma setup: schema.prisma с первыми 5 таблицами (users, organizations, reporting_periods, audit_log, notifications) | 5 |
-| 4 | Auth module: register, login, JWT (access + refresh), bcrypt | 5 |
-| 5 | Middleware: auth guard, role guard, error handler, request ID | 5 |
-| 6 | Unified error model: ErrorResponse, error codes enum, HTTP status mapping | 3 |
-| 7 | Audit service: базовый interceptor для логирования всех действий | 3 |
+| 1 | Инициализация проекта: monorepo (backend/ + frontend/ + packages/shared) | 3 |
+| 2 | Docker Compose: PostgreSQL + MinIO + Redis + API + Web | 3 |
+| 3 | SQLAlchemy 2.0 setup: ORM models + Alembic миграция для первых таблиц (users, organizations, role_bindings, audit_log, notifications) | 5 |
+| 4 | Layered architecture: api/routes + schemas + services + repositories + policies + core | 3 |
+| 5 | Auth module: register, login, JWT (access + refresh), passlib/bcrypt | 5 |
+| 6 | Scope-aware auth: role_bindings model, X-Organization-Id header, RequestContext dependency | 5 |
+| 7 | Middleware: exception handler (AppError → ErrorResponse), request_id, CORS | 3 |
+| 8 | Audit service: базовый interceptor для логирования всех действий | 3 |
 
 #### Frontend
 
 | # | Task | SP |
 |---|------|---|
-| 8 | Инициализация Next.js + TypeScript + Tailwind | 3 |
-| 9 | Layout: context topbar + sidebar (из mockup-v2) | 5 |
-| 10 | Auth pages: login, token storage, protected routes | 5 |
+| 9 | Инициализация Next.js + TypeScript + Tailwind + shadcn/ui | 3 |
+| 10 | Layout: context topbar + sidebar (из mockup-v2) | 5 |
+| 11 | Auth pages: login, token storage, protected routes, X-Organization-Id injection | 5 |
 
 #### Тесты
 
@@ -66,23 +71,24 @@ Phase 3: Advanced (Спринты 17–19)
 | T1.2 | Auth: invalid credentials → 401 | Integration | 1 |
 | T1.3 | Auth: expired token → 401, refresh → new token | Integration | 1 |
 | T1.4 | Error model: все endpoints возвращают ErrorResponse формат | Integration | 1 |
-| T1.5 | Role guard: collector → admin endpoint → 403 | Integration | 1 |
-| T1.6 | Audit log: login записывается в audit_log | Integration | 1 |
-| T1.7 | E2E: login flow в браузере | E2E | 2 |
+| T1.5 | Role binding: create platform_admin + tenant admin | Integration | 1 |
+| T1.6 | Scope check: user with role in org_A → 403 for org_B | Integration | 1 |
+| T1.7 | Audit log: login записывается в audit_log | Integration | 1 |
+| T1.8 | Architecture: domain/ не импортирует fastapi/sqlalchemy | Unit | 1 |
+| T1.9 | E2E: login flow в браузере | E2E | 2 |
 
-**Итого Sprint 1:** ~49 SP
+**Итого Sprint 1:** ~54 SP
 
-**Definition of Done:**
+**DoD:**
 - [ ] Проект запускается через `docker-compose up`
 - [ ] Login/logout работает
-- [ ] JWT auth на всех endpoints
-- [ ] Unified error format на всех ошибках
-- [ ] Audit log записывает login
-- [ ] CI pipeline: lint + test на каждый PR
+- [ ] Scope-aware role_bindings (platform + tenant)
+- [ ] Unified error format
+- [ ] CI pipeline: ruff + mypy + pytest на каждый PR
 
 ---
 
-### Sprint 2 — Standards Catalog (Backend)
+### Sprint 2 — Standards Catalog
 
 **Цель:** CRUD стандартов, секций, disclosure requirements
 
@@ -90,11 +96,11 @@ Phase 3: Advanced (Спринты 17–19)
 
 | # | Task | SP |
 |---|------|---|
-| 1 | Миграция: таблицы standards, standard_sections, disclosure_requirements | 3 |
-| 2 | Standard Service: CRUD /api/standards | 5 |
-| 3 | Sections: CRUD /api/standards/:id/sections (рекурсивное дерево) | 5 |
+| 1 | Миграция: standards, standard_sections, disclosure_requirements | 3 |
+| 2 | Standard Service + Repository: CRUD /api/standards | 5 |
+| 3 | Sections: CRUD /api/standards/:id/sections (рекурсивное дерево, CTE) | 5 |
 | 4 | Disclosure Requirements: CRUD /api/standards/:id/disclosures | 5 |
-| 5 | Валидация: unique(standard_id, code), applicability_rule JSON schema | 3 |
+| 5 | Policies: only admin can POST/PATCH standards | 2 |
 | 6 | Деактивация стандарта: is_active = false, запрет удаления при наличии данных | 2 |
 
 #### Тесты
@@ -102,22 +108,12 @@ Phase 3: Advanced (Спринты 17–19)
 | # | Тест | Тип | SP |
 |---|------|-----|---|
 | T2.1 | CRUD standard: create → read → update → deactivate | Integration | 2 |
-| T2.2 | Standard: нельзя создать duplicate code | Integration | 1 |
-| T2.3 | Sections: создание дерева 3 уровня, GET возвращает иерархию | Integration | 2 |
-| T2.4 | Disclosure: unique(standard_id, code) → 409 при дубле | Integration | 1 |
-| T2.5 | Disclosure: applicability_rule сохраняется и читается как JSON | Integration | 1 |
-| T2.6 | Standard: нельзя удалить, если есть disclosures → 409 | Integration | 1 |
-| T2.7 | Permissions: только admin может POST/PATCH standards | Integration | 1 |
-| T2.8 | Pagination: standards list с page/pageSize | Integration | 1 |
+| T2.2 | Sections: создание дерева 3 уровня, GET возвращает иерархию | Integration | 2 |
+| T2.3 | Disclosure: unique(standard_id, code) → 409 | Integration | 1 |
+| T2.4 | Permissions: только admin может POST standards | Integration | 1 |
+| T2.5 | Pagination: standards list с page/pageSize | Integration | 1 |
 
-**Итого Sprint 2:** ~39 SP
-
-**DoD:**
-- [ ] GRI standard создаётся через API
-- [ ] Дерево секций строится рекурсивно
-- [ ] Disclosure requirements с mandatory_level
-- [ ] Все ошибки в формате ErrorResponse
-- [ ] 100% тестовое покрытие CRUD операций
+**Итого Sprint 2:** ~29 SP
 
 ---
 
@@ -130,40 +126,26 @@ Phase 3: Advanced (Спринты 17–19)
 | # | Task | SP |
 |---|------|---|
 | 1 | Миграция: requirement_items, requirement_item_dependencies | 3 |
-| 2 | RequirementItem CRUD: /api/disclosures/:id/items (с иерархией parent_item_id) | 5 |
-| 3 | Dependencies: CRUD /api/items/:id/dependencies (requires/excludes/conditional_on) | 3 |
+| 2 | RequirementItem CRUD: /api/disclosures/:id/items (с иерархией) | 5 |
+| 3 | Dependencies: CRUD /api/items/:id/dependencies | 3 |
 | 4 | Миграция: shared_elements, shared_element_dimensions | 2 |
 | 5 | SharedElement CRUD: /api/shared-elements | 3 |
 | 6 | Dimensions: CRUD /api/shared-elements/:id/dimensions | 2 |
-| 7 | Валидация: item_type enum, value_type enum, granularity_rule/validation_rule JSON | 3 |
+| 7 | Валидация: item_type, value_type, granularity_rule, validation_rule (JSON) | 3 |
 
 #### Тесты
 
 | # | Тест | Тип | SP |
 |---|------|-----|---|
-| T3.1 | RequirementItem: create с type=metric, value_type=number, unit_code=tCO2e | Integration | 1 |
-| T3.2 | RequirementItem: иерархия parent_item_id (2 уровня) | Integration | 2 |
-| T3.3 | RequirementItem: validation_rule и granularity_rule сохраняются как JSON | Integration | 1 |
-| T3.4 | Dependencies: создание requires + excludes | Integration | 1 |
-| T3.5 | Dependencies: unique(item_id, depends_on_id, type) | Integration | 1 |
-| T3.6 | SharedElement: unique code | Integration | 1 |
-| T3.7 | SharedElement dimensions: unique(shared_element_id, dimension_type) | Integration | 1 |
-| T3.8 | Permissions: только admin | Integration | 1 |
+| T3.1-T3.8 | CRUD items, hierarchy, dependencies, shared elements, dimensions, permissions | Integration | 8 |
 
-**Итого Sprint 3:** ~30 SP
-
-**DoD:**
-- [ ] Disclosure разбивается на requirement_items
-- [ ] Иерархия items работает
-- [ ] Dependencies между items
-- [ ] Shared elements + dimensions
-- [ ] JSON rules сохраняются и валидируются
+**Итого Sprint 3:** ~29 SP
 
 ---
 
-### Sprint 4 — Mapping + Seed Data
+### Sprint 4 — Mapping + Seed Data + Standards UI
 
-**Цель:** Связь requirements ↔ shared elements, загрузка GRI
+**Цель:** Связь requirements ↔ shared elements, загрузка GRI, UI стандартов
 
 #### Backend
 
@@ -171,402 +153,357 @@ Phase 3: Advanced (Спринты 17–19)
 |---|------|---|
 | 1 | Миграция: requirement_item_shared_elements | 2 |
 | 2 | Mapping CRUD: /api/mappings (full/partial/derived) | 5 |
-| 3 | Query: /api/mappings/cross-standard — shared elements в нескольких стандартах | 3 |
-| 4 | Seed: GRI 2021 — standard + sections (~10) | 3 |
-| 5 | Seed: GRI 2021 — disclosure_requirements (~35) | 5 |
-| 6 | Seed: GRI 2021 — requirement_items для Emissions (305-1, 305-2, 305-3) ~15 items | 5 |
-| 7 | Seed: shared_elements (~30 для emissions, energy, water) | 3 |
-| 8 | Seed: mappings GRI → shared_elements (~20) | 3 |
+| 3 | Cross-standard query: /api/mappings/cross-standard | 3 |
+| 4 | Seed: GRI 2021 — standard + sections + disclosures (~35) + items (~15 emissions) | 8 |
+| 5 | Seed: shared_elements (~30) + mappings GRI → shared (~20) | 5 |
 
 #### Frontend
 
 | # | Task | SP |
 |---|------|---|
-| 9 | UI: /settings/standards — список стандартов (таблица) | 3 |
-| 10 | UI: дерево секций (рекурсивный компонент, expand/collapse) | 5 |
+| 6 | UI: /settings/standards — список стандартов (TanStack Table) | 3 |
+| 7 | UI: дерево секций (рекурсивный компонент) | 5 |
 
 #### Тесты
 
 | # | Тест | Тип | SP |
 |---|------|-----|---|
-| T4.1 | Mapping: create full mapping item → shared_element | Integration | 1 |
-| T4.2 | Mapping: один shared_element → N items из разных стандартов | Integration | 2 |
-| T4.3 | Mapping: unique(requirement_item_id, shared_element_id) | Integration | 1 |
-| T4.4 | Cross-standard query: возвращает shared_elements с 2+ стандартами | Integration | 2 |
-| T4.5 | Seed: GRI загружен, 35 disclosures, ~15 items для emissions | Smoke | 1 |
-| T4.6 | E2E: стандарты видны в UI, дерево раскрывается | E2E | 2 |
+| T4.1-T4.6 | Mapping CRUD, cross-standard, seed smoke, E2E standards | Integration + E2E | 8 |
 
-**Итого Sprint 4:** ~46 SP
-
-**DoD:**
-- [ ] Mapping requirement → shared element работает
-- [ ] Cross-standard query
-- [ ] GRI 2021 полностью загружен (standard + sections + disclosures + items + mappings)
-- [ ] UI: список стандартов и дерево секций
+**Итого Sprint 4:** ~39 SP
 
 ---
 
-### Sprint 5 — Projects + Assignments
+### Sprint 5 — Organization Setup + Company Structure
 
-**Цель:** Проекты отчётности, назначение метрик
+**Цель:** Onboarding wizard, company entities, ownership/control links
 
 #### Backend
 
 | # | Task | SP |
 |---|------|---|
-| 1 | Миграция: reporting_projects, reporting_project_standards | 2 |
-| 2 | Project CRUD: /api/projects (create, read, update) | 5 |
-| 3 | Project standards: PUT /api/projects/:id/standards (выбор стандартов) | 3 |
-| 4 | Project workflow: draft → in_progress → review → published | 3 |
-| 5 | Миграция: metric_assignments (с backup_collector_id, escalation_after_days) | 2 |
-| 6 | Assignments CRUD: /api/projects/:id/assignments | 5 |
-| 7 | Bulk assignments: POST /api/projects/:id/assignments/bulk | 3 |
-| 8 | Валидация: collector ≠ reviewer, tenant isolation | 2 |
+| 1 | Расширение organizations: legal_name, country, industry, currency, setup_completed | 3 |
+| 2 | Миграция: company_entities, ownership_links, control_links | 5 |
+| 3 | Org Setup Workflow: POST /api/organizations/setup (создание tenant + root entity + default boundary) | 8 |
+| 4 | Entity Service: CRUD /api/entities + /api/entities/tree (CTE) | 5 |
+| 5 | Ownership links: CRUD + cycle detection + sum validation (≤100%) | 5 |
+| 6 | Control links: CRUD + self-control check | 3 |
+| 7 | Effective ownership calculation (graph traversal) | 5 |
+| 8 | Миграция: user_invitations | 2 |
 
 #### Frontend
 
 | # | Task | SP |
 |---|------|---|
-| 9 | UI: создание проекта (name, period, standards selection) | 5 |
-| 10 | UI: матрица назначений (shared_element × collector × reviewer × deadline) | 8 |
+| 9 | UI: Organization Setup Wizard (5 шагов) | 8 |
+| 10 | UI: post-setup dashboard guidance («Create your first ESG report») | 2 |
 
 #### Тесты
 
 | # | Тест | Тип | SP |
 |---|------|-----|---|
-| T5.1 | Project: create → выбрать GRI → статус draft | Integration | 2 |
-| T5.2 | Project workflow: draft → in_progress (стандарты выбраны) | Integration | 1 |
-| T5.3 | Project workflow: нельзя published без completeness | Integration | 1 |
-| T5.4 | Assignment: create с collector + reviewer | Integration | 1 |
-| T5.5 | Assignment: collector == reviewer → 409 ASSIGNMENT_ROLE_CONFLICT | Integration | 1 |
-| T5.6 | Assignment: без назначения (null collector) → status=pending | Integration | 1 |
-| T5.7 | Bulk assignment: 5 элементов за 1 запрос | Integration | 1 |
-| T5.8 | Tenant isolation: user из org_A не видит project org_B | Integration | 1 |
-| T5.9 | E2E: создание проекта + назначение в матрице | E2E | 2 |
+| T5.1 | Org setup: создание org + root entity + default boundary | Integration | 2 |
+| T5.2 | Ownership: cycle detection → 422 | Integration | 1 |
+| T5.3 | Ownership: sum > 100% → 422 | Integration | 1 |
+| T5.4 | Effective ownership: chain A→B→C calculated correctly | Integration | 2 |
+| T5.5 | Invitation: create + accept flow | Integration | 1 |
+| T5.6 | E2E: org setup wizard | E2E | 2 |
 
-**Итого Sprint 5:** ~49 SP
-
-**DoD:**
-- [ ] Проект создаётся с выбором стандартов
-- [ ] Workflow проекта работает
-- [ ] Назначения метрик (single + bulk)
-- [ ] Constraint: collector ≠ reviewer
-- [ ] Tenant isolation
+**Итого Sprint 5:** ~55 SP
 
 ---
 
-### Sprint 6 — Data Entry (Backend + Wizard начало)
+### Sprint 6 — Boundary + Projects
 
-**Цель:** Ввод данных, draft/submit, evidence upload
+**Цель:** Boundary definitions, memberships, projects, assignments
 
 #### Backend
 
 | # | Task | SP |
 |---|------|---|
-| 1 | Миграция: data_points, data_point_dimensions, methodologies, boundaries, source_records, attachments | 5 |
-| 2 | DataPoint CRUD: /api/projects/:id/data-points | 5 |
-| 3 | Dimensions: управление разрезами при создании/обновлении data_point | 3 |
-| 4 | Field-level validation: type check, min/max, required fields | 3 |
-| 5 | Record-level validation: required dimensions (из granularity_rule) | 3 |
-| 6 | Attachments: upload + bind to data_point or requirement_item | 5 |
-| 7 | File storage integration: MinIO (S3-compatible) | 3 |
-| 8 | Seed: methodologies (GHG Protocol, Location-based, Market-based) + boundaries | 2 |
+| 1 | Миграция: boundary_definitions, boundary_memberships, boundary_snapshots | 3 |
+| 2 | Boundary Service: CRUD + automatic membership calculation by rules | 5 |
+| 3 | Boundary snapshot: create + lock + immutable constraint | 3 |
+| 4 | Миграция: reporting_projects (+ boundary_definition_id, boundary_snapshot_id), reporting_project_standards | 3 |
+| 5 | Project Service: CRUD /api/projects, project workflow (draft → active → review → published) | 5 |
+| 6 | Миграция: metric_assignments (+ entity_id, facility_id, backup_collector_id) | 3 |
+| 7 | Assignment Service: CRUD + bulk + collector ≠ reviewer validation | 5 |
+| 8 | Apply boundary to project: PUT /api/projects/:id/boundary + preview | 5 |
 
 #### Frontend
 
 | # | Task | SP |
 |---|------|---|
-| 9 | UI: компонент Wizard (stepper + навигация) | 5 |
-| 10 | UI: QN-1 — список назначенных метрик (с статусами) | 3 |
+| 9 | UI: /settings/company-structure — дерево + React Flow визуализация | 8 |
+| 10 | UI: создание проекта (name, period, standards, boundary selection) | 5 |
+| 11 | UI: матрица назначений (shared_element × entity × collector × reviewer) | 8 |
 
 #### Тесты
 
 | # | Тест | Тип | SP |
 |---|------|-----|---|
-| T6.1 | DataPoint: create draft с numeric_value + unit_code | Integration | 1 |
-| T6.2 | DataPoint: create с dimensions (scope=Scope1, gas=CO2) | Integration | 1 |
-| T6.3 | DataPoint: validation error — missing required unit_code | Integration | 1 |
-| T6.4 | DataPoint: validation error — missing required dimension | Integration | 1 |
-| T6.5 | Attachment: upload file → bind to data_point | Integration | 2 |
-| T6.6 | Attachment: file stored in MinIO, URI valid | Integration | 1 |
-| T6.7 | Permissions: collector видит только свои assigned data points | Integration | 1 |
-| T6.8 | Permissions: collector не может создать data_point для чужого assignment | Integration | 1 |
+| T6.1-T6.10 | Boundary CRUD, auto-membership, snapshot, project CRUD, assignment validation, tenant isolation | Integration | 10 |
+| T6.11 | E2E: create project + select boundary + assignments | E2E | 3 |
 
-**Итого Sprint 6:** ~46 SP
-
-**DoD:**
-- [ ] DataPoint создаётся с dimensions
-- [ ] Field + record level validation
-- [ ] Файлы загружаются в MinIO
-- [ ] Collector видит только свои данные
-- [ ] Wizard начат (stepper + QN-1)
+**Итого Sprint 6:** ~66 SP (может разбить на 2)
 
 ---
 
-### Sprint 7 — Workflow Engine + Review
+### Sprint 7 — Data Entry + Evidence
 
-**Цель:** Полный workflow, review UI
+**Цель:** Ввод данных, evidence (новая модель), file upload
 
 #### Backend
 
 | # | Task | SP |
 |---|------|---|
-| 1 | Workflow Service: state machine (transition rules, role checks) | 5 |
-| 2 | API: POST /submit, /approve, /reject, /request-revision | 5 |
-| 3 | Миграция: data_point_versions | 2 |
-| 4 | Auto-versioning: при каждом изменении value → новая version | 3 |
-| 5 | Locking: read-only для submitted/in_review/approved | 3 |
-| 6 | Rollback: approved → draft (esg_manager only, с comment + audit) | 2 |
-| 7 | Миграция: comments (threaded, typed) | 2 |
-| 8 | Comments CRUD: /api/comments + resolve | 3 |
+| 1 | Миграция: data_points (+ entity_id, facility_id), data_point_dimensions | 3 |
+| 2 | Миграция: evidences, evidence_files, evidence_links, data_point_evidences, requirement_item_evidences | 3 |
+| 3 | DataPoint Service: CRUD + field/record validation | 5 |
+| 4 | Dimensions management при создании data_point | 3 |
+| 5 | Evidence Service: CRUD + upload + link/unlink + requires_evidence check | 5 |
+| 6 | File storage: MinIO integration (upload, download, pre-signed URLs) | 3 |
+| 7 | Seed: methodologies + boundaries справочники | 2 |
 
 #### Frontend
 
 | # | Task | SP |
 |---|------|---|
-| 9 | UI: QN-2 — форма ввода (dynamic fields из requirement_items) | 8 |
-| 10 | UI: QN-3 — preview + validation summary | 3 |
-| 11 | UI: QN-4 — submit (draft / send to review) | 3 |
-| 12 | UI: /validation — split panel (список + детали) | 5 |
+| 8 | UI: Wizard stepper component | 3 |
+| 9 | UI: QN-1 — список назначенных метрик (с entity context, boundary badge) | 5 |
+| 10 | UI: QN-2 — dynamic form (fields from requirement_items) | 8 |
+| 11 | UI: evidence upload (drag-and-drop, file/link toggle) | 5 |
 
 #### Тесты
 
 | # | Тест | Тип | SP |
 |---|------|-----|---|
-| T7.1 | Workflow: draft → submitted (collector) | Integration | 1 |
-| T7.2 | Workflow: submitted → in_review (auto, reviewer assigned) | Integration | 1 |
-| T7.3 | Workflow: in_review → approved (reviewer) | Integration | 1 |
-| T7.4 | Workflow: in_review → rejected (reviewer, comment required) | Integration | 1 |
-| T7.5 | Workflow: rejected → 422 if no comment | Integration | 1 |
-| T7.6 | Workflow: submitted → draft — 422 INVALID_WORKFLOW_TRANSITION | Integration | 1 |
-| T7.7 | Locking: PATCH data_point in submitted → 422 DATA_POINT_LOCKED | Integration | 1 |
-| T7.8 | Rollback: approved → draft by esg_manager (audit log записан) | Integration | 1 |
-| T7.9 | Rollback: approved → draft by collector → 403 | Integration | 1 |
-| T7.10 | Versioning: 3 changes → 3 versions in data_point_versions | Integration | 1 |
-| T7.11 | Comments: create thread → reply → resolve | Integration | 1 |
-| T7.12 | E2E: wizard QN-1→QN-4 → submit | E2E | 2 |
-| T7.13 | E2E: reviewer opens split panel → approve | E2E | 2 |
+| T7.1-T7.8 | DataPoint CRUD, dimensions, validation, evidence CRUD, link/unlink, file upload, permissions | Integration | 8 |
 
-**Итого Sprint 7:** ~56 SP
-
-**DoD:**
-- [ ] Полный workflow draft→submit→review→approve/reject
-- [ ] Locking работает
-- [ ] Versioning при каждом изменении
-- [ ] Comments с threading
-- [ ] Wizard QN-1→QN-4 работает
-- [ ] Review split panel работает
+**Итого Sprint 7:** ~53 SP
 
 ---
 
-### Sprint 8 — Completeness Engine
+### Sprint 8 — Workflow Engine + Gate Engine
 
-**Цель:** Автоматический расчёт статусов покрытия
+**Цель:** State machine, transitions, Gate Engine (централизованные проверки)
+
+#### Backend
+
+| # | Task | SP |
+|---|------|---|
+| 1 | Gate Engine: GateEngine class + Gate ABC + GateResult | 5 |
+| 2 | Data Gate: INVALID_DATA, INVALID_VALUE_TYPE | 3 |
+| 3 | Evidence Gate: EVIDENCE_REQUIRED | 3 |
+| 4 | Boundary Gate: OUT_OF_BOUNDARY | 3 |
+| 5 | Workflow Gate: INVALID_WORKFLOW_TRANSITION, DATA_POINT_LOCKED, ROLE_NOT_ALLOWED | 5 |
+| 6 | Review Gate: REVIEW_COMMENT_REQUIRED | 2 |
+| 7 | Workflow Service: submit, approve, reject, request_revision, rollback (все через Gate Engine) | 8 |
+| 8 | API: POST /api/gate-check (pre-flight) | 3 |
+| 9 | Миграция: data_point_versions | 2 |
+| 10 | Auto-versioning: при каждом status change → новая version | 3 |
+| 11 | Миграция: comments (threaded, typed) + CRUD | 3 |
+
+#### Frontend
+
+| # | Task | SP |
+|---|------|---|
+| 12 | UI: QN-3 — preview + validation summary | 3 |
+| 13 | UI: QN-4 — submit (с gate check → inline blockers) | 3 |
+| 14 | UI: /validation — split panel (список + детали + boundary context) | 8 |
+| 15 | UI: gate blocker modal (list of failed gates + warnings) | 3 |
+
+#### Тесты
+
+| # | Тест | Тип | SP |
+|---|------|-----|---|
+| T8.1-T8.15 | All workflow transitions, gate checks, locking, rollback, versioning, comments, permissions | Integration | 15 |
+| T8.16 | E2E: wizard → submit → gate check → review → approve | E2E | 3 |
+
+**Итого Sprint 8:** ~72 SP (может разбить на 2)
+
+---
+
+### Sprint 9 — Completeness Engine
+
+**Цель:** Расчёт покрытия, binding, boundary-aware completeness
 
 #### Backend
 
 | # | Task | SP |
 |---|------|---|
 | 1 | Миграция: requirement_item_statuses, requirement_item_data_points, disclosure_requirement_statuses | 3 |
-| 2 | Binding service: POST /api/data-points/:id/bind — привязка data_point к requirement_item | 3 |
-| 3 | CompletenessEngine: calculateItemStatus (required fields, dimensions, evidence, approval) | 8 |
-| 4 | CompletenessEngine: aggregateDisclosureStatus (completion_percent, missing_summary) | 5 |
-| 5 | Event triggers: DataPointUpdated → recalculate, DataPointApproved → recalculate | 5 |
-| 6 | API: GET /api/projects/:id/completeness (by standard, by disclosure) | 3 |
-| 7 | Performance: batch recalculation < 5s per project | 2 |
+| 2 | Binding service: POST /api/data-points/:id/bind | 3 |
+| 3 | Completeness Engine: calculateItemStatus (fields, dimensions, evidence, approval) | 8 |
+| 4 | Completeness Engine: boundary-aware calculation (entity scope from snapshot) | 5 |
+| 5 | Completeness Engine: aggregateDisclosureStatus (completion_percent) | 5 |
+| 6 | Completeness Gate: REQUIREMENT_INCOMPLETE, PROJECT_INCOMPLETE | 3 |
+| 7 | Event triggers: DataPointApproved/Rejected/Bound → recalculate | 5 |
+| 8 | API: GET /api/projects/:id/completeness (by standard, by disclosure, by entity) | 3 |
+| 9 | Performance: batch recalculation < 5s per project | 2 |
 
 #### Frontend
 
 | # | Task | SP |
 |---|------|---|
-| 8 | UI: Dashboard Overview — progress block (из mockup-v2: 68%, breakdown) | 5 |
-| 9 | UI: category cards (Emissions 80%, Water 100%, etc.) | 5 |
-| 10 | UI: fast scan summary (missing / in_progress / in_review / submitted) | 3 |
+| 10 | UI: Dashboard Overview — progress block (%, breakdown by status) | 5 |
+| 11 | UI: category cards (Emissions 80%, Water 100%, etc.) | 3 |
+| 12 | UI: Boundary Summary block on dashboard | 3 |
 
 #### Тесты
 
 | # | Тест | Тип | SP |
 |---|------|-----|---|
-| T8.1 | Status: no data → missing | Integration | 1 |
-| T8.2 | Status: data exists, not approved → partial | Integration | 1 |
-| T8.3 | Status: data approved, all dimensions → complete | Integration | 1 |
-| T8.4 | Status: data approved, missing dimension → partial | Integration | 1 |
-| T8.5 | Status: item_type=document, no attachment → partial | Integration | 1 |
-| T8.6 | Disclosure: all items complete → disclosure complete, 100% | Integration | 1 |
-| T8.7 | Disclosure: 2/3 complete → partial, 66.7% | Integration | 1 |
-| T8.8 | Trigger: approve data_point → status recalculated automatically | Integration | 2 |
-| T8.9 | Trigger: reject data_point → status becomes partial | Integration | 1 |
-| T8.10 | Overall score: mandatory disclosures only | Integration | 1 |
-| T8.11 | Performance: 100 items recalculate < 5 seconds | Performance | 2 |
-| T8.12 | E2E: dashboard shows real completeness data | E2E | 2 |
+| T9.1-T9.12 | All completeness statuses, boundary-aware, disclosure aggregation, event triggers, performance | Integration | 12 |
+| T9.13 | E2E: dashboard shows real completeness | E2E | 2 |
 
-**Итого Sprint 8:** ~55 SP
-
-**DoD:**
-- [ ] Completeness Engine рассчитывает item + disclosure statuses
-- [ ] Автоматический пересчёт при изменении данных
-- [ ] Binding data_point → requirement_item
-- [ ] Dashboard показывает реальные данные
-- [ ] Performance < 5s на проект
+**Итого Sprint 9:** ~62 SP (может разбить на 2)
 
 ---
 
-### Sprint 9 — Reuse Detection + Data Table
+### Sprint 10 — Reuse Detection + Collection Table
 
-**Цель:** Identity Rule, reuse UX, Collection таблица
+**Цель:** Identity Rule, reuse UX, полная Collection таблица
 
 #### Backend
 
 | # | Task | SP |
 |---|------|---|
-| 1 | ReuseDetector: поиск по Identity Rule (7 параметров) | 5 |
-| 2 | API: GET /api/data-points/:id/reuse-candidates | 3 |
-| 3 | Reuse transparency: reusedIn[] в DataPoint response (список disclosures) | 3 |
-| 4 | Locking warning: при PATCH multi-bound data_point — warning в response header | 2 |
-| 5 | Outlier detection: deviation_threshold check vs previous period | 3 |
+| 1 | ReuseDetector: Identity Rule (9 параметров включая entity_id, facility_id) | 5 |
+| 2 | API: GET /api/data-points/find-reuse | 3 |
+| 3 | Reuse transparency: reusedIn[] в response | 3 |
+| 4 | Multi-bound edit warning | 2 |
+| 5 | Outlier detection: deviation_threshold vs previous period | 3 |
 
 #### Frontend
 
 | # | Task | SP |
 |---|------|---|
-| 6 | UI: /collection — Data table (status-first, filters, actions) | 8 |
-| 7 | UI: fast scan summary над таблицей (кликабельные stat-блоки) | 3 |
+| 6 | UI: /collection — Data table (TanStack Table, status-first, entity column, boundary badge) | 8 |
+| 7 | UI: filters (by entity, by boundary, by status, by standard) | 3 |
 | 8 | UI: reuse suggestion dialog в wizard | 5 |
-| 9 | UI: reuse badge на полях (используется в N стандартах) | 3 |
-| 10 | UI: outlier badge + tooltip | 2 |
+| 9 | UI: reuse badge + outlier badge | 3 |
 
 #### Тесты
 
 | # | Тест | Тип | SP |
 |---|------|-----|---|
-| T9.1 | Reuse: same 7 params → reuse candidate found | Integration | 2 |
-| T9.2 | Reuse: different unit → no match | Integration | 1 |
-| T9.3 | Reuse: different methodology → no match | Integration | 1 |
-| T9.4 | Reuse: different dimensions → no match | Integration | 1 |
-| T9.5 | Reuse transparency: data_point.reusedIn = [GRI 305-1, ...] | Integration | 1 |
-| T9.6 | Outlier: value differs >40% → outlier flag | Integration | 1 |
-| T9.7 | Outlier: value differs <40% → no flag | Integration | 1 |
-| T9.8 | Multi-bound edit: warning in response when editing shared data | Integration | 1 |
-| T9.9 | E2E: collection table with filters, actions | E2E | 2 |
-| T9.10 | E2E: reuse dialog appears when entering duplicate data | E2E | 2 |
+| T10.1-T10.10 | Reuse matching, no-match cases, transparency, outlier flags, multi-bound warning | Integration | 10 |
+| T10.11 | E2E: collection table + reuse dialog | E2E | 2 |
 
-**Итого Sprint 9:** ~48 SP
-
-**DoD:**
-- [ ] Identity Rule reuse работает
-- [ ] Reuse transparency (reusedIn[])
-- [ ] Outlier detection
-- [ ] Collection table полностью функциональна
-- [ ] Reuse dialog в wizard
+**Итого Sprint 10:** ~47 SP
 
 ---
 
-### Sprint 10 — Notifications + Evidence Repository + Issues
+### Sprint 11 — Notifications + SLA
 
-**Цель:** Уведомления, хранилище файлов, issues block
+**Цель:** In-app notifications, email, SLA breach detection
 
 #### Backend
 
 | # | Task | SP |
 |---|------|---|
 | 1 | Notification Service: create notifications при workflow events | 5 |
-| 2 | API: GET /api/notifications, PATCH /read, POST /read-all | 3 |
-| 3 | SLA breach detection: cron job (deadline -3d, +3d, +7d) | 3 |
-| 4 | Email integration: отправка email при critical events (submit, reject, deadline) | 5 |
-| 5 | Batch review: POST /api/review/batch-approve, /batch-reject | 3 |
+| 2 | Notification Event Handlers: submitted → reviewer, rejected → collector, boundary_changed → esg_manager | 5 |
+| 3 | API: GET /notifications, PATCH /read, POST /read-all, GET /unread-count | 3 |
+| 4 | SLA breach detection: cron job (deadline -3d, +3d, +7d) | 3 |
+| 5 | Email integration: send email for critical/important events | 5 |
+| 6 | Deduplication + no self-notify rules | 2 |
 
 #### Frontend
 
 | # | Task | SP |
 |---|------|---|
-| 6 | UI: notification bell + dropdown в topbar | 3 |
-| 7 | UI: /evidence — Evidence repository (файлы, фильтры, upload) | 5 |
-| 8 | UI: Dashboard — Issues block (critical / needs review, grouped) | 5 |
-| 9 | UI: Dashboard — Priority Tasks block (overdue first, CTA buttons) | 3 |
-| 10 | UI: batch approve в review UI (select multiple → approve) | 3 |
+| 7 | UI: notification bell + dropdown в topbar | 3 |
+| 8 | UI: Dashboard — Issues block (critical / needs review) | 5 |
+| 9 | UI: Dashboard — Priority Tasks block (overdue first) | 3 |
 
 #### Тесты
 
 | # | Тест | Тип | SP |
 |---|------|-----|---|
-| T10.1 | Notification: submit → reviewer gets notification | Integration | 1 |
-| T10.2 | Notification: reject → collector gets notification | Integration | 1 |
-| T10.3 | Notification: mark read | Integration | 1 |
-| T10.4 | SLA: deadline -3d → warning notification created | Integration | 2 |
-| T10.5 | SLA: deadline +7d → critical notification to admin | Integration | 1 |
-| T10.6 | Batch approve: 5 items → all approved, 5 notifications | Integration | 2 |
-| T10.7 | Batch reject: comment required → 422 without comment | Integration | 1 |
-| T10.8 | Evidence: list with filters (type, binding status) | Integration | 1 |
-| T10.9 | E2E: notification appears after submit | E2E | 2 |
+| T11.1-T11.9 | Notification creation, delivery, SLA checks, email, dedup, mark read | Integration | 9 |
+| T11.10 | E2E: notification appears after submit | E2E | 2 |
 
-**Итого Sprint 10:** ~49 SP
-
-**DoD:**
-- [ ] Notifications при workflow events
-- [ ] SLA breach detection
-- [ ] Email отправляется
-- [ ] Batch approve/reject
-- [ ] Evidence repository
-- [ ] Dashboard: issues + tasks
+**Итого Sprint 11:** ~45 SP
 
 ---
 
-### Sprint 11 — Export + Audit + MVP Polish
+### Sprint 12 — Batch Review + Evidence Repository
 
-**Цель:** Export, audit log UI, финальная полировка MVP
+**Цель:** Batch approve/reject, evidence repository UI, review UX polish
 
 #### Backend
 
 | # | Task | SP |
 |---|------|---|
-| 1 | Readiness check: GET /api/projects/:id/export/readiness (blocking + warnings + score) | 5 |
-| 2 | GRI Content Index generator: structured data → table | 5 |
-| 3 | Export: POST /api/projects/:id/export (PDF via Puppeteer/wkhtmltopdf) | 5 |
-| 4 | Export: Excel data dump (via exceljs) | 3 |
-| 5 | Publish flow: project → published (lock all data, snapshot, audit) | 3 |
-| 6 | Audit log: GET /api/audit-log (filters: entity_type, user, date range) | 3 |
+| 1 | Batch review: POST /api/review/batch-approve, /batch-reject (с summary preview) | 5 |
+| 2 | Evidence repository: GET /api/evidences (filters: type, bound/unbound, date) | 3 |
+| 3 | Review context enrichment: reuse count, boundary context, anomaly flags в right panel | 3 |
 
 #### Frontend
 
 | # | Task | SP |
 |---|------|---|
-| 7 | UI: /report — GRI Content Index table + readiness check | 5 |
-| 8 | UI: export page (format selection, readiness, download) | 3 |
-| 9 | UI: /audit — audit log viewer (filters, timeline) | 5 |
-| 10 | UI: Dashboard polish (responsive, loading states, empty states) | 3 |
-| 11 | UI: user management (/settings/users — list + edit form) | 5 |
+| 4 | UI: batch approve в review UI (select multiple → summary → confirm) | 5 |
+| 5 | UI: /evidence — Evidence repository (файлы, ссылки, bound/unbound фильтры) | 5 |
+| 6 | UI: Review right panel — boundary context, evidence section, reuse impact | 5 |
+| 7 | UI: review reason codes dropdown (OUT_OF_BOUNDARY, WRONG_CONSOLIDATION) | 2 |
 
 #### Тесты
 
 | # | Тест | Тип | SP |
 |---|------|-----|---|
-| T11.1 | Readiness: 0 blocking → ready, 1 blocking → not ready | Integration | 1 |
-| T11.2 | Readiness: warnings count (outliers, partial) | Integration | 1 |
-| T11.3 | Export GRI Index: correct disclosures, statuses, page refs | Integration | 2 |
-| T11.4 | Export PDF: file generated, non-empty | Integration | 1 |
-| T11.5 | Export Excel: all data_points included with metadata | Integration | 1 |
-| T11.6 | Publish: project → published → all data read-only | Integration | 2 |
-| T11.7 | Publish: collector tries edit after publish → 422 PROJECT_LOCKED | Integration | 1 |
-| T11.8 | Audit: all CRUD actions logged with changes JSON | Integration | 1 |
-| T11.9 | Audit: filter by entity_type + date range | Integration | 1 |
-| T11.10 | E2E: full flow — create project → enter data → review → approve → export → publish | E2E | 5 |
+| T12.1-T12.7 | Batch approve, batch reject (comment required), evidence filters, review context | Integration | 7 |
+| T12.8 | E2E: batch approve flow | E2E | 2 |
 
-**Итого Sprint 11:** ~61 SP
-
-**DoD:**
-- [ ] Readiness check перед export
-- [ ] GRI Content Index export (PDF + Excel)
-- [ ] Publish flow с data lock
-- [ ] Audit log с фильтрами
-- [ ] **MVP COMPLETE** — полный цикл от создания проекта до публикации
+**Итого Sprint 12:** ~37 SP
 
 ---
 
-## PHASE 2: Multi-Standard + Merge
+### Sprint 13 — Export + Audit + MVP Polish
+
+**Цель:** Export, readiness check (с boundary validation), audit log, MVP complete
+
+#### Backend
+
+| # | Task | SP |
+|---|------|---|
+| 1 | Readiness check: GET /api/projects/:id/export/readiness (blocking + warnings + boundary validation) | 5 |
+| 2 | GRI Content Index generator | 5 |
+| 3 | Export: PDF (weasyprint) + Excel (openpyxl) | 5 |
+| 4 | Publish flow: project → published (lock all data, require boundary snapshot, audit) | 3 |
+| 5 | Audit log: GET /api/audit-log (filters: entity_type, user, date range) | 3 |
+| 6 | Project workflow Gate: BOUNDARY_NOT_LOCKED, UNRESOLVED_REVIEW, PROJECT_INCOMPLETE | 3 |
+
+#### Frontend
+
+| # | Task | SP |
+|---|------|---|
+| 7 | UI: /report — readiness check + boundary validation block | 5 |
+| 8 | UI: export page (format selection, download) | 3 |
+| 9 | UI: /audit — audit log viewer | 5 |
+| 10 | UI: user management (/settings/users + role assignment) | 5 |
+| 11 | UI: Dashboard polish (responsive, loading, empty states) | 3 |
+
+#### Тесты
+
+| # | Тест | Тип | SP |
+|---|------|-----|---|
+| T13.1-T13.10 | Readiness check, export, publish flow (lock + snapshot required), audit filters | Integration | 10 |
+| T13.11 | E2E: full MVP flow — project → data → review → approve → export → publish | E2E | 5 |
+
+**Итого Sprint 13:** ~60 SP
+
+**🏁 MVP COMPLETE — полный цикл с company structure, boundary, gate engine**
 
 ---
 
-### Sprint 12 — Multi-Standard Seed + Merge Engine (Backend)
+## PHASE 2: Multi-Standard + Merge + AI
+
+---
+
+### Sprint 14 — Multi-Standard Seed + Merge Engine
 
 **Цель:** IFRS S2 + SASB данные, merge algorithm
 
@@ -574,96 +511,54 @@ Phase 3: Advanced (Спринты 17–19)
 
 | # | Task | SP |
 |---|------|---|
-| 1 | Seed: IFRS S2 2023 — standard + sections + disclosures (~25) + items (~90) | 8 |
-| 2 | Seed: SASB Oil&Gas — standard + disclosures (~15) + items (~50) | 5 |
-| 3 | Seed: mappings IFRS S2 → shared_elements (~25, с partial) | 5 |
-| 4 | Seed: mappings SASB → shared_elements (~15) | 3 |
-| 5 | MergeEngine: 5-step algorithm (collect → group → classify → orphans → build) | 8 |
-| 6 | API: GET /api/projects/:id/merge — merged view response | 5 |
-| 7 | API: GET /api/projects/:id/merge/coverage — coverage per standard | 3 |
+| 1 | Seed: IFRS S2 2023 — standard + sections + disclosures + items + mappings | 13 |
+| 2 | Seed: SASB Oil&Gas — standard + disclosures + items + mappings | 8 |
+| 3 | Merge Engine: 5-step algorithm (collect → group → classify → orphans → build) | 8 |
+| 4 | API: GET /projects/:id/merge, /merge/coverage | 5 |
 
 #### Тесты
 
 | # | Тест | Тип | SP |
 |---|------|-----|---|
-| T12.1 | Merge GRI only: all items returned, no intersections | Integration | 1 |
-| T12.2 | Merge GRI + IFRS: common elements identified (e.g., Scope 1) | Integration | 2 |
-| T12.3 | Merge GRI + IFRS: unique IFRS elements identified | Integration | 1 |
-| T12.4 | Merge: orphan requirements (no shared_element mapping) | Integration | 1 |
-| T12.5 | Coverage: GRI 100% when all data approved, IFRS < 100% | Integration | 2 |
-| T12.6 | Merge: 3 standards (GRI + IFRS + SASB) — correct grouping | Integration | 2 |
-| T12.7 | Performance: merge 3 standards < 3 seconds | Performance | 1 |
+| T14.1-T14.7 | Merge 1/2/3 standards, common elements, orphans, coverage, performance | Integration | 10 |
 
-**Итого Sprint 12:** ~47 SP
+**Итого Sprint 14:** ~44 SP
 
 ---
 
-### Sprint 13 — Deltas + Add Standard Flow
+### Sprint 15 — Deltas + Add Standard + Merge View UI
 
-**Цель:** Delta requirements, добавление стандарта к проекту
+**Цель:** Delta requirements, добавление стандарта, Merge View экран
 
 #### Backend
 
 | # | Task | SP |
 |---|------|---|
 | 1 | Миграция: requirement_deltas, requirement_item_overrides | 3 |
-| 2 | Delta CRUD: /api/deltas | 3 |
-| 3 | Overrides CRUD: /api/overrides | 3 |
-| 4 | MergeEngine: integrate deltas and overrides into merge view | 5 |
-| 5 | Add standard flow: POST /api/projects/:id/standards → impact preview | 5 |
-| 6 | Impact preview: POST /api/projects/:id/impact-preview/standards | 5 |
-| 7 | Auto-binding: при добавлении стандарта — reuse existing data_points | 5 |
-| 8 | Seed: deltas GRI ↔ IFRS S2 (financial linkage, gas breakdown) | 3 |
-
-#### Тесты
-
-| # | Тест | Тип | SP |
-|---|------|-----|---|
-| T13.1 | Delta: create additional_item for IFRS on top of GRI | Integration | 1 |
-| T13.2 | Override: stricter validation (threshold 0.4 → 0.2) | Integration | 1 |
-| T13.3 | Merge + deltas: delta shows as +Δ in merge view | Integration | 2 |
-| T13.4 | Add standard: impact preview shows 12 covered, 3 delta, 3 new | Integration | 2 |
-| T13.5 | Add standard: existing data auto-bound, status = complete | Integration | 2 |
-| T13.6 | Add standard: new items get status = missing | Integration | 1 |
-| T13.7 | Add standard: completeness recalculated for new standard | Integration | 2 |
-
-**Итого Sprint 13:** ~43 SP
-
----
-
-### Sprint 14 — Merge View UI
-
-**Цель:** Merge View экран, impact preview UI
+| 2 | Delta/Override CRUD | 5 |
+| 3 | Merge + deltas integration | 5 |
+| 4 | Add standard flow: impact preview + auto-binding reuse | 8 |
 
 #### Frontend
 
 | # | Task | SP |
 |---|------|---|
-| 1 | UI: /merge — матрица element × standard (✔/❌/+Δ/—) | 8 |
-| 2 | UI: summary bar (coverage %, common/unique/delta counts) | 3 |
-| 3 | UI: фильтры (concept_domain, status, standard) | 3 |
-| 4 | UI: drill-down popup (data point details, delta description) | 5 |
-| 5 | UI: +Δ popup (delta description, required by which standard) | 3 |
-| 6 | UI: access control (скрыть /merge для collector) | 2 |
-| 7 | UI: impact preview modal (при добавлении стандарта в settings) | 5 |
-| 8 | UI: "Add standard" flow в project settings | 3 |
+| 5 | UI: /merge — матрица element × standard (+ boundary scope layer) | 8 |
+| 6 | UI: summary bar, filters, drill-down, +Δ popup | 5 |
+| 7 | UI: impact preview modal (add standard) | 5 |
 
 #### Тесты
 
 | # | Тест | Тип | SP |
 |---|------|-----|---|
-| T14.1 | E2E: merge view shows matrix for GRI + IFRS | E2E | 2 |
-| T14.2 | E2E: filter by status=missing → only missing rows | E2E | 1 |
-| T14.3 | E2E: click ✔ → drill-down shows data point | E2E | 1 |
-| T14.4 | E2E: click +Δ → popup shows delta description | E2E | 1 |
-| T14.5 | E2E: collector cannot access /merge → redirect | E2E | 1 |
-| T14.6 | E2E: add SASB → impact preview → confirm → recalculate | E2E | 2 |
+| T15.1-T15.7 | Deltas, overrides, add standard flow, auto-reuse, completeness recalc | Integration | 7 |
+| T15.8 | E2E: merge view + add standard | E2E | 3 |
 
-**Итого Sprint 14:** ~40 SP
+**Итого Sprint 15:** ~49 SP
 
 ---
 
-### Sprint 15 — Impact Analysis + Versioning
+### Sprint 16 — Impact Analysis + Versioning
 
 **Цель:** Impact analysis для admin, versioning mappings
 
@@ -671,37 +566,101 @@ Phase 3: Advanced (Спринты 17–19)
 
 | # | Task | SP |
 |---|------|---|
-| 1 | Impact analysis: при изменении requirement_item → show affected projects/data | 5 |
-| 2 | Impact analysis: при изменении mapping → show affected standards/items | 5 |
-| 3 | API: GET /api/mappings/impact-preview | 3 |
-| 4 | Versioning: add version, is_current, valid_from, valid_to to requirement_items | 3 |
-| 5 | Versioning: mappings — new version on change, old preserved | 3 |
-| 6 | Historical query: completeness for published project uses versioned mappings | 5 |
+| 1 | Impact analysis: изменение requirement_item / mapping → affected projects/data | 8 |
+| 2 | Versioning: version, is_current, valid_from/valid_to для items, mappings, shared_elements | 5 |
+| 3 | Historical query: published project uses versioned mappings | 5 |
 
 #### Frontend
 
 | # | Task | SP |
 |---|------|---|
-| 7 | UI: impact preview modal в admin pages (standards, mappings) | 5 |
-| 8 | UI: version history viewer (mapping changes over time) | 3 |
+| 4 | UI: impact preview modal в admin pages | 5 |
+| 5 | UI: version history viewer | 3 |
 
 #### Тесты
 
 | # | Тест | Тип | SP |
 |---|------|-----|---|
-| T15.1 | Impact: change requirement_item → 12 items, 3 standards, 2 projects affected | Integration | 2 |
-| T15.2 | Impact: change mapping → correct affected count | Integration | 2 |
-| T15.3 | Versioning: change mapping → old version preserved with is_current=false | Integration | 1 |
-| T15.4 | Historical: published project uses mapping version from publish date | Integration | 2 |
-| T15.5 | E2E: admin changes mapping → impact preview → confirm | E2E | 2 |
+| T16.1-T16.5 | Impact analysis, versioning, historical query | Integration | 8 |
 
-**Итого Sprint 15:** ~41 SP
+**Итого Sprint 16:** ~34 SP
 
 ---
 
-### Sprint 16 — Phase 2 Polish + Integration Testing
+### Sprint 17 — AI Assistance Layer (Phase 1)
 
-**Цель:** Полировка merge, cross-standard reuse, regression
+**Цель:** AI Service, inline explain, contextual Q&A, AI Gate
+
+#### Backend
+
+| # | Task | SP |
+|---|------|---|
+| 1 | AI Assistant Service: LLMClient (Claude API), prompt templates | 5 |
+| 2 | AI Tools: get_requirement_details, get_completeness_details, get_boundary_decision, get_data_point_details | 8 |
+| 3 | AI Gate: Context Gate + Permission Gate + Tool Access Gate + Prompt Gate | 8 |
+| 4 | AI Gate: Output Gate + Action Gate + Rate Gate + Audit Gate | 5 |
+| 5 | API: POST /api/ai/explain/field, /explain/completeness, /explain/boundary | 3 |
+| 6 | API: POST /api/ai/ask + /ask/stream (SSE) | 3 |
+| 7 | Миграция: ai_interactions table | 2 |
+| 8 | AI logging: all interactions logged | 2 |
+
+#### Frontend
+
+| # | Task | SP |
+|---|------|---|
+| 9 | UI: ExplainButton (?) component + inline tooltip | 3 |
+| 10 | UI: WhyLink component | 2 |
+| 11 | UI: CopilotPanel (side panel + streaming) | 5 |
+
+#### Тесты
+
+| # | Тест | Тип | SP |
+|---|------|-----|---|
+| T17.1-T17.8 | AI explain, ask, gate checks (role filtering, tool access, prompt sanitization, rate limit), logging | Integration | 8 |
+| T17.9 | E2E: click ? → explanation appears | E2E | 2 |
+
+**Итого Sprint 17:** ~56 SP
+
+---
+
+### Sprint 18 — AI Review Assistant + Evidence Guidance
+
+**Цель:** Review assistant, evidence guidance, suggested actions
+
+#### Backend
+
+| # | Task | SP |
+|---|------|---|
+| 1 | Review assist: POST /api/ai/review-assist (summary, anomalies, draft comment) | 5 |
+| 2 | Evidence guidance: POST /api/ai/explain/evidence | 3 |
+| 3 | AI Tool: get_anomaly_flags, get_evidence_requirements, get_review_context | 5 |
+| 4 | Suggested actions: filter by role (Action Gate) | 3 |
+| 5 | AI fallback: static help text when LLM unavailable | 2 |
+| 6 | Caching: field explanations (24h TTL) | 2 |
+
+#### Frontend
+
+| # | Task | SP |
+|---|------|---|
+| 7 | UI: Review panel — AI summary + anomaly flags + draft comment | 5 |
+| 8 | UI: SuggestedActions component (navigate buttons) | 3 |
+| 9 | UI: AI fallback badge «AI temporarily unavailable» | 1 |
+| 10 | UI: evidence guidance in wizard (inline) | 3 |
+
+#### Тесты
+
+| # | Тест | Тип | SP |
+|---|------|-----|---|
+| T18.1-T18.5 | Review assist, evidence guidance, fallback, caching, role restrictions | Integration | 5 |
+| T18.6 | E2E: reviewer sees AI summary + uses draft comment | E2E | 2 |
+
+**Итого Sprint 18:** ~39 SP
+
+---
+
+### Sprint 19 — Phase 2 Polish + Integration Testing
+
+**Цель:** Cross-standard reuse, Phase 2 полировка, regression
 
 #### Tasks
 
@@ -709,23 +668,20 @@ Phase 3: Advanced (Спринты 17–19)
 |---|------|---|
 | 1 | Cross-record consistency: scope1 + scope2 ≠ total → flag | 3 |
 | 2 | Reuse across standards: enter for GRI → auto-reuse for IFRS | 3 |
-| 3 | Dashboard: coverage per standard в overview (GRI 72%, IFRS 45%) | 3 |
+| 3 | Dashboard: coverage per standard + boundary impact on completeness | 3 |
 | 4 | Qualitative wizard: QL-1→QL-3 для narrative items | 5 |
 | 5 | Bulk data import: CSV/Excel → data_points | 5 |
-| 6 | Performance optimization: merge + completeness caching | 3 |
+| 6 | Performance: merge + completeness caching | 3 |
 
 #### Тесты
 
 | # | Тест | Тип | SP |
 |---|------|-----|---|
-| T16.1 | Full integration: GRI + IFRS project, enter data, merge view correct | Integration | 3 |
-| T16.2 | Reuse: enter Scope 1 for GRI → IFRS shows as complete (auto-bound) | Integration | 2 |
-| T16.3 | Cross-consistency: scope1=100, scope2=200, total=250 → inconsistency flag | Integration | 2 |
-| T16.4 | Import: CSV with 20 data_points → all created correctly | Integration | 2 |
-| T16.5 | E2E: full multi-standard flow (GRI+IFRS) → merge → export | E2E | 5 |
-| T16.6 | Regression: all Sprint 1-15 tests pass | Regression | 3 |
+| T19.1-T19.5 | Full multi-standard flow, reuse, cross-consistency, import | Integration | 10 |
+| T19.6 | E2E: GRI+IFRS project → merge → AI explain → export | E2E | 5 |
+| T19.7 | Regression: all Sprint 1-18 tests pass | Regression | 3 |
 
-**Итого Sprint 16:** ~39 SP
+**Итого Sprint 19:** ~40 SP
 
 ---
 
@@ -733,158 +689,138 @@ Phase 3: Advanced (Спринты 17–19)
 
 ---
 
-### Sprint 17 — Webhooks + Calculated Data
+### Sprint 20 — Platform Admin + Webhooks
 
-**Цель:** Outbound webhooks, расчётные показатели
-
-#### Backend
-
-| # | Task | SP |
-|---|------|---|
-| 1 | Webhook management: CRUD /api/webhook-endpoints | 5 |
-| 2 | Webhook delivery: EventEnvelope + HMAC-SHA256 signing | 5 |
-| 3 | 16 webhook events (project/assignment/datapoint/review/completeness/export) | 5 |
-| 4 | Webhook retry: 3 attempts with exponential backoff | 3 |
-| 5 | Test webhook: POST /api/webhook-endpoints/:id/test | 2 |
-| 6 | Миграция: calculation_rules, derived_data_points | 2 |
-| 7 | Calculation engine: formula execution, auto-recalculate on source change | 5 |
-| 8 | Derived data points: read-only flag, UI distinction | 2 |
-
-#### Тесты
-
-| # | Тест | Тип | SP |
-|---|------|-----|---|
-| T17.1 | Webhook: create endpoint → submit data_point → webhook delivered | Integration | 2 |
-| T17.2 | Webhook: HMAC signature valid | Integration | 1 |
-| T17.3 | Webhook: retry on failure (mock 500 → retry → success) | Integration | 2 |
-| T17.4 | Webhook: test endpoint sends sample event | Integration | 1 |
-| T17.5 | Calculated: create rule (scope1+scope2=total) → derived value | Integration | 2 |
-| T17.6 | Calculated: update source → derived recalculated | Integration | 2 |
-| T17.7 | Calculated: derived is read-only → 422 on edit | Integration | 1 |
-
-**Итого Sprint 17:** ~40 SP
-
----
-
-### Sprint 18 — SSO + Advanced Export
-
-**Цель:** OAuth2/SAML auth, XBRL, advanced PDF
+**Цель:** Platform admin UI, tenant management, outbound webhooks
 
 #### Backend
 
 | # | Task | SP |
 |---|------|---|
-| 1 | OAuth2 integration: authorization code flow | 8 |
-| 2 | SAML 2.0 integration (optional, depending on client) | 5 |
-| 3 | 2FA: TOTP setup + verification | 3 |
-| 4 | XBRL export: structured data → XBRL format | 8 |
-| 5 | Advanced PDF: customizable report template | 5 |
-| 6 | Export queue: async job processing for large reports | 3 |
+| 1 | Platform admin API: GET/POST/PATCH /api/platform/tenants | 5 |
+| 2 | Tenant lifecycle: suspend / reactivate / archive | 3 |
+| 3 | Platform admin UI data: tenant list, tenant details, user list | 3 |
+| 4 | Webhook management: CRUD /api/webhooks | 5 |
+| 5 | Webhook delivery: HMAC-SHA256 + retry + dead letter | 5 |
+| 6 | Webhook events: 8 core events (data_point.*, project.*, evidence.*, boundary.*) | 3 |
+| 7 | Webhook test: POST /api/webhooks/:id/test | 2 |
 
 #### Frontend
 
 | # | Task | SP |
 |---|------|---|
-| 7 | UI: SSO login button + OAuth callback handler | 3 |
-| 8 | UI: 2FA setup page | 3 |
-| 9 | UI: XBRL option in export page | 2 |
+| 8 | UI: /platform/tenants — tenant list + create + details | 5 |
+| 9 | UI: webhook management page | 3 |
 
 #### Тесты
 
 | # | Тест | Тип | SP |
 |---|------|-----|---|
-| T18.1 | OAuth2: login → callback → JWT issued | Integration | 2 |
-| T18.2 | 2FA: setup → verify → login requires 2FA | Integration | 2 |
-| T18.3 | XBRL: valid XBRL output for GRI disclosures | Integration | 2 |
-| T18.4 | Async export: queued → running → completed → file downloadable | Integration | 2 |
+| T20.1-T20.7 | Platform admin CRUD, tenant lifecycle, webhook delivery, HMAC, retry | Integration | 7 |
 
-**Итого Sprint 18:** ~48 SP
+**Итого Sprint 20:** ~41 SP
 
 ---
 
-### Sprint 19 — Analytics + Final Polish
+### Sprint 21 — SSO + Advanced Export
 
-**Цель:** Dashboard analytics, production readiness
+**Цель:** OAuth2/SAML, 2FA, XBRL, async export
+
+#### Backend
+
+| # | Task | SP |
+|---|------|---|
+| 1 | OAuth2 integration | 8 |
+| 2 | SAML 2.0 (optional) | 5 |
+| 3 | 2FA: TOTP setup + verification | 3 |
+| 4 | XBRL export | 8 |
+| 5 | Async export queue (arq/Celery) | 5 |
+
+#### Frontend
+
+| # | Task | SP |
+|---|------|---|
+| 6 | UI: SSO login + 2FA setup | 5 |
+| 7 | UI: XBRL option in export | 2 |
+
+#### Тесты
+
+| # | Тест | Тип | SP |
+|---|------|-----|---|
+| T21.1-T21.4 | OAuth2, 2FA, XBRL, async export | Integration | 8 |
+
+**Итого Sprint 21:** ~44 SP
+
+---
+
+### Sprint 22 — Analytics + Production Readiness
+
+**Цель:** Analytics, load testing, security, deployment
 
 #### Tasks
 
 | # | Task | SP |
 |---|------|---|
-| 1 | Analytics: historical trend charts (completeness over time) | 5 |
-| 2 | Analytics: user activity summary (entries per user per week) | 3 |
-| 3 | Analytics: SLA compliance report | 3 |
-| 4 | Admin: company settings page (/settings/company) | 3 |
-| 5 | Admin: roles & permissions UI (/settings/roles) | 5 |
-| 6 | Performance: load testing (50 concurrent users) | 3 |
-| 7 | Security: penetration testing checklist | 3 |
-| 8 | Documentation: API docs (Swagger UI deployment) | 2 |
-| 9 | Documentation: user guide (basic) | 3 |
-| 10 | Production deployment: Dockerfile, nginx, CI/CD pipeline | 5 |
+| 1 | Analytics: historical trend charts | 5 |
+| 2 | Analytics: user activity, SLA compliance | 5 |
+| 3 | Calculated data points: formula engine + derived values | 5 |
+| 4 | Performance: load testing (50 concurrent users) | 3 |
+| 5 | Security: penetration testing checklist | 3 |
+| 6 | API docs: Swagger UI (auto from FastAPI) | 1 |
+| 7 | Production deployment: Dockerfile, nginx, CI/CD | 5 |
 
 #### Тесты
 
 | # | Тест | Тип | SP |
 |---|------|-----|---|
-| T19.1 | Load test: 50 concurrent users, response < 2s | Performance | 3 |
-| T19.2 | Security: SQL injection attempts blocked | Security | 1 |
-| T19.3 | Security: XSS attempts blocked | Security | 1 |
-| T19.4 | Security: rate limiting (>100 req/min → 429) | Security | 1 |
-| T19.5 | Full regression: all 150+ tests pass | Regression | 5 |
-| T19.6 | E2E: complete user journey (login → project → data → review → merge → export → publish) | E2E | 5 |
+| T22.1-T22.6 | Load test, security (SQLi, XSS, rate limit), full regression, full E2E journey | Performance + Security + Regression + E2E | 16 |
 
-**Итого Sprint 19:** ~51 SP
+**Итого Sprint 22:** ~43 SP
 
 ---
 
 ## Сводка по тестам
 
-### Типы тестов
-
 | Тип | Количество | Описание |
 |-----|-----------|----------|
-| **Unit** | ~50 | Чистые функции: validators, formatters, state machine |
-| **Integration** | ~120 | API endpoints + DB: CRUD, workflow, permissions, business rules |
-| **E2E** | ~25 | Браузерные сценарии: login → wizard → review → export |
-| **Performance** | ~5 | Load testing, merge speed, completeness recalculation |
-| **Security** | ~5 | SQL injection, XSS, rate limiting |
+| **Unit** | ~60 | Domain logic, validators, state machine, gate rules |
+| **Integration** | ~160 | API endpoints + DB: CRUD, workflow, gates, permissions, AI |
+| **E2E** | ~30 | Браузерные сценарии: login → wizard → review → merge → export |
+| **Performance** | ~5 | Load testing, merge speed, completeness |
+| **Security** | ~5 | SQLi, XSS, rate limiting, tenant isolation |
 | **Regression** | ~3 | Full suite re-run at phase boundaries |
-| **Total** | **~208** | |
+| **Total** | **~263** | |
 
 ### Тестовый стек
 
 | Tool | Назначение |
 |------|-----------|
-| **Jest** | Unit + Integration tests |
-| **Supertest** | HTTP endpoint testing |
-| **Prisma** | Test database (seeded per test suite) |
+| **pytest + pytest-asyncio** | Backend: unit + integration tests |
+| **httpx (AsyncClient)** | Backend: HTTP endpoint testing |
+| **Vitest** | Frontend: unit + integration tests |
+| **SQLAlchemy + Alembic** | Test database (seeded per test suite) |
 | **Playwright** | E2E browser tests |
 | **k6 / Artillery** | Load/performance testing |
-| **Test containers** | Isolated PostgreSQL + MinIO per test run |
-
-### Тестовая стратегия по спринту
-
-```
-Каждый спринт:
-1. Новые тесты для новой функциональности
-2. Regression: все предыдущие тесты проходят
-3. CI: тесты запускаются на каждый PR
-4. Coverage: > 80% для backend services
-5. E2E: минимум 1 сценарий на ключевой user flow
-```
+| **testcontainers-python** | Isolated PostgreSQL + MinIO + Redis per test run |
 
 ---
 
 ## Milestones
 
-| Milestone | Sprint | Дата (от старта) | Критерий |
-|-----------|--------|-----------------|----------|
-| **Foundation Ready** | 1 | +2 нед | Auth + CI/CD + error model работают |
-| **Catalog Complete** | 4 | +8 нед | GRI загружен, mappings работают |
-| **Data Entry MVP** | 7 | +14 нед | Wizard + workflow + review работают |
-| **MVP Complete** | 11 | +22 нед | Export + publish + полный цикл |
-| **Multi-Standard** | 14 | +28 нед | Merge View работает с 3 стандартами |
-| **Phase 2 Complete** | 16 | +32 нед | Deltas, versioning, impact analysis |
-| **Production Ready** | 19 | +38 нед | SSO, webhooks, analytics, load tested |
+| Milestone | Sprint | Неделя | Критерий |
+|-----------|--------|--------|----------|
+| **Foundation Ready** | 1 | 2 | Auth + scope-aware roles + CI/CD |
+| **Catalog Complete** | 4 | 8 | GRI loaded, mappings work |
+| **Org + Structure Ready** | 5 | 10 | Onboarding wizard, company entities, ownership |
+| **Boundary + Projects** | 6 | 12 | Boundary, projects, assignments with entity scope |
+| **Data Entry MVP** | 8 | 16 | Wizard + workflow + gate engine + review |
+| **Completeness** | 9 | 18 | Boundary-aware completeness |
+| **MVP Complete** | 13 | 26 | Export + publish + full cycle with boundary |
+| **Multi-Standard** | 15 | 30 | Merge View with 3 standards |
+| **AI Enabled** | 18 | 36 | AI explain + review assist + copilot |
+| **Phase 2 Complete** | 19 | 38 | Deltas, versioning, AI, regression pass |
+| **Platform Ready** | 20 | 40 | Platform admin, webhooks |
+| **Production Ready** | 22 | 44 | SSO, XBRL, analytics, load tested |
 
 ---
 
@@ -892,8 +828,10 @@ Phase 3: Advanced (Спринты 17–19)
 
 | Риск | Вероятность | Impact | Митигация |
 |------|------------|--------|-----------|
-| Seed data: сложность декомпозиции стандартов | Высокая | Высокий | Начать с GRI Emissions (305), расширять постепенно |
-| Merge Engine: edge cases при 3+ стандартах | Средняя | Высокий | Extensive integration tests, manual QA |
-| Performance: completeness recalculation slow | Средняя | Средний | Async + caching + batch processing |
-| UX: wizard complexity for non-technical users | Средняя | Средний | User testing after Sprint 7, iterate |
-| Scope creep: Phase 2 features leak into MVP | Высокая | Средний | Strict sprint scope, merge engine = Phase 2 |
+| Sprint 6 и 8 oversize (60-70 SP) | Высокая | Средний | Разбить каждый на 2 под-спринта |
+| Seed data: декомпозиция стандартов | Высокая | Высокий | Начать с GRI Emissions (305), расширять постепенно |
+| Gate Engine complexity | Средняя | Средний | Начать с 3-4 core gates, расширять итеративно |
+| AI integration latency | Средняя | Средний | Caching + streaming + fallback |
+| Merge Engine edge cases | Средняя | Высокий | Extensive integration tests |
+| Company structure graph performance | Низкая | Средний | CTE optimization, limit depth |
+| Boundary + completeness coupling | Средняя | Высокий | Clear interfaces, boundary-aware tests from Sprint 9 |
