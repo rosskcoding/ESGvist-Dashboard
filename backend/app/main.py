@@ -11,6 +11,7 @@ from app.api.routes import (
     mappings,
     projects,
     requirement_items,
+    reuse,
     shared_elements,
     standards,
     workflow,
@@ -60,6 +61,7 @@ def create_app() -> FastAPI:
     app.include_router(data_points.router)
     app.include_router(workflow.router)
     app.include_router(completeness.router)
+    app.include_router(reuse.router)
 
     return app
 
