@@ -20,6 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -29,6 +30,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+type Dimension = {
+  id: number;
+  shared_element_id: number;
+  dimension_type: string;
+  is_required: boolean;
+};
+
 type SharedElement = {
   id: number;
   code: string;
@@ -36,6 +44,7 @@ type SharedElement = {
   concept_domain: string | null;
   default_value_type: string | null;
   default_unit_code: string | null;
+  dimensions: Dimension[];
 };
 
 type SharedElementListResponse = {
@@ -60,6 +69,21 @@ type RequirementItemListResponse = { items: RequirementItem[]; total: number };
 
 type RequirementItemOption = { value: string; label: string };
 
+const DIMENSION_OPTIONS = [
+  { value: "scope", label: "Scope" },
+  { value: "category", label: "Category" },
+  { value: "gas", label: "Gas" },
+  { value: "geography", label: "Geography" },
+  { value: "facility", label: "Facility" },
+] as const;
+
+function dimensionLabel(value: string) {
+  return (
+    DIMENSION_OPTIONS.find((option) => option.value === value)?.label ??
+    value.replace(/_/g, " ")
+  );
+}
+
 function AddSharedElementDialog({
   open,
   onOpenChange,
@@ -76,8 +100,18 @@ function AddSharedElementDialog({
     default_unit_code: "",
   });
   const mutation = useApiMutation("/shared-elements", "POST", {
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["shared-elements-admin"] });
+    onSuccess: (element) => {
+      queryClient.setQueryData<SharedElementListResponse>(
+        ["shared-elements-admin"],
+        (current) =>
+          current
+            ? {
+                ...current,
+                items: [element as SharedElement, ...current.items.filter((item) => item.id !== (element as SharedElement).id)],
+                total: current.total + (current.items.some((item) => item.id === (element as SharedElement).id) ? 0 : 1),
+              }
+            : { items: [element as SharedElement], total: 1 }
+      );
       onOpenChange(false);
       setForm({
         code: "",
@@ -227,7 +261,56 @@ function LinkMappingDialog({
 
   const mutation = useApiMutation("/mappings", "POST", {
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["cross-standard-mappings"] });
+      const selectedOption = options.find((option) => option.value === selectedItemId);
+      const standardCode = selectedOption?.label.split(" / ")[0]?.trim();
+      const elements = queryClient.getQueryData<SharedElementListResponse>(["shared-elements-admin"]);
+      const sharedElement = elements?.items.find((item) => item.id === sharedElementId);
+      if (!sharedElement || !standardCode) {
+        queryClient.invalidateQueries({ queryKey: ["cross-standard-mappings"] });
+      } else {
+        queryClient.setQueryData<CrossStandardElement[]>(
+          ["cross-standard-mappings"],
+          (current) => {
+            if (!current) {
+              return [
+                {
+                  shared_element_id: sharedElement.id,
+                  shared_element_code: sharedElement.code,
+                  shared_element_name: sharedElement.name,
+                  standards: [standardCode],
+                  mapping_count: 1,
+                },
+              ];
+            }
+            const existingIndex = current.findIndex(
+              (item) => item.shared_element_id === sharedElementId
+            );
+            if (existingIndex === -1) {
+              return [
+                {
+                  shared_element_id: sharedElement.id,
+                  shared_element_code: sharedElement.code,
+                  shared_element_name: sharedElement.name,
+                  standards: [standardCode],
+                  mapping_count: 1,
+                },
+                ...current,
+              ];
+            }
+            const existing = current[existingIndex];
+            const standards = existing.standards.includes(standardCode)
+              ? existing.standards
+              : [...existing.standards, standardCode].sort();
+            const next = [...current];
+            next[existingIndex] = {
+              ...existing,
+              standards,
+              mapping_count: existing.mapping_count + 1,
+            };
+            return next;
+          }
+        );
+      }
       onOpenChange(false);
       setSelectedItemId("");
       setMappingType("full");
@@ -290,14 +373,123 @@ function LinkMappingDialog({
   );
 }
 
+function AddDimensionDialog({
+  sharedElementId,
+  open,
+  onOpenChange,
+}: {
+  sharedElementId: number;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const queryClient = useQueryClient();
+  const [dimensionType, setDimensionType] = useState("scope");
+  const [isRequired, setIsRequired] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setDimensionType("scope");
+      setIsRequired(false);
+    }
+  }, [open]);
+
+  const mutation = useApiMutation<Dimension, { dimension_type: string; is_required: boolean }>(
+    `/shared-elements/${sharedElementId}/dimensions`,
+    "POST",
+    {
+      onSuccess: (dimension) => {
+        queryClient.setQueryData<SharedElementListResponse>(
+          ["shared-elements-admin"],
+          (current) => {
+            if (!current) return current;
+            return {
+              ...current,
+              items: current.items.map((item) => {
+                if (item.id !== sharedElementId) return item;
+                const exists = item.dimensions.some(
+                  (entry) => entry.dimension_type === dimension.dimension_type
+                );
+                return {
+                  ...item,
+                  dimensions: exists
+                    ? item.dimensions.map((entry) =>
+                        entry.dimension_type === dimension.dimension_type
+                          ? (dimension as Dimension)
+                          : entry
+                      )
+                    : [...item.dimensions, dimension as Dimension],
+                };
+              }),
+            };
+          }
+        );
+        onOpenChange(false);
+      },
+    }
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add Dimension</DialogTitle>
+          <DialogDescription>
+            Define an allowed reporting breakdown for the selected shared element.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 py-4">
+          <Select
+            label="Dimension Type"
+            value={dimensionType}
+            onChange={setDimensionType}
+            options={DIMENSION_OPTIONS.map((option) => ({
+              value: option.value,
+              label: option.label,
+            }))}
+          />
+          <div className="rounded-lg border border-slate-200 p-4">
+            <Switch
+              checked={isRequired}
+              onCheckedChange={setIsRequired}
+              label="Required for data entry"
+            />
+            <p className="mt-2 text-xs text-slate-500">
+              Required dimensions must be supplied before the data point can pass gate checks.
+            </p>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() =>
+              mutation.mutate({
+                dimension_type: dimensionType,
+                is_required: isRequired,
+              })
+            }
+            disabled={mutation.isPending}
+          >
+            {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Save Dimension
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function SharedElementsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [dimensionDialogOpen, setDimensionDialogOpen] = useState(false);
   const [linkElementId, setLinkElementId] = useState<number | null>(null);
+  const [dimensionElementId, setDimensionElementId] = useState<number | null>(null);
 
   const { data: me, isLoading: meLoading } = useApiQuery<{
     roles: Array<{ role: string }>;
-  }>(["auth-me", "shared-elements-settings"], "/auth/me");
+  }>(["auth-me"], "/auth/me");
 
   const role = me?.roles?.[0]?.role ?? "";
   const canAccess = role === "admin" || role === "platform_admin";
@@ -375,6 +567,7 @@ export default function SharedElementsPage() {
                 <TableHead>Domain</TableHead>
                 <TableHead>Value Type</TableHead>
                 <TableHead>Unit</TableHead>
+                <TableHead>Dimensions</TableHead>
                 <TableHead>Mapped</TableHead>
                 <TableHead className="text-right">Action</TableHead>
               </TableRow>
@@ -389,19 +582,49 @@ export default function SharedElementsPage() {
                   </TableCell>
                   <TableCell>{element.default_value_type ?? "-"}</TableCell>
                   <TableCell>{element.default_unit_code ?? "-"}</TableCell>
+                  <TableCell>
+                    {element.dimensions.length === 0 ? (
+                      <span className="text-sm text-slate-400">None</span>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5">
+                        {element.dimensions.map((dimension) => (
+                          <Badge
+                            key={dimension.id}
+                            variant={dimension.is_required ? "warning" : "outline"}
+                          >
+                            {dimensionLabel(dimension.dimension_type)}
+                            {dimension.is_required ? " required" : ""}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </TableCell>
                   <TableCell>{mappedElementIds.has(element.id) ? "Yes" : "No"}</TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setLinkElementId(element.id);
-                        setLinkDialogOpen(true);
-                      }}
-                    >
-                      <Link2 className="mr-2 h-4 w-4" />
-                      Link Mapping
-                    </Button>
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setDimensionElementId(element.id);
+                          setDimensionDialogOpen(true);
+                        }}
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add Dimension
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setLinkElementId(element.id);
+                          setLinkDialogOpen(true);
+                        }}
+                      >
+                        <Link2 className="mr-2 h-4 w-4" />
+                        Link Mapping
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -451,6 +674,13 @@ export default function SharedElementsPage() {
           sharedElementId={linkElementId}
           open={linkDialogOpen}
           onOpenChange={setLinkDialogOpen}
+        />
+      )}
+      {dimensionElementId && (
+        <AddDimensionDialog
+          sharedElementId={dimensionElementId}
+          open={dimensionDialogOpen}
+          onOpenChange={setDimensionDialogOpen}
         />
       )}
     </div>

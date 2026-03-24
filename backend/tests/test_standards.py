@@ -4,7 +4,7 @@ from httpx import AsyncClient
 
 @pytest.fixture
 async def admin_headers(client: AsyncClient) -> dict:
-    """Create user (first user = platform_admin) and get auth + org context."""
+    """Create the first user (platform_admin) and return auth headers."""
     await client.post(
         "/api/auth/register",
         json={"email": "admin@test.com", "password": "password123", "full_name": "Admin"},
@@ -14,10 +14,7 @@ async def admin_headers(client: AsyncClient) -> dict:
         json={"email": "admin@test.com", "password": "password123"},
     )
     token = resp.json()["access_token"]
-    # platform_admin doesn't need X-Organization-Id for standards (they're global)
-    # but our get_current_context needs it for non-platform endpoints
-    # For standards, we'll pass it anyway
-    return {"Authorization": f"Bearer {token}", "X-Organization-Id": "1"}
+    return {"Authorization": f"Bearer {token}"}
 
 
 # --- Standards CRUD ---
@@ -42,7 +39,7 @@ async def test_list_standards(client: AsyncClient, admin_headers: dict):
         json={"code": "GRI", "name": "GRI 2021"},
         headers=admin_headers,
     )
-    resp = await client.get("/api/standards")
+    resp = await client.get("/api/standards", headers=admin_headers)
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] == 1
@@ -106,7 +103,7 @@ async def test_pagination(client: AsyncClient, admin_headers: dict):
             headers=admin_headers,
         )
 
-    resp = await client.get("/api/standards?page=1&page_size=2")
+    resp = await client.get("/api/standards?page=1&page_size=2", headers=admin_headers)
     data = resp.json()
     assert data["total"] == 5
     assert len(data["items"]) == 2
@@ -134,13 +131,18 @@ async def test_create_section_tree(client: AsyncClient, admin_headers: dict):
     # Child section
     r2 = await client.post(
         f"/api/standards/{sid}/sections",
-        json={"title": "Emissions", "code": "305", "parent_section_id": parent_id, "sort_order": 1},
+        json={
+            "title": "Emissions",
+            "code": "305",
+            "parent_section_id": parent_id,
+            "sort_order": 1,
+        },
         headers=admin_headers,
     )
     assert r2.status_code == 201
 
     # List as tree
-    resp = await client.get(f"/api/standards/{sid}/sections")
+    resp = await client.get(f"/api/standards/{sid}/sections", headers=admin_headers)
     assert resp.status_code == 200
     tree = resp.json()
     assert len(tree) == 1  # one root
@@ -186,12 +188,22 @@ async def test_duplicate_disclosure_code_returns_409(client: AsyncClient, admin_
 
     await client.post(
         f"/api/standards/{sid}/disclosures",
-        json={"code": "305-1", "title": "D1", "requirement_type": "quantitative", "mandatory_level": "mandatory"},
+        json={
+            "code": "305-1",
+            "title": "D1",
+            "requirement_type": "quantitative",
+            "mandatory_level": "mandatory",
+        },
         headers=admin_headers,
     )
     resp = await client.post(
         f"/api/standards/{sid}/disclosures",
-        json={"code": "305-1", "title": "D2", "requirement_type": "quantitative", "mandatory_level": "mandatory"},
+        json={
+            "code": "305-1",
+            "title": "D2",
+            "requirement_type": "quantitative",
+            "mandatory_level": "mandatory",
+        },
         headers=admin_headers,
     )
     assert resp.status_code == 409
@@ -234,11 +246,16 @@ async def test_list_disclosures(client: AsyncClient, admin_headers: dict):
     for i in range(3):
         await client.post(
             f"/api/standards/{sid}/disclosures",
-            json={"code": f"305-{i+1}", "title": f"D{i+1}", "requirement_type": "quantitative", "mandatory_level": "mandatory"},
+            json={
+                "code": f"305-{i + 1}",
+                "title": f"D{i + 1}",
+                "requirement_type": "quantitative",
+                "mandatory_level": "mandatory",
+            },
             headers=admin_headers,
         )
 
-    resp = await client.get(f"/api/standards/{sid}/disclosures")
+    resp = await client.get(f"/api/standards/{sid}/disclosures", headers=admin_headers)
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] == 3
@@ -248,22 +265,50 @@ async def test_list_disclosures(client: AsyncClient, admin_headers: dict):
 # --- Permissions ---
 @pytest.mark.asyncio
 async def test_non_admin_cannot_create_standard(client: AsyncClient):
-    # Register first user as platform_admin
+    # Register first user as platform_admin and create a real tenant context.
     await client.post(
         "/api/auth/register",
-        json={"email": "admin@test.com", "password": "password123", "full_name": "Admin"},
+        json={
+            "email": "admin@test.com",
+            "password": "password123",
+            "full_name": "Admin",
+        },
     )
+    admin_login_resp = await client.post(
+        "/api/auth/login",
+        json={"email": "admin@test.com", "password": "password123"},
+    )
+    admin_headers = {"Authorization": f"Bearer {admin_login_resp.json()['access_token']}"}
+    org_resp = await client.post(
+        "/api/organizations/setup",
+        json={"name": "Standards Org", "country": "GB"},
+        headers=admin_headers,
+    )
+    org_id = org_resp.json()["organization_id"]
+    admin_headers["X-Organization-Id"] = str(org_id)
+
     # Register second user (no role bindings to any org)
     await client.post(
         "/api/auth/register",
         json={"email": "user@test.com", "password": "password123", "full_name": "User"},
     )
+    invite_resp = await client.post(
+        "/api/auth/invitations",
+        json={"email": "user@test.com", "role": "collector"},
+        headers=admin_headers,
+    )
+    assert invite_resp.status_code == 201
     login_resp = await client.post(
         "/api/auth/login",
         json={"email": "user@test.com", "password": "password123"},
     )
-    token = login_resp.json()["access_token"]
-    headers = {"Authorization": f"Bearer {token}", "X-Organization-Id": "1"}
+    headers = {"Authorization": f"Bearer {login_resp.json()['access_token']}"}
+    accept_resp = await client.post(
+        f"/api/invitations/accept/{invite_resp.json()['token']}",
+        headers=headers,
+    )
+    assert accept_resp.status_code == 200
+    headers["X-Organization-Id"] = str(org_id)
 
     resp = await client.post(
         "/api/standards",

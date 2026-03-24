@@ -1,3 +1,5 @@
+from datetime import date
+
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError
 from app.policies.standard_policy import StandardPolicy
@@ -5,8 +7,11 @@ from app.repositories.mapping_repo import MappingRepository
 from app.schemas.mappings import (
     CrossStandardElement,
     MappingCreate,
+    MappingDiffChange,
+    MappingDiffOut,
     MappingListOut,
     MappingOut,
+    MappingVersionListOut,
 )
 
 
@@ -24,12 +29,25 @@ class MappingService:
             payload.requirement_item_id, payload.shared_element_id
         )
         if existing:
-            raise AppError(
-                "CONFLICT", 409,
-                "Mapping already exists for this item and shared element"
-            )
+            # Versioning: retire old, create new version
+            existing.is_current = False
+            existing.valid_to = date.today()
+            await self.repo.session.flush()
 
-        m = await self.repo.create(**payload.model_dump())
+            m = await self.repo.create(
+                requirement_item_id=payload.requirement_item_id,
+                shared_element_id=payload.shared_element_id,
+                mapping_type=payload.mapping_type,
+                version=existing.version + 1,
+                is_current=True,
+                valid_from=date.today(),
+            )
+            return MappingOut.model_validate(m)
+
+        m = await self.repo.create(
+            **payload.model_dump(),
+            valid_from=date.today(),
+        )
         return MappingOut.model_validate(m)
 
     async def list_mappings(self, page: int = 1, page_size: int = 50) -> MappingListOut:
@@ -38,6 +56,36 @@ class MappingService:
             items=[MappingOut.model_validate(m) for m in items],
             total=total,
         )
+
+    async def list_versions(
+        self, item_id: int, element_id: int
+    ) -> MappingVersionListOut:
+        versions = await self.repo.list_versions(item_id, element_id)
+        return MappingVersionListOut(
+            items=[MappingOut.model_validate(v) for v in versions],
+            total=len(versions),
+        )
+
+    async def diff_versions(
+        self, item_id: int, element_id: int, v1: int, v2: int
+    ) -> MappingDiffOut:
+        ver1 = await self.repo.get_version(item_id, element_id, v1)
+        ver2 = await self.repo.get_version(item_id, element_id, v2)
+        if not ver1 or not ver2:
+            raise AppError("NOT_FOUND", 404, f"Version {v1 if not ver1 else v2} not found")
+
+        changes: list[MappingDiffChange] = []
+        compare_fields = ["mapping_type", "valid_from", "valid_to"]
+        for field in compare_fields:
+            old_val = getattr(ver1, field)
+            new_val = getattr(ver2, field)
+            if old_val != new_val:
+                changes.append(MappingDiffChange(
+                    field=field,
+                    old_value=str(old_val) if old_val is not None else None,
+                    new_value=str(new_val) if new_val is not None else None,
+                ))
+        return MappingDiffOut(v1=v1, v2=v2, changes=changes)
 
     async def get_cross_standard(self) -> list[CrossStandardElement]:
         elements = await self.repo.get_cross_standard_elements()

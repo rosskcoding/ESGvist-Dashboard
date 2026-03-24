@@ -110,9 +110,9 @@
 3. `admin -> standards/mappings -> assignment rollout -> collector visibility`
 4. `platform_admin -> tenant/platform controls -> org-level auth policy`
 
-### Phase 2 — Edge cases
+### Phase 3 — Edge and destructive scenarios
 
-После deep role journeys каждый ключевой экран дополнительно проходит edge-case слой:
+После полного page-level baseline и deep role journeys каждый ключевой экран дополнительно проходит edge/error-path слой:
 
 1. empty states;
 2. API failures / stale state;
@@ -120,6 +120,14 @@
 4. conflicting concurrent actions;
 5. lock/read-only states;
 6. audit and notification side effects.
+
+Первая волна `Phase 3` фиксируется отдельным regression-pack и включает:
+
+1. dev-console guards для критичных экранов (`notifications`, `company-structure`);
+2. invalid auth policy save на `settings`;
+3. `report/preview` empty state для нового проекта без export jobs;
+4. `report/preview` pending state до выполнения export worker;
+5. direct-route access denial на чувствительные preview screens.
 
 ---
 

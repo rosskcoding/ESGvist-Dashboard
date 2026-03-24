@@ -1,14 +1,17 @@
 from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.policies.auth_policy import AuthPolicy
 from app.core.dependencies import RequestContext, get_current_context
-from app.db.models.unit_reference import BoundaryApproach, Methodology, UnitReference
 from app.db.session import get_session
+from app.policies.auth_policy import AuthPolicy
+from app.repositories.reference_repo import ReferenceRepository
 
 router = APIRouter(prefix="/api/references", tags=["References"])
+
+
+def _repo(session: AsyncSession) -> ReferenceRepository:
+    return ReferenceRepository(session)
 
 
 class RefCreate(BaseModel):
@@ -20,8 +23,8 @@ class RefCreate(BaseModel):
 
 @router.get("/units")
 async def list_units(ctx: RequestContext = Depends(get_current_context), session: AsyncSession = Depends(get_session)):
-    result = await session.execute(select(UnitReference).order_by(UnitReference.code))
-    return [{"id": u.id, "code": u.code, "name": u.name, "category": u.category} for u in result.scalars().all()]
+    units = await _repo(session).list_units()
+    return [{"id": u.id, "code": u.code, "name": u.name, "category": u.category} for u in units]
 
 
 @router.post("/units", status_code=status.HTTP_201_CREATED)
@@ -31,16 +34,14 @@ async def create_unit(
     session: AsyncSession = Depends(get_session),
 ):
     AuthPolicy.require_role(ctx, ["admin", "platform_admin"])
-    u = UnitReference(code=payload.code, name=payload.name, category=payload.category)
-    session.add(u)
-    await session.flush()
+    u = await _repo(session).create_unit(code=payload.code, name=payload.name, category=payload.category)
     return {"id": u.id, "code": u.code, "name": u.name}
 
 
 @router.get("/methodologies")
 async def list_methodologies(ctx: RequestContext = Depends(get_current_context), session: AsyncSession = Depends(get_session)):
-    result = await session.execute(select(Methodology).order_by(Methodology.code))
-    return [{"id": m.id, "code": m.code, "name": m.name, "description": m.description} for m in result.scalars().all()]
+    methods = await _repo(session).list_methodologies()
+    return [{"id": m.id, "code": m.code, "name": m.name, "description": m.description} for m in methods]
 
 
 @router.post("/methodologies", status_code=status.HTTP_201_CREATED)
@@ -50,16 +51,14 @@ async def create_methodology(
     session: AsyncSession = Depends(get_session),
 ):
     AuthPolicy.require_role(ctx, ["admin", "platform_admin"])
-    m = Methodology(code=payload.code, name=payload.name, description=payload.description)
-    session.add(m)
-    await session.flush()
+    m = await _repo(session).create_methodology(code=payload.code, name=payload.name, description=payload.description)
     return {"id": m.id, "code": m.code, "name": m.name}
 
 
 @router.get("/boundary-approaches")
 async def list_approaches(ctx: RequestContext = Depends(get_current_context), session: AsyncSession = Depends(get_session)):
-    result = await session.execute(select(BoundaryApproach).order_by(BoundaryApproach.code))
-    return [{"id": b.id, "code": b.code, "name": b.name} for b in result.scalars().all()]
+    approaches = await _repo(session).list_boundary_approaches()
+    return [{"id": b.id, "code": b.code, "name": b.name} for b in approaches]
 
 
 @router.post("/boundary-approaches", status_code=status.HTTP_201_CREATED)
@@ -69,7 +68,5 @@ async def create_approach(
     session: AsyncSession = Depends(get_session),
 ):
     AuthPolicy.require_role(ctx, ["admin", "platform_admin"])
-    b = BoundaryApproach(code=payload.code, name=payload.name, description=payload.description)
-    session.add(b)
-    await session.flush()
+    b = await _repo(session).create_boundary_approach(code=payload.code, name=payload.name, description=payload.description)
     return {"id": b.id, "code": b.code, "name": b.name}

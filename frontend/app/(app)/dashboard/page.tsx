@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useEffect, useState } from "react";
 import {
   Card,
   CardContent,
@@ -9,6 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { useApiQuery } from "@/lib/hooks/use-api";
@@ -22,6 +24,18 @@ import {
   Globe,
   Loader2,
 } from "lucide-react";
+
+interface ProjectSummary {
+  id: number;
+  name: string;
+  status: "draft" | "active" | "review" | "published";
+  reporting_year?: number | null;
+}
+
+interface ProjectsResponse {
+  items: ProjectSummary[];
+  total: number;
+}
 
 interface StandardProgress {
   standard_id: number;
@@ -52,22 +66,145 @@ interface DashboardProgress {
   data_point_statuses: Record<string, number>;
   standards_progress: StandardProgress[];
   boundary_summary: BoundarySummary;
-  priority_tasks: Array<{ id: number; title: string; due_date: string; status: string; assignee: string; disclosure_code: string }>;
-  coverage_by_user: Array<{ user_id: number; name: string; role: string; total_assignments: number; completed_assignments: number; completion_percent: number }>;
+  priority_tasks: Array<{
+    id: number;
+    title: string;
+    due_date: string;
+    status: string;
+    assignee: string;
+    disclosure_code: string;
+  }>;
+  coverage_by_user: Array<{
+    user_id: number;
+    name: string;
+    role: string;
+    total_assignments: number;
+    completed_assignments: number;
+    completion_percent: number;
+  }>;
 }
 
-export default function DashboardPage() {
-  const [projectId] = useState(1);
+type OnboardingSummary = {
+  organizationName: string;
+  plannedStandards: string[];
+  warnings: string[];
+};
 
-  const { data, isLoading, error } = useApiQuery<DashboardProgress>(
+export default function DashboardPage() {
+  const [onboardingSummary, setOnboardingSummary] = useState<OnboardingSummary | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = sessionStorage.getItem("onboarding-summary");
+    if (!raw) return;
+    try {
+      setOnboardingSummary(JSON.parse(raw) as OnboardingSummary);
+    } catch {
+      // Ignore broken session data.
+    }
+    sessionStorage.removeItem("onboarding-summary");
+  }, []);
+
+  const {
+    data: projectsData,
+    isLoading: projectsLoading,
+    error: projectsError,
+  } = useApiQuery<ProjectsResponse>(["projects", "dashboard"], "/projects?page_size=100");
+  const projects = projectsData?.items ?? [];
+  const projectId = projects[0]?.id ?? null;
+  const activeProject = projects[0] ?? null;
+
+  const {
+    data,
+    isLoading,
+    error,
+  } = useApiQuery<DashboardProgress>(
     ["dashboard", "progress", projectId],
-    `/dashboard/projects/${projectId}/progress`
+    projectId ? `/dashboard/projects/${projectId}/progress` : "/dashboard/projects/0/progress",
+    { enabled: projectId !== null }
   );
 
-  if (isLoading) {
+  if (projectsLoading || (projectId !== null && isLoading)) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+      </div>
+    );
+  }
+
+  if (projectsError) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Dashboard</h2>
+          <p className="mt-1 text-sm text-slate-500">ESGvist reporting overview</p>
+        </div>
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <AlertTriangle className="mb-3 h-10 w-10 text-amber-500" />
+            <p className="text-sm text-slate-500">
+              Unable to load project context. Please try again later.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (projectId === null) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Dashboard</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Your organization is ready. The next step is to launch the first reporting cycle.
+          </p>
+        </div>
+
+        <Card className="border-green-200 bg-green-50">
+          <CardHeader>
+            <CardTitle>
+              Welcome to ESGvist{onboardingSummary?.organizationName ? `, ${onboardingSummary.organizationName}` : ""}!
+            </CardTitle>
+            <CardDescription>
+              Setup completed successfully. Use the actions below to continue the implementation.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {onboardingSummary?.plannedStandards.length ? (
+              <div>
+                <p className="text-sm font-medium text-slate-900">Planned standards</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {onboardingSummary.plannedStandards.map((standard) => (
+                    <Badge key={standard} variant="outline">
+                      {standard}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {onboardingSummary?.warnings.length ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                {onboardingSummary.warnings.map((warning) => (
+                  <p key={warning}>{warning}</p>
+                ))}
+              </div>
+            ) : null}
+
+            <div className="grid gap-3 md:grid-cols-3">
+              <Button asChild>
+                <Link href="/projects">Create your first ESG report</Link>
+              </Button>
+              <Button variant="outline" asChild>
+                <Link href="/settings/company-structure">Open structure</Link>
+              </Button>
+              <Button variant="outline" asChild>
+                <Link href="/settings/users">Invite team members</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -77,9 +214,7 @@ export default function DashboardPage() {
       <div className="space-y-6">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Dashboard</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            ESGvist reporting overview
-          </p>
+          <p className="mt-1 text-sm text-slate-500">ESGvist reporting overview</p>
         </div>
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
@@ -114,25 +249,22 @@ export default function DashboardPage() {
   };
 
   const overdueTasks = (progress.priority_tasks || []).filter(
-    (t) => t.status === "overdue"
+    (task) => task.status === "overdue"
   );
   const upcomingTasks = (progress.priority_tasks || []).filter(
-    (t) => t.status === "upcoming"
+    (task) => task.status === "upcoming"
   );
 
   return (
     <div className="space-y-6">
-      {/* Page header */}
       <div>
         <h2 className="text-2xl font-bold text-slate-900">Dashboard</h2>
         <p className="mt-1 text-sm text-slate-500">
-          ESGvist reporting overview for Project #{projectId}
+          ESGvist reporting overview for {activeProject?.name ?? `Project #${projectId}`}
         </p>
       </div>
 
-      {/* Top metric cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {/* Overall Completion */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardDescription className="text-sm font-medium">
@@ -152,7 +284,6 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Data Points */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardDescription className="text-sm font-medium">
@@ -162,17 +293,16 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">
-              {(progress.data_point_statuses?.submitted || 0)}
+              {progress.data_point_statuses?.submitted || 0}
               <span className="text-lg font-normal text-slate-400">
                 {" "}
-                / {(progress.item_statuses?.total || 0)}
+                / {progress.item_statuses?.total || 0}
               </span>
             </div>
             <p className="mt-1 text-xs text-slate-500">submitted</p>
           </CardContent>
         </Card>
 
-        {/* Overdue Assignments */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardDescription className="text-sm font-medium">
@@ -181,9 +311,7 @@ export default function DashboardPage() {
             <AlertTriangle
               className={cn(
                 "h-4 w-4",
-                progress.overdue_assignments > 0
-                  ? "text-red-500"
-                  : "text-slate-500"
+                progress.overdue_assignments > 0 ? "text-red-500" : "text-slate-500"
               )}
             />
           </CardHeader>
@@ -191,22 +319,17 @@ export default function DashboardPage() {
             <div
               className={cn(
                 "text-3xl font-bold",
-                progress.overdue_assignments > 0
-                  ? "text-red-600"
-                  : "text-slate-900"
+                progress.overdue_assignments > 0 ? "text-red-600" : "text-slate-900"
               )}
             >
               {progress.overdue_assignments}
             </div>
             <p className="mt-1 text-xs text-slate-500">
-              {progress.overdue_assignments > 0
-                ? "require attention"
-                : "all on track"}
+              {progress.overdue_assignments > 0 ? "require attention" : "all on track"}
             </p>
           </CardContent>
         </Card>
 
-        {/* Pending Reviews */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardDescription className="text-sm font-medium">
@@ -216,22 +339,18 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">
-              {(progress.data_point_statuses?.submitted || 0)}
+              {progress.data_point_statuses?.submitted || 0}
             </div>
             <p className="mt-1 text-xs text-slate-500">awaiting review</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Completion by Standard + Boundary Summary */}
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Completion by Standard */}
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Completion by Standard</CardTitle>
-            <CardDescription>
-              Progress across reporting frameworks
-            </CardDescription>
+            <CardDescription>Progress across reporting frameworks</CardDescription>
           </CardHeader>
           <CardContent>
             {(progress.standards_progress || []).length === 0 ? (
@@ -244,12 +363,8 @@ export default function DashboardPage() {
                   <div key={std.standard_id} className="space-y-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">
-                          {std.standard}
-                        </span>
-                        <span className="text-sm text-slate-500">
-                          {std.standard_name}
-                        </span>
+                        <span className="text-sm font-medium">{std.standard}</span>
+                        <span className="text-sm text-slate-500">{std.standard_name}</span>
                       </div>
                       <span className="text-sm font-semibold">
                         {Math.round(std.completion_percent)}%
@@ -266,8 +381,7 @@ export default function DashboardPage() {
                       )}
                     />
                     <p className="text-xs text-slate-400">
-                      {std.complete_items} / {std.total_items}{" "}
-                      disclosures complete
+                      {std.complete_items} / {std.total_items} disclosures complete
                     </p>
                   </div>
                 ))}
@@ -276,7 +390,6 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Boundary Summary */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -288,35 +401,29 @@ export default function DashboardPage() {
             <div>
               <p className="text-sm text-slate-500">Selected Boundary</p>
               <div className="mt-1 flex items-center gap-2">
-                <span className="font-medium">
-                  {(progress.boundary_summary || {} as BoundarySummary).selected}
-                </span>
+                <span className="font-medium">{progress.boundary_summary.selected}</span>
                 <Badge
                   variant={
-                    (progress.boundary_summary || {} as BoundarySummary).snapshot_status === "locked"
+                    progress.boundary_summary.snapshot_status === "locked"
                       ? "default"
-                      : (progress.boundary_summary || {} as BoundarySummary).snapshot_status === "draft"
+                      : progress.boundary_summary.snapshot_status === "draft"
                         ? "warning"
                         : "secondary"
                   }
                 >
-                  {(progress.boundary_summary || {} as BoundarySummary).snapshot_status === "not_created"
+                  {progress.boundary_summary.snapshot_status === "not_created"
                     ? "No Snapshot"
-                    : (progress.boundary_summary || {} as BoundarySummary).snapshot_status}
+                    : progress.boundary_summary.snapshot_status}
                 </Badge>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="rounded-lg border border-slate-100 p-3">
-                <p className="text-2xl font-bold">
-                  {(progress.boundary_summary || {} as BoundarySummary).entities_in_scope}
-                </p>
+                <p className="text-2xl font-bold">{progress.boundary_summary.entities_in_scope}</p>
                 <p className="text-xs text-slate-500">In scope</p>
               </div>
               <div className="rounded-lg border border-slate-100 p-3">
-                <p className="text-2xl font-bold">
-                  {(progress.boundary_summary || {} as BoundarySummary).excluded_entities}
-                </p>
+                <p className="text-2xl font-bold">{progress.boundary_summary.excluded_entities}</p>
                 <p className="text-xs text-slate-500">Excluded</p>
               </div>
             </div>
@@ -324,9 +431,7 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Recent Activity + Priority Tasks */}
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Recent Activity */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -356,9 +461,7 @@ export default function DashboardPage() {
                         {entry.action}
                       </p>
                       {entry.details && (
-                        <p className="text-xs text-slate-500">
-                          {entry.details}
-                        </p>
+                        <p className="text-xs text-slate-500">{entry.details}</p>
                       )}
                       <p className="text-xs text-slate-400">
                         {new Date(entry.created_at).toLocaleString()}
@@ -371,7 +474,6 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Priority Tasks */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -381,14 +483,11 @@ export default function DashboardPage() {
             <CardDescription>Overdue and upcoming deadlines</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Overdue */}
             {overdueTasks.length > 0 && (
               <div>
                 <div className="mb-2 flex items-center gap-2">
                   <Badge variant="destructive">{overdueTasks.length}</Badge>
-                  <span className="text-sm font-medium text-red-600">
-                    Overdue
-                  </span>
+                  <span className="text-sm font-medium text-red-600">Overdue</span>
                 </div>
                 <div className="space-y-2">
                   {overdueTasks.map((task) => (
@@ -397,16 +496,12 @@ export default function DashboardPage() {
                       className="rounded-lg border border-red-200 bg-red-50 p-3"
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">
-                          {task.disclosure_code}
-                        </span>
+                        <span className="text-sm font-medium">{task.disclosure_code}</span>
                         <span className="text-xs text-red-600">
                           Due {new Date(task.due_date).toLocaleDateString()}
                         </span>
                       </div>
-                      <p className="mt-1 text-xs text-slate-600">
-                        {task.title}
-                      </p>
+                      <p className="mt-1 text-xs text-slate-600">{task.title}</p>
                       <p className="mt-0.5 text-xs text-slate-400">
                         Assigned to {task.assignee}
                       </p>
@@ -416,7 +511,6 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* Upcoming */}
             {upcomingTasks.length > 0 && (
               <div>
                 <div className="mb-2 flex items-center gap-2">
@@ -430,16 +524,12 @@ export default function DashboardPage() {
                       className="rounded-lg border border-slate-200 p-3"
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">
-                          {task.disclosure_code}
-                        </span>
+                        <span className="text-sm font-medium">{task.disclosure_code}</span>
                         <span className="text-xs text-slate-500">
                           Due {new Date(task.due_date).toLocaleDateString()}
                         </span>
                       </div>
-                      <p className="mt-1 text-xs text-slate-600">
-                        {task.title}
-                      </p>
+                      <p className="mt-1 text-xs text-slate-600">{task.title}</p>
                       <p className="mt-0.5 text-xs text-slate-400">
                         Assigned to {task.assignee}
                       </p>

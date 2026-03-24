@@ -45,7 +45,12 @@ async def _invite_and_accept(
     }
 
 
-async def _create_provider(client: AsyncClient, tenant_headers: dict, *, name: str = "Corporate SSO") -> int:
+async def _create_provider(
+    client: AsyncClient,
+    tenant_headers: dict,
+    *,
+    name: str = "Corporate SSO",
+) -> int:
     created = await client.post(
         "/api/auth/sso/providers",
         json={
@@ -136,6 +141,9 @@ async def test_sso_start_and_callback_auto_provision_user(client: AsyncClient, s
         },
     )
     assert callback.status_code == 200
+    assert callback.cookies.get("access_token")
+    assert "refresh_token" not in callback.json()
+    assert callback.cookies.get("refresh_token")
     token = callback.json()["access_token"]
 
     me = await client.get(

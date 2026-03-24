@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowUpDown,
@@ -17,6 +18,7 @@ import {
 } from "lucide-react";
 
 import { api } from "@/lib/api";
+import { useAIScreenContext } from "@/lib/ai-context";
 import { useApiQuery } from "@/lib/hooks/use-api";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -130,6 +132,8 @@ function buildReviewComment(reasonCode: string, freeText: string) {
 }
 
 export default function ValidationPage() {
+  const queryClient = useQueryClient();
+  const { enrichScreenContext } = useAIScreenContext();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [statusFilter, setStatusFilter] = useState<"all" | "submitted" | "in_review">("all");
@@ -144,6 +148,11 @@ export default function ValidationPage() {
   const [batchComment, setBatchComment] = useState("");
   const [batchReason, setBatchReason] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Enrich AI context with selected data point (screen is set by layout)
+  useEffect(() => {
+    enrichScreenContext({ dataPointId: selectedId ?? undefined });
+  }, [selectedId, enrichScreenContext]);
   const [actionError, setActionError] = useState<string | null>(null);
   const [aiAssist, setAiAssist] = useState<ReviewAssistResult | null>(null);
   const [aiAssistLoading, setAiAssistLoading] = useState(false);
@@ -151,7 +160,7 @@ export default function ValidationPage() {
 
   const { data: me } = useApiQuery<{
     roles: Array<{ role: string }>;
-  }>(["auth-me", "validation"], "/auth/me");
+  }>(["auth-me"], "/auth/me");
 
   const role = me?.roles?.[0]?.role ?? "";
   const isReviewer = role === "reviewer";
@@ -163,7 +172,6 @@ export default function ValidationPage() {
     data,
     isLoading,
     error,
-    refetch,
   } = useApiQuery<ReviewQueueResponse>(
     ["review-items", statusesParam],
     `/review/items?statuses=${statusesParam}`,
@@ -207,22 +215,88 @@ export default function ValidationPage() {
   const {
     data: comments = [],
     isLoading: commentsLoading,
-    refetch: refetchComments,
   } = useApiQuery<ReviewComment[]>(
     ["review-comments", selectedId],
     selectedId ? `/comments/data-point/${selectedId}` : "/comments/data-point/0",
     { enabled: Boolean(selectedId) && !accessDenied }
   );
 
-  async function refreshQueue() {
-    await refetch();
-    if (selectedId) {
-      await refetchComments();
+  function appendCommentToCache(comment: ReviewComment) {
+    if (!selectedId) return;
+    const normalizedComment: ReviewComment = {
+      ...comment,
+      replies: comment.replies ?? [],
+    };
+    queryClient.setQueryData<ReviewComment[]>(
+      ["review-comments", selectedId],
+      (current) => {
+        if (!current || current.length === 0) {
+          return [normalizedComment];
+        }
+        if (!normalizedComment.parent_id) {
+          return [...current, normalizedComment];
+        }
+        let inserted = false;
+        const appendReply = (items: ReviewComment[]): ReviewComment[] =>
+          items.map((item) => {
+            if (item.id === normalizedComment.parent_id) {
+              inserted = true;
+              return {
+                ...item,
+                replies: [...(item.replies ?? []), normalizedComment],
+              };
+            }
+            if (!item.replies || item.replies.length === 0) {
+              return item;
+            }
+            return {
+              ...item,
+              replies: appendReply(item.replies),
+            };
+          });
+        const next = appendReply(current);
+        return inserted ? next : [...next, normalizedComment];
+      }
+    );
+  }
+
+  function removeReviewItemsFromCache(ids: number[]) {
+    if (ids.length === 0) return;
+    const removedIds = new Set(ids);
+    queryClient.setQueriesData<ReviewQueueResponse>(
+      { queryKey: ["review-items"] },
+      (current) => {
+        if (!current) return current;
+        const items = current.items.filter((item) => !removedIds.has(item.id));
+        if (items.length === current.items.length) {
+          return current;
+        }
+        return {
+          ...current,
+          items,
+          total: Math.max(0, current.total - (current.items.length - items.length)),
+        };
+      }
+    );
+    ids.forEach((id) => {
+      queryClient.removeQueries({ queryKey: ["review-comments", id], exact: true });
+    });
+  }
+
+  function invalidateReviewDependentQueries(projectIds: number[]) {
+    const uniqueProjectIds = [...new Set(projectIds.filter((id) => Number.isFinite(id)))];
+    uniqueProjectIds.forEach((projectId) => {
+      void queryClient.invalidateQueries({ queryKey: ["dashboard", "progress", projectId] });
+      void queryClient.invalidateQueries({ queryKey: ["report", "readiness", projectId] });
+    });
+    if (uniqueProjectIds.length > 0) {
+      void queryClient.invalidateQueries({ queryKey: ["projects"] });
     }
   }
 
   async function runSingleAction(mode: "approve" | "reject" | "revision") {
     if (!selectedId) return;
+    const affectedProjectIds = selectedItem ? [selectedItem.project_id] : [];
     setActionError(null);
     setIsSubmitting(true);
     try {
@@ -240,7 +314,9 @@ export default function ValidationPage() {
       setActionMode("none");
       setActionComment("");
       setRejectReason("");
-      await refreshQueue();
+      removeReviewItemsFromCache([selectedId]);
+      setSelectedIds((prev) => prev.filter((id) => id !== selectedId));
+      invalidateReviewDependentQueries(affectedProjectIds);
     } catch (err) {
       setActionError((err as Error).message);
     } finally {
@@ -250,6 +326,10 @@ export default function ValidationPage() {
 
   async function runBatchAction(mode: "approve" | "reject" | "revision") {
     if (selectedIds.length === 0) return;
+    const actedIds = [...selectedIds];
+    const affectedProjectIds = filteredItems
+      .filter((item) => actedIds.includes(item.id))
+      .map((item) => item.project_id);
     setActionError(null);
     setIsSubmitting(true);
     try {
@@ -273,7 +353,8 @@ export default function ValidationPage() {
       setBatchMode("none");
       setBatchComment("");
       setBatchReason("");
-      await refreshQueue();
+      removeReviewItemsFromCache(actedIds);
+      invalidateReviewDependentQueries(affectedProjectIds);
     } catch (err) {
       setActionError((err as Error).message);
     } finally {
@@ -286,7 +367,7 @@ export default function ValidationPage() {
     setActionError(null);
     setIsSubmitting(true);
     try {
-      await api.post("/comments", {
+      const createdComment = await api.post<ReviewComment>("/comments", {
         body: commentDraft,
         comment_type: commentType,
         data_point_id: selectedId,
@@ -294,7 +375,7 @@ export default function ValidationPage() {
       });
       setCommentDraft("");
       setReplyToId(null);
-      await refetchComments();
+      appendCommentToCache(createdComment);
     } catch (err) {
       setActionError((err as Error).message);
     } finally {

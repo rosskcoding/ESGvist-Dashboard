@@ -66,7 +66,7 @@ test.describe("Screen 24-26 and 30-31 - Notifications and Platform Admin", () =>
 
     await expect(page.getByRole("heading", { name: "Tenants" })).toBeVisible();
     await expect(page.getByText("Tenant Directory")).toBeVisible();
-    await page.getByRole("button", { name: "Create Tenant" }).click();
+    await page.getByRole("link", { name: "Create Tenant" }).click();
 
     await expect(page.getByRole("heading", { name: "Create Tenant" })).toBeVisible();
     await page.getByLabel("Name").fill(tenantName);

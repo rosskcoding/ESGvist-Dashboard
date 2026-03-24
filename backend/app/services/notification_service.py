@@ -1,8 +1,10 @@
 from datetime import datetime
 
+import structlog
 from sqlalchemy import select
 
 from app.core.config import settings
+from app.core.metrics import record_non_blocking_failure
 from app.db.models.notification import Notification
 from app.db.models.role_binding import RoleBinding
 from app.db.models.user import User
@@ -19,7 +21,11 @@ EVENT_ROUTING: dict[str, dict] = {
         "severity": "info",
         "channel": "in_app",
     },
-    "assignment_overdue": {"roles": ["collector", "esg_manager"], "severity": "critical", "channel": "both"},
+    "assignment_overdue": {
+        "roles": ["collector", "esg_manager"],
+        "severity": "critical",
+        "channel": "both",
+    },
     "assignment_escalated": {
         "roles": ["collector", "esg_manager"],
         "severity": "critical",
@@ -27,29 +33,68 @@ EVENT_ROUTING: dict[str, dict] = {
     },
     "sla_breach_level_1": {"roles": ["esg_manager"], "severity": "critical", "channel": "both"},
     "sla_breach_level_2": {"roles": ["admin"], "severity": "critical", "channel": "both"},
-    "project_started": {"roles": ["esg_manager", "admin"], "severity": "important", "channel": "both"},
-    "project_in_review": {"roles": ["esg_manager", "admin"], "severity": "important", "channel": "in_app"},
-    "project_published": {"roles": ["esg_manager", "admin"], "severity": "important", "channel": "both"},
+    "project_started": {
+        "roles": ["esg_manager", "admin"],
+        "severity": "important",
+        "channel": "both",
+    },
+    "project_in_review": {
+        "roles": ["esg_manager", "admin"],
+        "severity": "important",
+        "channel": "in_app",
+    },
+    "project_published": {
+        "roles": ["esg_manager", "admin"],
+        "severity": "important",
+        "channel": "both",
+    },
     "project_deadline_approaching": {
         "roles": ["esg_manager", "admin"],
         "severity": "important",
         "channel": "both",
     },
-    "boundary_changed": {"roles": ["esg_manager", "admin"], "severity": "warning", "channel": "both"},
-    "boundary_snapshot_created": {"roles": ["esg_manager", "admin"], "severity": "info", "channel": "in_app"},
+    "boundary_changed": {
+        "roles": ["esg_manager", "admin"],
+        "severity": "warning",
+        "channel": "both",
+    },
+    "boundary_snapshot_created": {
+        "roles": ["esg_manager", "admin"],
+        "severity": "info",
+        "channel": "in_app",
+    },
     "review_requested": {"roles": ["reviewer"], "severity": "important", "channel": "both"},
-    "completeness_recalculated": {"roles": ["esg_manager"], "severity": "info", "channel": "in_app"},
-    "completeness_100_percent": {"roles": ["esg_manager"], "severity": "important", "channel": "both"},
+    "completeness_recalculated": {
+        "roles": ["esg_manager"],
+        "severity": "info",
+        "channel": "in_app",
+    },
+    "completeness_100_percent": {
+        "roles": ["esg_manager"],
+        "severity": "important",
+        "channel": "both",
+    },
     "webhook_dead_letter": {"roles": ["admin"], "severity": "critical", "channel": "both"},
-    "export_retry_scheduled": {"roles": ["esg_manager", "admin"], "severity": "warning", "channel": "both"},
-    "export_dead_letter": {"roles": ["esg_manager", "admin"], "severity": "critical", "channel": "both"},
+    "export_retry_scheduled": {
+        "roles": ["esg_manager", "admin"],
+        "severity": "warning",
+        "channel": "both",
+    },
+    "export_dead_letter": {
+        "roles": ["esg_manager", "admin"],
+        "severity": "critical",
+        "channel": "both",
+    },
 }
 
 DEFAULT_NOTIFICATION_PREFS = {
     "email": True,
     "in_app": True,
     "email_info_level": False,
+    "digest_frequency": "none",  # none | daily | weekly
 }
+
+logger = structlog.get_logger("app.notifications")
 
 
 class NotificationService:
@@ -77,7 +122,9 @@ class NotificationService:
         prefs = cls._merged_preferences(user)
         wants_email = channel in {"email", "both"}
         wants_in_app = channel in {"in_app", "both"}
-        email_allowed = bool(prefs["email"]) and (severity != "info" or bool(prefs["email_info_level"]))
+        email_allowed = bool(prefs["email"]) and (
+            severity != "info" or bool(prefs["email_info_level"])
+        )
         in_app_allowed = bool(prefs["in_app"])
 
         final_email = wants_email and email_allowed
@@ -116,6 +163,15 @@ class NotificationService:
             )
             return delivery.sent, delivery.sent_at
         except Exception:
+            record_non_blocking_failure("notification_service", "email_delivery")
+            logger.warning(
+                "notification_email_delivery_failed",
+                user_id=user.id if user else None,
+                organization_id=getattr(user, "organization_id", None),
+                channel=channel,
+                fail_silently=settings.email_fail_silently,
+                exc_info=True,
+            )
             if settings.email_fail_silently:
                 return False, None
             raise
@@ -149,7 +205,7 @@ class NotificationService:
                 Notification.type == type,
                 Notification.entity_type == entity_type,
                 Notification.entity_id == entity_id,
-                Notification.is_read == False,
+                Notification.is_read.is_(False),
             )
         )
         if existing.scalar_one_or_none():
@@ -159,12 +215,21 @@ class NotificationService:
         resolved_channel = self._apply_preferences(user, resolved_channel, severity)
         if resolved_channel is None:
             return None
-        email_sent, email_sent_at = await self._deliver_email(
-            user=user,
-            channel=resolved_channel,
-            title=title,
-            message=message,
-        )
+
+        # Defer email delivery if user has digest preference
+        prefs = self._merged_preferences(user)
+        digest_freq = prefs.get("digest_frequency", "none")
+        if digest_freq in ("daily", "weekly") and resolved_channel in ("email", "both"):
+            # Skip immediate email — digest worker will handle it
+            email_sent = False
+            email_sent_at = None
+        else:
+            email_sent, email_sent_at = await self._deliver_email(
+                user=user,
+                channel=resolved_channel,
+                title=title,
+                message=message,
+            )
         n = await self.repo.create(
             organization_id=org_id,
             user_id=user_id,

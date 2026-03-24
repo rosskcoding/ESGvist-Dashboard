@@ -18,6 +18,7 @@ type ExportJob = {
   artifact_encoding: string | null;
   created_at: string | null;
   completed_at: string | null;
+  error_message?: string | null;
 };
 
 type ExportListResponse = {
@@ -42,7 +43,7 @@ export default function ReportPreviewPage() {
 
   const { data: me, isLoading: meLoading } = useApiQuery<{
     roles: Array<{ role: string }>;
-  }>(["auth-me", "report-preview"], "/auth/me");
+  }>(["auth-me"], "/auth/me");
 
   const role = me?.roles?.[0]?.role ?? "";
   const canAccess = role === "admin" || role === "esg_manager";
@@ -62,6 +63,7 @@ export default function ReportPreviewPage() {
     }
     return items.find((item) => item.status === "completed") ?? items[0] ?? null;
   }, [jobId, jobs?.items]);
+  const requestedJobMissing = Boolean(jobId) && !selectedJob && (jobs?.items?.length ?? 0) > 0;
 
   const {
     data: artifact,
@@ -101,7 +103,14 @@ export default function ReportPreviewPage() {
   return (
     <div className="space-y-6">
       <Header projectId={projectId} />
-      {!selectedJob ? (
+      {requestedJobMissing ? (
+        <Card>
+          <CardContent className="flex items-center gap-3 p-6 text-red-700">
+            <AlertTriangle className="h-5 w-5 shrink-0" />
+            <p>The requested export job could not be found for this project.</p>
+          </CardContent>
+        </Card>
+      ) : !selectedJob ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12 text-slate-500">
             <FileSearch className="mb-3 h-10 w-10 text-slate-300" />
@@ -125,7 +134,16 @@ export default function ReportPreviewPage() {
             </CardContent>
           </Card>
 
-          {selectedJob.status !== "completed" ? (
+          {selectedJob.status === "failed" || selectedJob.status === "dead_letter" ? (
+            <Card>
+              <CardContent className="flex items-center gap-3 p-6 text-red-700">
+                <AlertTriangle className="h-5 w-5 shrink-0" />
+                <p>
+                  {selectedJob.error_message || "This export job failed and cannot be previewed."}
+                </p>
+              </CardContent>
+            </Card>
+          ) : selectedJob.status !== "completed" ? (
             <Card>
               <CardContent className="flex items-center gap-3 p-6 text-amber-700">
                 <AlertTriangle className="h-5 w-5 shrink-0" />
@@ -136,7 +154,7 @@ export default function ReportPreviewPage() {
             <Card>
               <CardContent className="flex items-center gap-3 p-6 text-red-700">
                 <AlertTriangle className="h-5 w-5 shrink-0" />
-                <p>Unable to load artifact preview.</p>
+                <p>{artifactError.message || "Unable to load artifact preview."}</p>
               </CardContent>
             </Card>
           ) : (

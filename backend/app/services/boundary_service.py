@@ -1,6 +1,7 @@
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.dashboard_cache import invalidate_dashboard_projects
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError
 from app.db.models.boundary import BoundaryDefinition, BoundaryMembership
@@ -168,6 +169,7 @@ class BoundaryService:
         for key, value in changes.items():
             setattr(boundary, key, value)
         await self.session.flush()
+        await invalidate_dashboard_projects(await self._project_ids_using_boundary(boundary_id))
         if self.audit_repo:
             await self.audit_repo.log(
                 entity_type="BoundaryDefinition",
@@ -303,8 +305,10 @@ class BoundaryService:
             await self.session.delete(membership)
 
         await self.session.flush()
+        project_ids = await self._project_ids_using_boundary(boundary_id)
         snapshots_invalidated = await self._invalidate_snapshots(boundary_id)
-        await self._recalculate_completeness(await self._project_ids_using_boundary(boundary_id))
+        await self._recalculate_completeness(project_ids)
+        await invalidate_dashboard_projects(project_ids)
         if self.audit_repo:
             await self.audit_repo.log(
                 entity_type="BoundaryDefinition",
@@ -379,8 +383,10 @@ class BoundaryService:
                     updated += 1
 
         await self.session.flush()
+        project_ids = await self._project_ids_using_boundary(boundary_id)
         snapshots_invalidated = await self._invalidate_snapshots(boundary_id)
-        await self._recalculate_completeness(await self._project_ids_using_boundary(boundary_id))
+        await self._recalculate_completeness(project_ids)
+        await invalidate_dashboard_projects(project_ids)
         if self.audit_repo:
             await self.audit_repo.log(
                 entity_type="BoundaryDefinition",

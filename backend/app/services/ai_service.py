@@ -1,5 +1,13 @@
+"""AI Assistant orchestration service.
+
+Responsibilities:
+- Gate checks (permission, rate, prompt, context, output, action, tool access)
+- Context building via ai_tools (scoped to user's assignments)
+- Provider dispatch with automatic fallback
+- Audit logging with tools_used / tools_blocked
+"""
+
 import json
-import re
 from time import perf_counter
 
 from sqlalchemy import func, select
@@ -8,14 +16,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.access import get_data_point_for_ctx, get_project_for_ctx
 from app.core.config import settings
 from app.core.dependencies import RequestContext
+from app.core.exceptions import AppError
 from app.db.models.ai_interaction import AIInteraction
 from app.db.models.boundary import BoundaryMembership
 from app.db.models.completeness import RequirementItemDataPoint, RequirementItemStatus
 from app.db.models.data_point import DataPoint
 from app.db.models.evidence import DataPointEvidence
 from app.db.models.requirement_item import RequirementItem
-from app.db.models.standard import DisclosureRequirement, Standard
 from app.db.models.shared_element import SharedElement
+from app.db.models.standard import DisclosureRequirement, Standard
 from app.policies.ai_gate import (
     AIActionGate,
     AIContextGate,
@@ -28,11 +37,22 @@ from app.schemas.ai import (
     AIResponse,
     AIStatusOut,
     AskRequest,
+    ExplainEvidenceRequest,
     ExplainRequest,
     Reference,
     ReviewAssistResponse,
     SuggestedAction,
 )
+from app.services.ai_tools import (
+    ToolAccessGate,
+    execute_tool,
+    get_scoped_completeness,
+)
+
+
+# ---------------------------------------------------------------------------
+# Providers
+# ---------------------------------------------------------------------------
 
 
 class BaseAIProvider:
@@ -41,6 +61,7 @@ class BaseAIProvider:
         "explain_field",
         "explain_completeness",
         "explain_boundary",
+        "explain_evidence",
         "ask",
         "review_assist",
     ]
@@ -87,6 +108,8 @@ class StaticAIProvider(BaseAIProvider):
             reasons.append(f"{status_counts['missing']} requirement items are still missing")
         if status_counts.get("partial"):
             reasons.append(f"{status_counts['partial']} requirement items are only partially complete")
+        if context.get("scope_note"):
+            reasons.append(f"Scope: {context['scope_note']}")
         if not reasons:
             reasons.append("No completeness blockers were detected in the visible scope")
         return AIResponse(
@@ -108,14 +131,6 @@ class StaticAIProvider(BaseAIProvider):
         )
 
     async def explain_boundary(self, context: dict) -> AIResponse:
-        if context.get("visibility") == "collector_limited":
-            return AIResponse(
-                text="Boundary details are limited for your role. Use your assigned collection scope as the source of truth.",
-                reasons=["Collector AI view does not expose full boundary rules"],
-                confidence="medium",
-                provider=self.provider_name,
-            )
-
         inclusion = context.get("inclusion_status")
         if inclusion is None:
             text = "Boundary explanation requires a project and entity context."
@@ -130,6 +145,60 @@ class StaticAIProvider(BaseAIProvider):
             text=text,
             reasons=reasons,
             confidence="high" if inclusion is not None else "low",
+            provider=self.provider_name,
+        )
+
+    async def explain_evidence(self, context: dict) -> AIResponse:
+        item = context.get("requirement_item", {})
+        requires_evidence = item.get("requires_evidence", False)
+        evidence_gap = context.get("evidence_gap", 0)
+        evidence_sufficient = context.get("evidence_sufficient", True)
+
+        reasons = []
+        if requires_evidence:
+            reasons.append("This requirement item mandates supporting evidence")
+        else:
+            reasons.append("Evidence is optional for this item but recommended for audit readiness")
+
+        if evidence_gap > 0:
+            reasons.append(
+                f"{evidence_gap} data point(s) are missing linked evidence"
+            )
+        elif requires_evidence:
+            reasons.append("All bound data points have linked evidence")
+
+        text_parts = [
+            f"Evidence status for '{item.get('name', 'this item')}':",
+        ]
+        if requires_evidence:
+            text_parts.append(
+                "Sufficient" if evidence_sufficient else "Insufficient"
+            )
+        else:
+            text_parts.append("Optional (not required by the standard)")
+
+        next_actions = []
+        if not evidence_sufficient:
+            next_actions.append(
+                SuggestedAction(
+                    label="Upload evidence",
+                    action_type="open_dialog",
+                    target="/evidence/upload",
+                    description="Attach supporting evidence to the data point",
+                )
+            )
+
+        return AIResponse(
+            text=" ".join(text_parts),
+            reasons=reasons,
+            next_actions=next_actions or None,
+            references=[
+                Reference(
+                    title=item.get("name", "Requirement item"),
+                    source=item.get("standard_code", "Requirement Item Registry"),
+                )
+            ],
+            confidence="high" if evidence_sufficient else "medium",
             provider=self.provider_name,
         )
 
@@ -157,17 +226,20 @@ class StaticAIProvider(BaseAIProvider):
 
     async def review_assist(self, context: dict) -> ReviewAssistResponse:
         missing_evidence = []
-        if context.get("evidence_count", 0) == 0:
-            missing_evidence.append("No evidence linked to this data point")
+        requires_evidence = context.get("requires_evidence", True)
+        if context.get("evidence_count", 0) == 0 and requires_evidence:
+            missing_evidence.append("No evidence linked (evidence is required)")
 
         anomalies = []
+        if context.get("evidence_count", 0) == 0 and not requires_evidence:
+            anomalies.append("No evidence linked (optional, but recommended for audit readiness)")
         if context.get("status") != "in_review":
             anomalies.append(f"Status is '{context.get('status')}', not 'in_review'")
         if context.get("numeric_value") is None and not context.get("text_value"):
             anomalies.append("Data point has no reported value")
 
         draft_comment = None
-        if context.get("status") == "in_review" and missing_evidence:
+        if context.get("status") == "in_review" and missing_evidence and requires_evidence:
             draft_comment = "Please attach supporting evidence before approval."
 
         summary = (
@@ -316,11 +388,19 @@ class UnavailableAIProvider(BaseAIProvider):
     async def explain_boundary(self, context: dict) -> AIResponse:
         raise RuntimeError("Primary AI provider unavailable")
 
+    async def explain_evidence(self, context: dict) -> AIResponse:
+        raise RuntimeError("Primary AI provider unavailable")
+
     async def ask(self, question: str, context: dict) -> AIResponse:
         raise RuntimeError("Primary AI provider unavailable")
 
     async def review_assist(self, context: dict) -> ReviewAssistResponse:
         raise RuntimeError("Primary AI provider unavailable")
+
+
+# ---------------------------------------------------------------------------
+# Orchestrator
+# ---------------------------------------------------------------------------
 
 
 class AIAssistantService:
@@ -332,6 +412,7 @@ class AIAssistantService:
         self.action_gate = AIActionGate()
         self.output_gate = AIOutputGate()
         self.rate_gate = AIRateGate()
+        self.tool_gate = ToolAccessGate()
         self.configured_provider = getattr(settings, "ai_provider", "static")
         model_name = settings.ai_model if hasattr(settings, "ai_model") else "static-ai"
         self.primary_provider = self._build_provider(self.configured_provider, model_name)
@@ -386,6 +467,7 @@ class AIAssistantService:
         gate_blocked: bool = False,
         gate_reason: str | None = None,
         tools_blocked: list[str] | None = None,
+        tools_used: list[str] | None = None,
         output_filtered: bool = False,
         output_filter_reason: str | None = None,
         model_name: str | None = None,
@@ -404,6 +486,7 @@ class AIAssistantService:
             gate_blocked=gate_blocked,
             gate_reason=gate_reason,
             tools_blocked=",".join(tools_blocked or []) if tools_blocked else None,
+            tools_used=",".join(tools_used or []) if tools_used else None,
             output_filtered=output_filtered,
             output_filter_reason=output_filter_reason,
         )
@@ -420,17 +503,23 @@ class AIAssistantService:
         question: str | None,
         raw_context_builder,
         response_builder,
+        tools_used: list[str] | None = None,
     ):
         started = perf_counter()
         safe_context: dict | None = None
         clean_question = None
         try:
-            self.rate_gate.check(ctx)
+            self.rate_gate.check(ctx, question=question)
             self.permission_gate.check(action, ctx)
             raw_context = await raw_context_builder()
             safe_context = await self.context_gate.filter(raw_context, ctx)
             if question is not None:
-                clean_question = self.prompt_gate.sanitize_question(question)
+                try:
+                    clean_question = self.prompt_gate.sanitize_question(question)
+                except AppError as injection_exc:
+                    if injection_exc.code == "AI_PROMPT_INJECTION":
+                        self.rate_gate.ban_user(ctx.user_id)
+                    raise
             provider_response = await response_builder(safe_context, clean_question)
             if isinstance(provider_response, tuple):
                 response, model_name, used_fallback = provider_response
@@ -459,6 +548,8 @@ class AIAssistantService:
                     safe_context=safe_context,
                     response_summary=response.text,
                     latency_ms=int((perf_counter() - started) * 1000),
+                    tools_blocked=self.tool_gate.get_blocked_tools(ctx.role or ""),
+                    tools_used=tools_used,
                     output_filtered=output_filtered,
                     output_filter_reason=filter_reason,
                     model_name=model_name,
@@ -472,6 +563,8 @@ class AIAssistantService:
                     safe_context=safe_context,
                     response_summary=response.summary,
                     latency_ms=int((perf_counter() - started) * 1000),
+                    tools_blocked=self.tool_gate.get_blocked_tools(ctx.role or ""),
+                    tools_used=tools_used,
                     model_name=model_name,
                 )
             return response
@@ -487,6 +580,8 @@ class AIAssistantService:
                     latency_ms=int((perf_counter() - started) * 1000),
                     gate_blocked=True,
                     gate_reason=getattr(exc, "code", None),
+                    tools_blocked=self.tool_gate.get_blocked_tools(ctx.role or ""),
+                    tools_used=tools_used,
                 )
                 raise
 
@@ -501,49 +596,47 @@ class AIAssistantService:
                 latency_ms=int((perf_counter() - started) * 1000),
                 gate_blocked=True,
                 gate_reason="AI_UNAVAILABLE",
+                tools_blocked=self.tool_gate.get_blocked_tools(ctx.role or ""),
+                tools_used=tools_used,
                 output_filtered=True,
                 output_filter_reason="fallback",
             )
             return fallback
 
+    # -- explain_field -------------------------------------------------------
+
     async def explain_field(self, payload: ExplainRequest, ctx: RequestContext) -> AIResponse:
+        from app.core.ai_cache import FIELD_EXPLAIN_TTL, ai_cache
+
+        # Cache hit check (field explanations are stable, TTL 24h)
+        cache_key = payload.requirement_item_id
+        if cache_key:
+            cached = ai_cache.get("field_explain", cache_key)
+            if cached is not None:
+                return cached
+
+        tools_used = []
+
         async def raw_context_builder() -> dict:
-            requirement_item = None
-            disclosure = None
-            standard = None
             if payload.requirement_item_id:
-                result = await self.session.execute(
-                    select(RequirementItem).where(RequirementItem.id == payload.requirement_item_id)
+                self.tool_gate.check_tool_allowed("get_requirement_details", ctx)
+                tool_result = await execute_tool(
+                    "get_requirement_details",
+                    {"requirement_item_id": payload.requirement_item_id},
+                    self.session,
+                    ctx,
                 )
-                requirement_item = result.scalar_one_or_none()
-                if requirement_item:
-                    disclosure = (
-                        await self.session.execute(
-                            select(DisclosureRequirement).where(
-                                DisclosureRequirement.id == requirement_item.disclosure_requirement_id
-                            )
-                        )
-                    ).scalar_one_or_none()
-                if disclosure:
-                    standard = (
-                        await self.session.execute(select(Standard).where(Standard.id == disclosure.standard_id))
-                    ).scalar_one_or_none()
+                tools_used.append("get_requirement_details")
+                return {
+                    "organization_id": ctx.organization_id,
+                    "requirement_item": tool_result,
+                }
             return {
                 "organization_id": ctx.organization_id,
-                "requirement_item": {
-                    "id": requirement_item.id if requirement_item else None,
-                    "name": requirement_item.name if requirement_item else "Field",
-                    "item_type": requirement_item.item_type if requirement_item else None,
-                    "value_type": requirement_item.value_type if requirement_item else None,
-                    "requires_evidence": requirement_item.requires_evidence if requirement_item else False,
-                    "is_required": requirement_item.is_required if requirement_item else False,
-                    "description": requirement_item.description if requirement_item else None,
-                    "standard_code": standard.code if standard else None,
-                    "disclosure_code": disclosure.code if disclosure else None,
-                },
+                "requirement_item": {"name": "Field"},
             }
 
-        return await self._run_ai_action(
+        result = await self._run_ai_action(
             action="explain_field",
             ctx=ctx,
             screen="field_explain",
@@ -552,40 +645,30 @@ class AIAssistantService:
             response_builder=lambda safe_context, _question: self._invoke_provider(
                 "explain_field", safe_context
             ),
+            tools_used=tools_used,
         )
 
+        # Cache the result
+        if cache_key and isinstance(result, AIResponse):
+            ai_cache.set("field_explain", cache_key, result, FIELD_EXPLAIN_TTL)
+
+        return result
+
+    # -- explain_completeness ------------------------------------------------
+
     async def explain_completeness(self, payload: ExplainRequest, ctx: RequestContext) -> AIResponse:
+        tools_used = []
+
         async def raw_context_builder() -> dict:
             project = await get_project_for_ctx(self.session, payload.project_id or 0, ctx)
-            status_rows = (
-                await self.session.execute(
-                    select(RequirementItemStatus.status, func.count())
-                    .where(RequirementItemStatus.reporting_project_id == project.id)
-                    .group_by(RequirementItemStatus.status)
-                )
-            ).all()
-            status_counts = {status: count for status, count in status_rows}
-            total = sum(status_counts.values())
-            completion_percent = round((status_counts.get("complete", 0) / total) * 100, 1) if total else 0
-            detail_rows = (
-                await self.session.execute(
-                    select(RequirementItem.name, RequirementItemStatus.status)
-                    .join(RequirementItem, RequirementItem.id == RequirementItemStatus.requirement_item_id)
-                    .where(RequirementItemStatus.reporting_project_id == project.id)
-                    .order_by(RequirementItem.id)
-                )
-            ).all()
-            return {
-                "organization_id": project.organization_id,
-                "project_id": project.id,
-                "project_name": project.name,
-                "status_counts": status_counts,
-                "completion_percent": completion_percent,
-                "scope_note": "own scope" if ctx.role == "collector" else "assigned scope" if ctx.role == "reviewer" else "project scope",
-                "missing_items": [name for name, status in detail_rows if status == "missing"],
-                "partial_items": [name for name, status in detail_rows if status == "partial"],
-                "complete_items": [name for name, status in detail_rows if status == "complete"],
-            }
+            tools_used.append("get_project_completeness")
+            scoped = await get_scoped_completeness(
+                self.session, project.id, ctx,
+                disclosure_id=payload.disclosure_id,
+            )
+            scoped["project_name"] = project.name
+            scoped["organization_id"] = project.organization_id
+            return scoped
 
         return await self._run_ai_action(
             action="explain_completeness",
@@ -596,11 +679,16 @@ class AIAssistantService:
             response_builder=lambda safe_context, _question: self._invoke_provider(
                 "explain_completeness", safe_context
             ),
+            tools_used=tools_used,
         )
 
+    # -- explain_boundary ----------------------------------------------------
+
     async def explain_boundary(self, payload: ExplainRequest, ctx: RequestContext) -> AIResponse:
+        tools_used = []
+
         async def raw_context_builder() -> dict:
-            raw_context = {
+            raw_context: dict = {
                 "organization_id": ctx.organization_id,
                 "entity_id": payload.entity_id,
             }
@@ -610,23 +698,25 @@ class AIAssistantService:
                 raw_context["project_name"] = project.name
                 raw_context["organization_id"] = project.organization_id
                 if payload.entity_id and project.boundary_definition_id:
-                    membership = (
-                        await self.session.execute(
-                            select(BoundaryMembership).where(
-                                BoundaryMembership.boundary_definition_id == project.boundary_definition_id,
-                                BoundaryMembership.entity_id == payload.entity_id,
-                            )
-                        )
-                    ).scalar_one_or_none()
-                    raw_context["inclusion_status"] = membership.included if membership else False
-                    raw_context["boundary_reason"] = (
-                        f"Inclusion source: {membership.inclusion_source}"
-                        if membership
-                        else "No boundary membership includes this entity"
+                    self.tool_gate.check_tool_allowed("get_boundary_decision", ctx)
+                    tool_result = await execute_tool(
+                        "get_boundary_decision",
+                        {
+                            "entity_id": payload.entity_id,
+                            "boundary_id": project.boundary_definition_id,
+                        },
+                        self.session,
+                        ctx,
                     )
-                    raw_context["boundary_rules"] = {
-                        "boundary_id": project.boundary_definition_id,
-                    }
+                    tools_used.append("get_boundary_decision")
+                    raw_context["inclusion_status"] = tool_result.get("included", False)
+                    raw_context["boundary_reason"] = (
+                        f"Inclusion source: {tool_result.get('inclusion_source')}"
+                        if tool_result.get("included")
+                        else tool_result.get("reason", "No boundary membership includes this entity")
+                    )
+                    if tool_result.get("consolidation_method"):
+                        raw_context["consolidation_method"] = tool_result["consolidation_method"]
             return raw_context
 
         return await self._run_ai_action(
@@ -638,9 +728,63 @@ class AIAssistantService:
             response_builder=lambda safe_context, _question: self._invoke_provider(
                 "explain_boundary", safe_context
             ),
+            tools_used=tools_used,
         )
 
+    # -- explain_evidence ----------------------------------------------------
+
+    async def explain_evidence(
+        self, payload: ExplainEvidenceRequest, ctx: RequestContext
+    ) -> AIResponse:
+        tools_used = []
+
+        async def raw_context_builder() -> dict:
+            self.tool_gate.check_tool_allowed("get_evidence_requirements", ctx)
+            tool_result = await execute_tool(
+                "get_evidence_requirements",
+                {"requirement_item_id": payload.requirement_item_id},
+                self.session,
+                ctx,
+            )
+            tools_used.append("get_evidence_requirements")
+
+            # Also fetch requirement details for richer context
+            self.tool_gate.check_tool_allowed("get_requirement_details", ctx)
+            item_details = await execute_tool(
+                "get_requirement_details",
+                {"requirement_item_id": payload.requirement_item_id},
+                self.session,
+                ctx,
+            )
+            tools_used.append("get_requirement_details")
+
+            return {
+                "organization_id": ctx.organization_id,
+                "requirement_item": item_details,
+                "requires_evidence": tool_result.get("requires_evidence", False),
+                "evidence_gap": tool_result.get("evidence_gap", 0),
+                "evidence_sufficient": tool_result.get("evidence_sufficient", True),
+                "total_bound_data_points": tool_result.get("total_bound_data_points", 0),
+                "data_points_with_evidence": tool_result.get("data_points_with_evidence", 0),
+            }
+
+        return await self._run_ai_action(
+            action="explain_evidence",
+            ctx=ctx,
+            screen="evidence",
+            question=None,
+            raw_context_builder=raw_context_builder,
+            response_builder=lambda safe_context, _question: self._invoke_provider(
+                "explain_evidence", safe_context
+            ),
+            tools_used=tools_used,
+        )
+
+    # -- ask -----------------------------------------------------------------
+
     async def ask(self, payload: AskRequest, ctx: RequestContext) -> AIResponse:
+        tools_used = []
+
         async def raw_context_builder() -> dict:
             raw_context = dict(payload.context or {})
             raw_context["organization_id"] = ctx.organization_id
@@ -662,60 +806,218 @@ class AIAssistantService:
                 clean_question or "",
                 safe_context,
             ),
+            tools_used=tools_used,
         )
 
+    # -- ask_stream ----------------------------------------------------------
+
+    async def ask_stream_prepare(
+        self, payload: AskRequest, ctx: RequestContext
+    ) -> dict:
+        """Run all gates and build context **before** the HTTP response starts.
+
+        Returns a prepared context dict that ask_stream_generate() consumes.
+        Any gate violation raises an AppError here — the route handler sees
+        it as a normal exception and returns a proper HTTP 400/403/429
+        (not a 200 with an NDJSON error event).
+
+        Also logs blocked requests so they appear in the audit trail.
+        """
+        started = perf_counter()
+        clean_question: str | None = None
+        safe_context: dict | None = None
+
+        try:
+            self.rate_gate.check(ctx, question=payload.question)
+            self.permission_gate.check("ask", ctx)
+
+            raw_context = dict(payload.context or {})
+            raw_context["organization_id"] = ctx.organization_id
+            raw_context["screen"] = payload.screen
+            if payload.context and payload.context.get("project_id"):
+                project = await get_project_for_ctx(
+                    self.session, payload.context["project_id"], ctx
+                )
+                raw_context["project_name"] = project.name
+                raw_context["project_status"] = project.status
+
+            safe_context = await self.context_gate.filter(raw_context, ctx)
+            try:
+                clean_question = self.prompt_gate.sanitize_question(payload.question)
+            except AppError as injection_exc:
+                if injection_exc.code == "AI_PROMPT_INJECTION":
+                    self.rate_gate.ban_user(ctx.user_id)
+                raise
+        except Exception as exc:
+            # Log the blocked request for audit
+            await self._log(
+                ctx=ctx,
+                action="ask_stream",
+                screen=payload.screen,
+                question=clean_question or payload.question,
+                safe_context=safe_context,
+                response_summary=None,
+                latency_ms=int((perf_counter() - started) * 1000),
+                gate_blocked=True,
+                gate_reason=getattr(exc, "code", "UNKNOWN"),
+            )
+            raise
+
+        return {
+            "safe_context": safe_context,
+            "clean_question": clean_question,
+            "started": started,
+        }
+
+    async def ask_stream_generate(
+        self, prepared: dict, payload: AskRequest, ctx: RequestContext
+    ):
+        """Async generator that yields (event_type, data) tuples.
+
+        Called only after ask_stream_prepare() succeeds, so gates have
+        already passed and context is built.
+        """
+        from app.infrastructure.llm_client import (
+            build_llm_client,
+            format_context_for_llm,
+            get_system_prompt,
+        )
+
+        safe_context = prepared["safe_context"]
+        clean_question = prepared["clean_question"]
+        started = prepared["started"]
+        output_filtered = False
+        filter_reason: str | None = None
+        model_name = self.primary_provider.model_name
+        used_fallback = False
+
+        # ── Try real LLM streaming ───────────────────────────────────
+        llm_client = build_llm_client()
+        if llm_client is not None:
+            system_prompt = get_system_prompt("contextual_qa")
+            user_message = (
+                f"Context:\n{format_context_for_llm(safe_context)}\n\n"
+                f"Question: {clean_question}"
+            )
+            accumulated: list[str] = []
+            try:
+                async for chunk in llm_client.generate_stream(
+                    system_prompt, user_message
+                ):
+                    accumulated.append(chunk)
+                    yield ("chunk", chunk)
+
+                full_text = "".join(accumulated)
+                response = llm_client.parse_ai_response(full_text)
+                response.provider = self.primary_provider.provider_name
+                model_name = llm_client.model
+            except Exception:
+                # Primary LLM failed mid-stream → fall back
+                used_fallback = True
+                response, model_name, _ = await self._invoke_provider(
+                    "ask", clean_question, safe_context
+                )
+                words = (response.text or "").split(" ")
+                for i, word in enumerate(words):
+                    yield ("chunk", word if i == 0 else " " + word)
+        else:
+            # No LLM client → provider chain with fallback
+            response, model_name, used_fallback = await self._invoke_provider(
+                "ask", clean_question, safe_context
+            )
+            words = (response.text or "").split(" ")
+            for i, word in enumerate(words):
+                yield ("chunk", word if i == 0 else " " + word)
+
+        # ── Output / action gates ────────────────────────────────────
+        if isinstance(response, AIResponse):
+            response, output_filtered, filter_reason = self.output_gate.validate(response, ctx)
+            if response.next_actions:
+                original_count = len(response.next_actions)
+                response.next_actions = self.action_gate.filter_actions(
+                    response.next_actions, ctx
+                )
+                if len(response.next_actions) != original_count:
+                    output_filtered = True
+                    filter_reason = ",".join(
+                        v for v in [filter_reason, "action_gate"] if v
+                    )
+            if used_fallback:
+                output_filtered = True
+                filter_reason = ",".join(
+                    v for v in [filter_reason, "provider_fallback"] if v
+                )
+
+        yield ("done", response)
+
+        # ── Audit log ────────────────────────────────────────────────
+        await self._log(
+            ctx=ctx,
+            action="ask_stream",
+            screen=payload.screen,
+            question=clean_question,
+            safe_context=safe_context,
+            response_summary=(response.text if isinstance(response, AIResponse) else str(response))[:500],
+            latency_ms=int((perf_counter() - started) * 1000),
+            tools_blocked=self.tool_gate.get_blocked_tools(ctx.role or ""),
+            output_filtered=output_filtered,
+            output_filter_reason=filter_reason,
+            model_name=model_name,
+        )
+
+    # -- review_assist -------------------------------------------------------
+
     async def review_assist(self, data_point_id: int, ctx: RequestContext) -> ReviewAssistResponse | AIResponse:
+        tools_used = []
+
         async def raw_context_builder() -> dict:
             data_point, project, _ = await get_data_point_for_ctx(self.session, data_point_id, ctx)
-            shared_element = (
+
+            # Use tools for data gathering
+            self.tool_gate.check_tool_allowed("get_data_point_details", ctx)
+            dp_details = await execute_tool(
+                "get_data_point_details",
+                {"data_point_id": data_point_id},
+                self.session,
+                ctx,
+            )
+            tools_used.append("get_data_point_details")
+
+            self.tool_gate.check_tool_allowed("get_anomaly_flags", ctx)
+            anomaly_result = await execute_tool(
+                "get_anomaly_flags",
+                {"data_point_id": data_point_id},
+                self.session,
+                ctx,
+            )
+            tools_used.append("get_anomaly_flags")
+
+            # Check if evidence is required via bound requirement items
+            bound_items = (
                 await self.session.execute(
-                    select(SharedElement).where(SharedElement.id == data_point.shared_element_id)
-                )
-            ).scalar_one_or_none()
-            evidence_count = (
-                await self.session.execute(
-                    select(func.count()).select_from(DataPointEvidence).where(
-                        DataPointEvidence.data_point_id == data_point.id
+                    select(RequirementItem.requires_evidence)
+                    .join(
+                        RequirementItemDataPoint,
+                        RequirementItemDataPoint.requirement_item_id == RequirementItem.id,
                     )
-                )
-            ).scalar_one()
-            binding_count = (
-                await self.session.execute(
-                    select(func.count()).select_from(RequirementItemDataPoint).where(
-                        RequirementItemDataPoint.data_point_id == data_point.id
-                    )
-                )
-            ).scalar_one()
-            peer_numeric_values = (
-                await self.session.execute(
-                    select(DataPoint.numeric_value).where(
-                        DataPoint.reporting_project_id == project.id,
-                        DataPoint.shared_element_id == data_point.shared_element_id,
-                        DataPoint.id != data_point.id,
-                        DataPoint.numeric_value.is_not(None),
-                    )
+                    .where(RequirementItemDataPoint.data_point_id == data_point.id)
                 )
             ).scalars().all()
-            anomaly_flags = []
-            value_delta_percent = None
-            if data_point.numeric_value is not None and peer_numeric_values:
-                peer_average = sum(float(value) for value in peer_numeric_values) / len(peer_numeric_values)
-                if peer_average:
-                    value_delta_percent = round(((float(data_point.numeric_value) - peer_average) / peer_average) * 100, 1)
-                    if abs(value_delta_percent) >= 50:
-                        anomaly_flags.append("Value differs materially from peer entries in the same project")
+            requires_evidence = any(bound_items)
+
             return {
                 "organization_id": project.organization_id,
                 "project_id": project.id,
                 "data_point_id": data_point.id,
                 "status": data_point.status,
-                "numeric_value": float(data_point.numeric_value) if data_point.numeric_value is not None else None,
-                "text_value": data_point.text_value,
-                "shared_element_name": shared_element.name if shared_element else None,
-                "evidence_count": evidence_count,
-                "binding_count": binding_count,
-                "anomaly_flags": anomaly_flags,
-                "value_delta_percent": value_delta_percent,
+                "numeric_value": dp_details.get("numeric_value"),
+                "text_value": dp_details.get("text_value"),
+                "shared_element_name": dp_details.get("shared_element_name"),
+                "evidence_count": dp_details.get("evidence_count", 0),
+                "binding_count": dp_details.get("binding_count", 0),
+                "anomaly_flags": anomaly_result.get("anomalies", []),
+                "value_delta_percent": anomaly_result.get("value_delta_percent"),
+                "requires_evidence": requires_evidence,
             }
 
         return await self._run_ai_action(
@@ -727,4 +1029,5 @@ class AIAssistantService:
             response_builder=lambda safe_context, _question: self._invoke_provider(
                 "review_assist", safe_context
             ),
+            tools_used=tools_used,
         )

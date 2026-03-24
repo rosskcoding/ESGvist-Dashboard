@@ -33,6 +33,7 @@ def _get_service(session: AsyncSession) -> StandardService:
 async def list_standards(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
     service = _get_service(session)
@@ -52,6 +53,7 @@ async def create_standard(
 @router.get("/{standard_id}", response_model=StandardOut)
 async def get_standard(
     standard_id: int,
+    ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
     service = _get_service(session)
@@ -83,6 +85,7 @@ async def deactivate_standard(
 @router.get("/{standard_id}/sections", response_model=list[SectionOut])
 async def list_sections(
     standard_id: int,
+    ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
     service = _get_service(session)
@@ -108,6 +111,7 @@ async def list_disclosures(
     standard_id: int,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
+    ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
     service = _get_service(session)

@@ -23,7 +23,7 @@ export default function CreateTenantPage() {
   const [form, setForm] = useState({ name: "", country: "", industry: "" });
 
   const { data: me, isLoading: meLoading } = useApiQuery<{ roles: RoleBinding[] }>(
-    ["auth-me", "tenant-create"],
+    ["auth-me"],
     "/auth/me"
   );
 

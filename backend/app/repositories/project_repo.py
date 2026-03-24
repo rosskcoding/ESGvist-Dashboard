@@ -1,4 +1,4 @@
-from sqlalchemy import func, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError
@@ -48,7 +48,7 @@ class ProjectRepository:
         q = (
             select(ReportingProject)
             .where(ReportingProject.organization_id == org_id)
-            .order_by(ReportingProject.id)
+            .order_by(desc(ReportingProject.id))
             .offset((page - 1) * page_size)
             .limit(page_size)
         )

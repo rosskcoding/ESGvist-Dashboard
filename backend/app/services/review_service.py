@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import date
-import logging
 
+import structlog
 from sqlalchemy import select
 
 from app.core.access import (
@@ -10,8 +10,10 @@ from app.core.access import (
     get_project_for_ctx,
     get_user_assignments,
 )
+from app.core.dashboard_cache import invalidate_dashboard_projects
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError
+from app.core.metrics import record_non_blocking_failure
 from app.db.models.boundary import BoundaryMembership
 from app.db.models.boundary_snapshot import BoundarySnapshot
 from app.db.models.company_entity import CompanyEntity
@@ -28,8 +30,9 @@ from app.repositories.audit_repo import AuditRepository
 from app.repositories.data_point_repo import DataPointRepository
 from app.repositories.notification_repo import NotificationRepository
 from app.services.notification_service import NotificationService
+from app.services.outlier_service import OutlierService
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger("app.review")
 
 
 class ReviewService:
@@ -45,7 +48,9 @@ class ReviewService:
             NotificationService(notification_repo) if notification_repo else None
         )
 
-    async def _audit(self, action: str, dp_id: int, ctx: RequestContext, changes: dict | None = None):
+    async def _audit(
+        self, action: str, dp_id: int, ctx: RequestContext, changes: dict | None = None
+    ):
         if self.audit_repo:
             await self.audit_repo.log(
                 entity_type="DataPoint",
@@ -57,7 +62,9 @@ class ReviewService:
                 performed_by_platform_admin=ctx.is_platform_admin,
             )
 
-    async def _notify_collector(self, dp, action: str, ctx: RequestContext, comment: str | None = None):
+    async def _notify_collector(
+        self, dp, action: str, ctx: RequestContext, comment: str | None = None
+    ):
         """Notify the collector (created_by) about the review decision."""
         if not self.notification_service or not ctx.organization_id:
             return
@@ -86,16 +93,29 @@ class ReviewService:
                 entity_id=dp.id,
                 triggered_by=ctx.user_id,
             )
-        except Exception as e:
-            logger.warning("Failed to send notification for dp %d: %s", dp.id, e)
+        except Exception:
+            record_non_blocking_failure("review_service", "collector_notification")
+            logger.warning(
+                "review_collector_notification_failed",
+                data_point_id=dp.id,
+                collector_user_id=dp.created_by,
+                action=action,
+                organization_id=ctx.organization_id,
+                triggered_by=ctx.user_id,
+                exc_info=True,
+            )
 
     def _require_review_access(self, ctx: RequestContext) -> None:
         if ctx.role not in ("reviewer", "admin", "esg_manager", "platform_admin"):
-            raise AppError("FORBIDDEN", 403, "Only reviewers or managers can perform review actions")
+            raise AppError(
+                "FORBIDDEN", 403, "Only reviewers or managers can perform review actions"
+            )
 
     def _require_review_queue_access(self, ctx: RequestContext) -> None:
         if ctx.role not in ("reviewer", "auditor", "admin", "esg_manager", "platform_admin"):
-            raise AppError("FORBIDDEN", 403, "Only reviewers or auditors can access the review queue")
+            raise AppError(
+                "FORBIDDEN", 403, "Only reviewers or auditors can access the review queue"
+            )
 
     async def list_review_items(
         self,
@@ -140,9 +160,13 @@ class ReviewService:
         else:
             project_query = select(ReportingProject)
             if ctx.organization_id and not ctx.is_platform_admin:
-                project_query = project_query.where(ReportingProject.organization_id == ctx.organization_id)
+                project_query = project_query.where(
+                    ReportingProject.organization_id == ctx.organization_id
+                )
             elif ctx.organization_id:
-                project_query = project_query.where(ReportingProject.organization_id == ctx.organization_id)
+                project_query = project_query.where(
+                    ReportingProject.organization_id == ctx.organization_id
+                )
             project_result = await self.dp_repo.session.execute(project_query)
             projects = list(project_result.scalars().all())
 
@@ -164,7 +188,10 @@ class ReviewService:
             data_points = [
                 data_point
                 for data_point in data_points
-                if any(assignment_matches_data_point(assignment, data_point) for assignment in assignments)
+                if any(
+                    assignment_matches_data_point(assignment, data_point)
+                    for assignment in assignments
+                )
             ]
 
         context = await self._load_review_context(data_points, projects)
@@ -210,9 +237,15 @@ class ReviewService:
             }
         )
         user_ids = sorted({dp.created_by for dp in data_points if dp.created_by is not None})
-        methodology_ids = sorted({dp.methodology_id for dp in data_points if dp.methodology_id is not None})
+        methodology_ids = sorted(
+            {dp.methodology_id for dp in data_points if dp.methodology_id is not None}
+        )
         boundary_ids = sorted(
-            {project.boundary_definition_id for project in projects if project.boundary_definition_id is not None}
+            {
+                project.boundary_definition_id
+                for project in projects
+                if project.boundary_definition_id is not None
+            }
         )
         data_point_ids = [dp.id for dp in data_points]
 
@@ -256,7 +289,13 @@ class ReviewService:
                     "inclusion_reason": inclusion_reason,
                     "consolidation_method": consolidation_method,
                 }
-                for boundary_definition_id, entity_id, included, inclusion_reason, consolidation_method in membership_result.all()
+                for (
+                    boundary_definition_id,
+                    entity_id,
+                    included,
+                    inclusion_reason,
+                    consolidation_method,
+                ) in membership_result.all()
             }
 
         standards: dict[tuple[int, int], list[dict[str, str]]] = defaultdict(list)
@@ -269,7 +308,10 @@ class ReviewService:
             )
             .join(Standard, Standard.id == ReportingProjectStandard.standard_id)
             .join(DisclosureRequirement, DisclosureRequirement.standard_id == Standard.id)
-            .join(RequirementItem, RequirementItem.disclosure_requirement_id == DisclosureRequirement.id)
+            .join(
+                RequirementItem,
+                RequirementItem.disclosure_requirement_id == DisclosureRequirement.id,
+            )
             .join(
                 RequirementItemSharedElement,
                 RequirementItemSharedElement.requirement_item_id == RequirementItem.id,
@@ -293,7 +335,9 @@ class ReviewService:
             methodology_result = await self.dp_repo.session.execute(
                 select(Methodology.id, Methodology.name).where(Methodology.id.in_(methodology_ids))
             )
-            methodologies = {methodology_id: name for methodology_id, name in methodology_result.all()}
+            methodologies = {
+                methodology_id: name for methodology_id, name in methodology_result.all()
+            }
 
         dimensions: dict[int, dict[str, str]] = defaultdict(dict)
         dimension_result = await self.dp_repo.session.execute(
@@ -323,7 +367,15 @@ class ReviewService:
             .outerjoin(EvidenceLink, EvidenceLink.evidence_id == Evidence.id)
             .where(DataPointEvidence.data_point_id.in_(data_point_ids))
         )
-        for data_point_id, evidence_id, evidence_type, title, file_name, file_uri, url in evidence_result.all():
+        for (
+            data_point_id,
+            evidence_id,
+            evidence_type,
+            title,
+            file_name,
+            file_uri,
+            url,
+        ) in evidence_result.all():
             label = file_name or title
             evidence[data_point_id].append(
                 {
@@ -352,6 +404,10 @@ class ReviewService:
             else:
                 snapshots[snapshot.reporting_project_id] = "Outdated snapshot"
 
+        # Outlier detection
+        outlier_svc = OutlierService(self.dp_repo.session)
+        outliers = await outlier_svc.check_outliers_batch(data_points)
+
         return {
             "shared_elements": shared_elements,
             "user_names": user_names,
@@ -363,6 +419,7 @@ class ReviewService:
             "evidence": evidence,
             "assignments": assignments,
             "snapshots": snapshots,
+            "outliers": outliers,
         }
 
     def _serialize_review_item(
@@ -373,12 +430,16 @@ class ReviewService:
     ) -> dict:
         shared_element = context["shared_elements"].get(data_point.shared_element_id)
         standards = context["standards"].get((project.id, data_point.shared_element_id), [])
-        primary_standard = standards[0] if standards else {"code": "CUSTOM", "name": "Custom disclosure"}
+        primary_standard = (
+            standards[0] if standards else {"code": "CUSTOM", "name": "Custom disclosure"}
+        )
 
         scope_entity_id = data_point.facility_id or data_point.entity_id
         membership = None
         if project.boundary_definition_id is not None and scope_entity_id is not None:
-            membership = context["memberships"].get((project.boundary_definition_id, scope_entity_id))
+            membership = context["memberships"].get(
+                (project.boundary_definition_id, scope_entity_id)
+            )
 
         if membership is not None:
             inclusion_status = "included" if membership["included"] else "excluded"
@@ -397,11 +458,17 @@ class ReviewService:
             inclusion_reason = "No explicit membership found in active boundary"
             consolidation_method = "full"
 
+        from app.services.outlier_service import OutlierResult
+
+        outlier = context.get("outliers", {}).get(data_point.id, OutlierResult())
+
         assignment = self._pick_assignment(
             data_point,
             context["assignments"].get(project.id, []),
         )
-        urgency, is_overdue = self._compute_urgency(assignment.deadline if assignment else None, data_point.status)
+        urgency, is_overdue = self._compute_urgency(
+            assignment.deadline if assignment else None, data_point.status
+        )
         submitted_at = data_point.updated_at or data_point.created_at
         dimensions = context["dimensions"].get(data_point.id, {})
 
@@ -409,13 +476,18 @@ class ReviewService:
             "id": data_point.id,
             "project_id": project.id,
             "project_name": project.name,
-            "element_name": shared_element.name if shared_element else f"Element #{data_point.shared_element_id}",
-            "element_code": shared_element.code if shared_element else f"SE-{data_point.shared_element_id}",
+            "element_name": shared_element.name
+            if shared_element
+            else f"Element #{data_point.shared_element_id}",
+            "element_code": shared_element.code
+            if shared_element
+            else f"SE-{data_point.shared_element_id}",
             "submitter_name": context["user_names"].get(data_point.created_by, "Unknown user"),
             "submitted_at": submitted_at.isoformat() if submitted_at else None,
             "status": data_point.status,
             "urgency": urgency,
-            "is_outlier": False,
+            "is_outlier": outlier.is_outlier,
+            "outlier_reason": outlier.reason,
             "is_overdue": is_overdue,
             "entity_name": context["entities"].get(data_point.entity_id),
             "standard_code": primary_standard["code"],
@@ -424,8 +496,10 @@ class ReviewService:
             "unit": data_point.unit_code or "",
             "methodology": context["methodologies"].get(data_point.methodology_id, "Not specified"),
             "narrative": data_point.text_value or "",
-            "previous_value": None,
-            "previous_unit": None,
+            "previous_value": str(outlier.previous_value)
+            if outlier.previous_value is not None
+            else None,
+            "previous_unit": outlier.previous_unit,
             "dimensions": {
                 "scope": dimensions.get("scope"),
                 "gas_type": dimensions.get("gas_type"),
@@ -446,7 +520,11 @@ class ReviewService:
         data_point: DataPoint,
         assignments: list[MetricAssignment],
     ) -> MetricAssignment | None:
-        matches = [assignment for assignment in assignments if assignment_matches_data_point(assignment, data_point)]
+        matches = [
+            assignment
+            for assignment in assignments
+            if assignment_matches_data_point(assignment, data_point)
+        ]
         if not matches:
             return None
         return sorted(
@@ -488,15 +566,24 @@ class ReviewService:
     ) -> dict:
         self._require_review_access(ctx)
         results = []
+        affected_project_ids: set[int] = set()
         for dp_id in dp_ids:
             dp, _, _ = await get_data_point_for_ctx(self.dp_repo.session, dp_id, ctx)
             if dp.status != "in_review":
-                results.append({"id": dp_id, "success": False, "reason": f"Status is '{dp.status}', expected 'in_review'"})
+                results.append(
+                    {
+                        "id": dp_id,
+                        "success": False,
+                        "reason": f"Status is '{dp.status}', expected 'in_review'",
+                    }
+                )
                 continue
             await self.dp_repo.update(dp_id, status="approved", review_comment=comment)
             await self._audit("data_point_approved", dp_id, ctx, {"comment": comment})
             await self._notify_collector(dp, "approved", ctx, comment)
+            affected_project_ids.add(dp.reporting_project_id)
             results.append({"id": dp_id, "success": True, "status": "approved"})
+        await invalidate_dashboard_projects(affected_project_ids)
         return {"results": results, "approved_count": sum(1 for r in results if r["success"])}
 
     async def batch_reject(
@@ -507,15 +594,25 @@ class ReviewService:
             raise AppError("REVIEW_COMMENT_REQUIRED", 422, "Comment is required for batch reject")
 
         results = []
+        affected_project_ids: set[int] = set()
         for dp_id in dp_ids:
             dp, _, _ = await get_data_point_for_ctx(self.dp_repo.session, dp_id, ctx)
             if dp.status != "in_review":
-                results.append({"id": dp_id, "success": False, "reason": f"Status is '{dp.status}'"})
+                results.append(
+                    {"id": dp_id, "success": False, "reason": f"Status is '{dp.status}'"}
+                )
                 continue
             await self.dp_repo.update(dp_id, status="rejected", review_comment=comment)
-            await self._audit("data_point_rejected", dp_id, ctx, {"comment": comment, "reason_code": "reviewer_rejection"})
+            await self._audit(
+                "data_point_rejected",
+                dp_id,
+                ctx,
+                {"comment": comment, "reason_code": "reviewer_rejection"},
+            )
             await self._notify_collector(dp, "rejected", ctx, comment)
+            affected_project_ids.add(dp.reporting_project_id)
             results.append({"id": dp_id, "success": True, "status": "rejected"})
+        await invalidate_dashboard_projects(affected_project_ids)
         return {"results": results, "rejected_count": sum(1 for r in results if r["success"])}
 
     async def batch_request_revision(
@@ -523,16 +620,23 @@ class ReviewService:
     ) -> dict:
         self._require_review_access(ctx)
         if not comment:
-            raise AppError("REVIEW_COMMENT_REQUIRED", 422, "Comment is required for request revision")
+            raise AppError(
+                "REVIEW_COMMENT_REQUIRED", 422, "Comment is required for request revision"
+            )
 
         results = []
+        affected_project_ids: set[int] = set()
         for dp_id in dp_ids:
             dp, _, _ = await get_data_point_for_ctx(self.dp_repo.session, dp_id, ctx)
             if dp.status != "in_review":
-                results.append({"id": dp_id, "success": False, "reason": f"Status is '{dp.status}'"})
+                results.append(
+                    {"id": dp_id, "success": False, "reason": f"Status is '{dp.status}'"}
+                )
                 continue
             await self.dp_repo.update(dp_id, status="needs_revision", review_comment=comment)
             await self._audit("data_point_revision_requested", dp_id, ctx, {"comment": comment})
             await self._notify_collector(dp, "needs_revision", ctx, comment)
+            affected_project_ids.add(dp.reporting_project_id)
             results.append({"id": dp_id, "success": True, "status": "needs_revision"})
+        await invalidate_dashboard_projects(affected_project_ids)
         return {"results": results, "revision_count": sum(1 for r in results if r["success"])}

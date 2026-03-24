@@ -12,7 +12,7 @@ async def admin_headers(client: AsyncClient) -> dict:
         "/api/auth/login",
         json={"email": "admin@test.com", "password": "password123"},
     )
-    return {"Authorization": f"Bearer {resp.json()['access_token']}", "X-Organization-Id": "1"}
+    return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 
 @pytest.fixture
@@ -25,14 +25,21 @@ async def disclosure_id(client: AsyncClient, admin_headers: dict) -> int:
     sid = std.json()["id"]
     disc = await client.post(
         f"/api/standards/{sid}/disclosures",
-        json={"code": "305-1", "title": "Emissions", "requirement_type": "quantitative", "mandatory_level": "mandatory"},
+        json={
+            "code": "305-1",
+            "title": "Emissions",
+            "requirement_type": "quantitative",
+            "mandatory_level": "mandatory",
+        },
         headers=admin_headers,
     )
     return disc.json()["id"]
 
 
 @pytest.mark.asyncio
-async def test_create_requirement_item(client: AsyncClient, admin_headers: dict, disclosure_id: int):
+async def test_create_requirement_item(
+    client: AsyncClient, admin_headers: dict, disclosure_id: int
+):
     resp = await client.post(
         f"/api/disclosures/{disclosure_id}/items",
         json={
@@ -63,7 +70,12 @@ async def test_item_hierarchy(client: AsyncClient, admin_headers: dict, disclosu
 
     child = await client.post(
         f"/api/disclosures/{disclosure_id}/items",
-        json={"name": "Child", "item_type": "dimension", "value_type": "text", "parent_item_id": parent_id},
+        json={
+            "name": "Child",
+            "item_type": "dimension",
+            "value_type": "text",
+            "parent_item_id": parent_id,
+        },
         headers=admin_headers,
     )
     assert child.status_code == 201
@@ -120,6 +132,6 @@ async def test_list_items(client: AsyncClient, admin_headers: dict, disclosure_i
             headers=admin_headers,
         )
 
-    resp = await client.get(f"/api/disclosures/{disclosure_id}/items")
+    resp = await client.get(f"/api/disclosures/{disclosure_id}/items", headers=admin_headers)
     assert resp.status_code == 200
     assert resp.json()["total"] == 3

@@ -82,3 +82,44 @@ class BoundaryNotLockedGate(Gate):
                 severity="blocker",
             )
         return None
+
+
+class EmptyBoundaryGate(Gate):
+    """Blocks snapshot creation if boundary has no included entities."""
+
+    def applies_to(self, action: str) -> bool:
+        return action in ("lock_snapshot", "create_snapshot")
+
+    async def evaluate(self, context: dict) -> GateFailure | None:
+        included_count = context.get("included_entity_count", 0)
+        if included_count == 0:
+            return GateFailure(
+                code="EMPTY_BOUNDARY",
+                gate_type="boundary",
+                message="Boundary must include at least one entity before a snapshot can be created",
+                severity="blocker",
+            )
+        return None
+
+
+class SnapshotAlreadyLockedGate(Gate):
+    """Warns when overwriting an existing locked snapshot.
+
+    Uses severity ``warning`` — the action is still allowed but the caller
+    should notify the user that the previous snapshot will be replaced.
+    For published projects, snapshot overwrite is separately blocked by
+    ``BoundaryPolicy.snapshot_immutable()``.
+    """
+
+    def applies_to(self, action: str) -> bool:
+        return action in ("lock_snapshot", "create_snapshot")
+
+    async def evaluate(self, context: dict) -> GateFailure | None:
+        if context.get("existing_snapshot_locked", False):
+            return GateFailure(
+                code="SNAPSHOT_ALREADY_LOCKED",
+                gate_type="boundary",
+                message="A locked snapshot already exists and will be replaced",
+                severity="warning",
+            )
+        return None

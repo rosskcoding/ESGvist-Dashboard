@@ -26,7 +26,9 @@ test.describe("Screen 8 - Company Structure", () => {
       await expect(page.getByRole("button", { name: "Structure" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Control" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Boundary", exact: true })).toBeVisible();
-      await expect(page.getByRole("button", { name: /Northwind Renewables Group/ })).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: /Northwind Renewables Group plc active/ })
+      ).toBeVisible();
     });
   }
 

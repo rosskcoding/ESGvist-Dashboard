@@ -27,6 +27,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -57,6 +58,7 @@ type Disclosure = {
   section_id: number | null;
   code: string;
   title: string;
+  description?: string | null;
   requirement_type: "quantitative" | "qualitative" | "mixed";
   mandatory_level: "mandatory" | "conditional" | "optional";
   sort_order: number;
@@ -78,7 +80,15 @@ function AddStandardDialog({
   const [form, setForm] = useState({ code: "", name: "", version: "2026" });
   const mutation = useApiMutation<Standard, typeof form>("/standards", "POST", {
     onSuccess: (standard) => {
-      queryClient.invalidateQueries({ queryKey: ["standards-admin"] });
+      queryClient.setQueryData<StandardListResponse>(["standards-admin"], (current) =>
+        current
+          ? {
+              ...current,
+              items: [standard, ...current.items.filter((item) => item.id !== standard.id)],
+              total: current.total + (current.items.some((item) => item.id === standard.id) ? 0 : 1),
+            }
+          : { items: [standard], total: 1 }
+      );
       onOpenChange(false);
       onCreated(standard.id);
       setForm({ code: "", name: "", version: "2026" });
@@ -145,9 +155,11 @@ function AddSectionDialog({
 }) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState({ code: "", title: "", sort_order: 0 });
-  const mutation = useApiMutation(`/standards/${standardId}/sections`, "POST", {
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["standard-sections", standardId] });
+  const mutation = useApiMutation<Section, typeof form>(`/standards/${standardId}/sections`, "POST", {
+    onSuccess: (section) => {
+      queryClient.setQueryData<Section[]>(["standard-sections", standardId], (current) =>
+        current ? [...current, section] : [section]
+      );
       onOpenChange(false);
       setForm({ code: "", title: "", sort_order: 0 });
     },
@@ -206,22 +218,43 @@ function AddDisclosureDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const queryClient = useQueryClient();
+  type DisclosureCreatePayload = {
+    section_id: number | null;
+    code: string;
+    title: string;
+    description: string;
+    requirement_type: "quantitative" | "qualitative" | "mixed";
+    mandatory_level: "mandatory" | "conditional" | "optional";
+    sort_order: number;
+  };
   const [form, setForm] = useState({
     section_id: "",
     code: "",
     title: "",
+    description: "",
     requirement_type: "quantitative",
     mandatory_level: "mandatory",
     sort_order: 0,
   });
-  const mutation = useApiMutation(`/standards/${standardId}/disclosures`, "POST", {
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["standard-disclosures", standardId] });
+  const mutation = useApiMutation<Disclosure, DisclosureCreatePayload>(`/standards/${standardId}/disclosures`, "POST", {
+    onSuccess: (disclosure) => {
+      queryClient.setQueryData<DisclosureListResponse>(
+        ["standard-disclosures", standardId],
+        (current) =>
+          current
+            ? {
+                ...current,
+                items: [...current.items, disclosure],
+                total: current.total + 1,
+              }
+            : { items: [disclosure], total: 1 }
+      );
       onOpenChange(false);
       setForm({
         section_id: "",
         code: "",
         title: "",
+        description: "",
         requirement_type: "quantitative",
         mandatory_level: "mandatory",
         sort_order: 0,
@@ -267,6 +300,16 @@ function AddDisclosureDialog({
               placeholder="Describe board oversight"
             />
           </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="disclosure-description">Description</Label>
+            <Textarea
+              id="disclosure-description"
+              value={form.description}
+              onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
+              placeholder="Paste the disclosure requirement or reporting explanation"
+              rows={6}
+            />
+          </div>
           <div className="grid gap-4 md:grid-cols-2">
             <Select
               label="Requirement Type"
@@ -299,6 +342,8 @@ function AddDisclosureDialog({
               mutation.mutate({
                 ...form,
                 section_id: form.section_id ? Number(form.section_id) : null,
+                requirement_type: form.requirement_type as DisclosureCreatePayload["requirement_type"],
+                mandatory_level: form.mandatory_level as DisclosureCreatePayload["mandatory_level"],
               })
             }
             disabled={mutation.isPending || !form.code || !form.title}
@@ -320,7 +365,7 @@ export default function StandardsPage() {
 
   const { data: me, isLoading: meLoading } = useApiQuery<{
     roles: Array<{ role: string }>;
-  }>(["auth-me", "standards-settings"], "/auth/me");
+  }>(["auth-me"], "/auth/me");
 
   const role = me?.roles?.[0]?.role ?? "";
   const canAccess = role === "admin" || role === "platform_admin";
@@ -524,12 +569,19 @@ export default function StandardsPage() {
                       </TableHeader>
                       <TableBody>
                         {disclosures.map((disclosure) => (
-                          <TableRow key={disclosure.id}>
-                            <TableCell className="font-mono text-xs">{disclosure.code}</TableCell>
-                            <TableCell>{disclosure.title}</TableCell>
-                            <TableCell>
-                              <Badge variant="secondary">{disclosure.requirement_type}</Badge>
-                            </TableCell>
+                        <TableRow key={disclosure.id}>
+                          <TableCell className="font-mono text-xs">{disclosure.code}</TableCell>
+                          <TableCell>
+                            <div className="space-y-1">
+                              <div>{disclosure.title}</div>
+                              {disclosure.description && (
+                                <p className="line-clamp-3 text-xs text-slate-500">{disclosure.description}</p>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">{disclosure.requirement_type}</Badge>
+                          </TableCell>
                             <TableCell>
                               <Button variant="ghost" size="sm" asChild>
                                 <Link href={`/settings/standards/${selectedStandard.id}/requirements?disclosureId=${disclosure.id}`}>

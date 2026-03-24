@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { getMe, isAuthenticated } from "@/lib/auth";
+import { getMe } from "@/lib/auth";
+import { api } from "@/lib/api";
 
 interface UserRole {
   id: number;
@@ -33,12 +34,6 @@ export function useAuth(): UseAuthReturn {
   const [organizationId, setOrganizationIdState] = useState<string | null>(null);
 
   const fetchUser = useCallback(async () => {
-    if (!isAuthenticated()) {
-      setUser(null);
-      setIsLoading(false);
-      return;
-    }
-
     try {
       const me = await getMe();
       setUser(me);
@@ -54,16 +49,21 @@ export function useAuth(): UseAuthReturn {
   }, [fetchUser]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const stored = localStorage.getItem("organization_id");
-    if (stored) {
-      setOrganizationIdState(stored);
+    const orgRole = user?.roles?.find(
+      (binding) => binding.scope_type === "organization" && binding.scope_id
+    );
+    if (orgRole?.scope_id) {
+      setOrganizationIdState(String(orgRole.scope_id));
+      return;
     }
-  }, []);
+    setOrganizationIdState(null);
+  }, [user]);
 
   const setOrganizationId = useCallback((id: string) => {
-    localStorage.setItem("organization_id", id);
     setOrganizationIdState(id);
+    void api.post("/auth/context/organization", {
+      organization_id: Number(id),
+    });
   }, []);
 
   const role =

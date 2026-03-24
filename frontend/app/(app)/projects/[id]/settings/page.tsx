@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Card,
   CardContent,
@@ -126,18 +127,65 @@ function isForbidden(error: Error | null) {
 export default function ProjectSettingsPage() {
   const params = useParams();
   const projectId = params.id as string;
+  const numericProjectId = Number(projectId);
+  const queryClient = useQueryClient();
 
   const [addStandardDialogOpen, setAddStandardDialogOpen] = useState(false);
   const [selectedStandardId, setSelectedStandardId] = useState("");
   const [gateBlockers, setGateBlockers] = useState<string[]>([]);
   const [gateDialogOpen, setGateDialogOpen] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const syncProjectDetail = (updates: Partial<ProjectDetail>) => {
+    queryClient.setQueryData<ProjectDetail>(["project", projectId], (current) =>
+      current ? { ...current, ...updates } : current
+    );
+  };
+
+  const syncProjectsList = (updates: Partial<ProjectDetail> & { id?: number; standard_code?: string }) => {
+    queryClient.setQueryData<{
+      items: Array<{
+        id: number;
+        name: string;
+        status: ProjectDetail["status"];
+        standard_codes?: string[];
+      }>;
+      total: number;
+    }>(
+      ["projects"],
+      (current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          items: current.items.map((item) => {
+            if (item.id !== Number(projectId)) return item;
+            const nextStandardCodes = updates.standard_code
+              ? Array.from(new Set([...(item.standard_codes ?? []), updates.standard_code]))
+              : item.standard_codes;
+            return {
+              ...item,
+              ...("name" in updates ? { name: updates.name ?? item.name } : {}),
+              ...("status" in updates ? { status: updates.status as ProjectDetail["status"] } : {}),
+              standard_codes: nextStandardCodes,
+            };
+          }),
+        };
+      }
+    );
+  };
+
+  const invalidateDerivedProjectViews = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["dashboard", "progress", numericProjectId] }),
+      queryClient.invalidateQueries({ queryKey: ["report", "readiness", numericProjectId] }),
+      queryClient.invalidateQueries({ queryKey: ["project-team", projectId] }),
+    ]);
 
   // Queries
   const {
     data: project,
     isLoading: projectLoading,
     error: projectError,
-    refetch: refetchProject,
   } = useApiQuery<ProjectDetail>(
     ["project", projectId],
     `/projects/${projectId}`
@@ -146,13 +194,12 @@ export default function ProjectSettingsPage() {
   const {
     data: standardsData,
     isLoading: standardsLoading,
-    refetch: refetchStandards,
   } = useApiQuery<{ items: ProjectStandard[] }>(
     ["project-standards", projectId],
     `/projects/${projectId}/standards`
   );
 
-  const { data: boundaryData, refetch: refetchBoundary } =
+  const { data: boundaryData } =
     useApiQuery<ProjectBoundary>(
       ["project-boundary", projectId],
       `/projects/${projectId}/boundary`
@@ -178,29 +225,97 @@ export default function ProjectSettingsPage() {
   const activateMutation = useApiMutation<ProjectDetail, void>(
     `/projects/${projectId}/activate`,
     "POST",
-    { onSuccess: () => refetchProject() }
+    {
+      onMutate: () => {
+        setActionError(null);
+      },
+      onSuccess: async (result) => {
+        syncProjectDetail({ status: result.status });
+        syncProjectsList({ id: result.id, status: result.status });
+        await invalidateDerivedProjectViews();
+      },
+      onError: (error) => {
+        setActionError(error.message || "Unable to activate project.");
+      },
+    }
   );
 
   const reviewMutation = useApiMutation<ProjectDetail, void>(
     `/projects/${projectId}/start-review`,
     "POST",
-    { onSuccess: () => refetchProject() }
+    {
+      onMutate: () => {
+        setActionError(null);
+      },
+      onSuccess: async (result) => {
+        syncProjectDetail({ status: result.status });
+        syncProjectsList({ id: result.id, status: result.status });
+        await invalidateDerivedProjectViews();
+      },
+      onError: (error) => {
+        setActionError(error.message || "Unable to move project into review.");
+      },
+    }
   );
 
   const publishMutation = useApiMutation<ProjectDetail, void>(
     `/projects/${projectId}/publish`,
     "POST",
-    { onSuccess: () => refetchProject() }
+    {
+      onMutate: () => {
+        setActionError(null);
+      },
+      onSuccess: async (result) => {
+        syncProjectDetail({ status: result.status });
+        syncProjectsList({ id: result.id, status: result.status });
+        await invalidateDerivedProjectViews();
+      },
+      onError: (error) => {
+        setActionError(error.message || "Unable to publish project.");
+      },
+    }
   );
 
   const addStandardMutation = useApiMutation<
     ProjectStandard,
     { standard_id: number }
   >(`/projects/${projectId}/standards`, "POST", {
-    onSuccess: () => {
+    onMutate: () => {
+      setActionError(null);
+    },
+    onSuccess: async (result) => {
+      const selectedStandard = allStandards.find((item) => item.id === result.standard_id);
+      if (selectedStandard) {
+        queryClient.setQueryData<{ items: ProjectStandard[] }>(
+          ["project-standards", projectId],
+          (current) => {
+            const existing = current?.items ?? [];
+            if (existing.some((item) => item.standard_id === result.standard_id)) {
+              return current ?? { items: existing };
+            }
+            return {
+              items: [
+                ...existing,
+                {
+                  id: selectedStandard.id,
+                  standard_id: selectedStandard.id,
+                  standard_name: selectedStandard.name,
+                  code: selectedStandard.code,
+                  disclosure_count: 0,
+                  completion_percentage: 0,
+                },
+              ],
+            };
+          }
+        );
+        syncProjectsList({ standard_code: selectedStandard.code });
+      }
       setAddStandardDialogOpen(false);
       setSelectedStandardId("");
-      refetchStandards();
+      await invalidateDerivedProjectViews();
+    },
+    onError: (error) => {
+      setActionError(error.message || "Unable to attach standard to project.");
     },
   });
 
@@ -208,13 +323,37 @@ export default function ProjectSettingsPage() {
     ProjectBoundary,
     { boundary_id: number }
   >(`/projects/${projectId}/boundary`, "PUT", {
-    onSuccess: () => refetchBoundary(),
+    onMutate: () => {
+      setActionError(null);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["project-boundary", projectId] }),
+        invalidateDerivedProjectViews(),
+      ]);
+    },
+    onError: (error) => {
+      setActionError(error.message || "Unable to update project boundary.");
+    },
   });
 
   const snapshotMutation = useApiMutation<unknown, void>(
     `/projects/${projectId}/boundary/snapshot`,
     "POST",
-    { onSuccess: () => refetchBoundary() }
+    {
+      onMutate: () => {
+        setActionError(null);
+      },
+      onSuccess: async () => {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["project-boundary", projectId] }),
+          invalidateDerivedProjectViews(),
+        ]);
+      },
+      onError: (error) => {
+        setActionError(error.message || "Unable to save boundary snapshot.");
+      },
+    }
   );
 
   const handleWorkflowAction = async (
@@ -337,6 +476,13 @@ export default function ProjectSettingsPage() {
           </p>
         </div>
       </div>
+
+      {actionError && (
+        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          {actionError}
+        </div>
+      )}
 
       {/* Tabs */}
       <Tabs defaultValue="general">

@@ -139,7 +139,7 @@ export default function MergePage() {
 
   const { data: me, isLoading: meLoading } = useApiQuery<{
     roles: Array<{ role: string }>;
-  }>(["auth-me", "merge"], "/auth/me");
+  }>(["auth-me"], "/auth/me");
 
   const roles = me?.roles?.map((binding) => binding.role) ?? [];
   const canAccess = roles.some((role) => ["admin", "esg_manager", "auditor"].includes(role));

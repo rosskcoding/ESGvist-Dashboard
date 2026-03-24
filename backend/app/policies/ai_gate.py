@@ -1,7 +1,7 @@
 import json
 import re
 from collections import defaultdict, deque
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError
@@ -10,9 +10,31 @@ from app.schemas.ai import AIResponse, SuggestedAction
 
 class AIPermissionGate:
     ENDPOINT_PERMISSIONS: dict[str, list[str]] = {
-        "explain_field": ["collector", "reviewer", "esg_manager", "auditor", "admin", "platform_admin"],
-        "explain_completeness": ["collector", "reviewer", "esg_manager", "auditor", "admin", "platform_admin"],
-        "explain_boundary": ["collector", "reviewer", "esg_manager", "auditor", "admin", "platform_admin"],
+        "explain_field": [
+            "collector",
+            "reviewer",
+            "esg_manager",
+            "auditor",
+            "admin",
+            "platform_admin",
+        ],
+        "explain_completeness": [
+            "collector",
+            "reviewer",
+            "esg_manager",
+            "auditor",
+            "admin",
+            "platform_admin",
+        ],
+        "explain_boundary": ["reviewer", "esg_manager", "admin", "platform_admin"],
+        "explain_evidence": [
+            "collector",
+            "reviewer",
+            "esg_manager",
+            "auditor",
+            "admin",
+            "platform_admin",
+        ],
         "review_assist": ["reviewer", "esg_manager", "admin", "platform_admin"],
         "ask": ["collector", "reviewer", "esg_manager", "auditor", "admin", "platform_admin"],
     }
@@ -27,6 +49,7 @@ class AIContextGate:
     SENSITIVE_KEYS = {
         "password_hash",
         "api_key",
+        "access_token",
         "refresh_token",
         "internal_notes",
         "raw_sql",
@@ -80,7 +103,9 @@ class AIPromptGate:
         clean_question = re.sub(r"<[^>]+>", "", question or "")
         clean_question = clean_question[: self.MAX_QUESTION_LENGTH]
         lowered = clean_question.lower()
-        if any(re.search(pattern, lowered, flags=re.IGNORECASE) for pattern in self.INJECTION_PATTERNS):
+        if any(
+            re.search(pattern, lowered, flags=re.IGNORECASE) for pattern in self.INJECTION_PATTERNS
+        ):
             raise AppError("AI_PROMPT_INJECTION", 400, "Prompt injection attempt detected")
         return clean_question.strip()
 
@@ -95,9 +120,61 @@ class AIActionGate:
         "auditor": set(),
     }
 
-    def filter_actions(self, actions: list[SuggestedAction], ctx: RequestContext) -> list[SuggestedAction]:
-        allowed = self.ALLOWED_ACTIONS.get(ctx.role or "", set())
-        return [action for action in actions if action.action_type in allowed]
+    # Route targets for navigate / open_dialog actions.
+    ALLOWED_ROUTE_PREFIXES: set[str] = {
+        "/dashboard",
+        "/collection",
+        "/evidence",
+        "/validation",
+        "/merge",
+        "/completeness",
+        "/report",
+        "/requirements",
+        "/settings/boundaries",
+        "/settings/company-structure",
+        "/settings/assignments",
+        "/settings/standards",
+        "/settings/shared-elements",
+        "/boundary_view",
+    }
+
+    # DOM selector patterns for highlight actions.
+    # Only data-ai-target attributes and #id selectors are allowed;
+    # arbitrary CSS selectors (tag names, classes) are rejected so a
+    # jailbroken LLM cannot probe the DOM.
+    _HIGHLIGHT_PATTERN = re.compile(
+        r"^(\[data-ai-target=[\"'][a-zA-Z0-9_:-]+[\"']\]|#[a-zA-Z][a-zA-Z0-9_-]*)$"
+    )
+
+    def _route_target_allowed(self, target: str) -> bool:
+        if not target or not target.startswith("/"):
+            return False
+        return any(
+            target == prefix or target.startswith(prefix + "/")
+            for prefix in self.ALLOWED_ROUTE_PREFIXES
+        )
+
+    def _highlight_target_allowed(self, target: str) -> bool:
+        if not target:
+            return False
+        return bool(self._HIGHLIGHT_PATTERN.match(target))
+
+    def _target_allowed(self, action: SuggestedAction) -> bool:
+        if action.action_type in ("navigate", "open_dialog"):
+            return self._route_target_allowed(action.target)
+        if action.action_type == "highlight":
+            return self._highlight_target_allowed(action.target)
+        return False
+
+    def filter_actions(
+        self, actions: list[SuggestedAction], ctx: RequestContext
+    ) -> list[SuggestedAction]:
+        allowed_types = self.ALLOWED_ACTIONS.get(ctx.role or "", set())
+        return [
+            action
+            for action in actions
+            if action.action_type in allowed_types and self._target_allowed(action)
+        ]
 
 
 class AIOutputGate:
@@ -124,7 +201,9 @@ class AIOutputGate:
             cleaned = new_value
         return cleaned, changed
 
-    def validate(self, response: AIResponse, ctx: RequestContext) -> tuple[AIResponse, bool, str | None]:
+    def validate(
+        self, response: AIResponse, ctx: RequestContext
+    ) -> tuple[AIResponse, bool, str | None]:
         if not response.text:
             return self.fallback("AI response was empty."), True, "empty_response"
 
@@ -150,7 +229,9 @@ class AIOutputGate:
         if any(keyword in response.text.lower() for keyword in self.FORBIDDEN_ACTION_TEXT):
             output_filtered = True
             filter_reasons.append("forbidden_action_text")
-            response.text = "Unable to verify a safe action. Please use the standard workflow controls."
+            response.text = (
+                "Unable to verify a safe action. Please use the standard workflow controls."
+            )
             response.confidence = "low"
 
         if ctx.role == "auditor":
@@ -179,26 +260,68 @@ class AIRateGate:
         "platform_admin": {"per_hour": 200, "per_minute": 20},
         "auditor": {"per_hour": 30, "per_minute": 5},
     }
+    # Abuse detection: max identical questions per hour before temp-block
+    IDENTICAL_QUESTION_LIMIT = 10
+    # Temp-ban duration after prompt injection attempt
+    INJECTION_BAN_MINUTES = 60
+
     _minute_events: dict[int, deque[datetime]] = defaultdict(deque)
     _hour_events: dict[int, deque[datetime]] = defaultdict(deque)
+    # Abuse tracking: user_id → deque of (timestamp, question_hash)
+    _question_hashes: dict[int, deque[tuple[datetime, str]]] = defaultdict(deque)
+    # Temp-ban: user_id → ban_until
+    _banned_until: dict[int, datetime] = {}
 
-    def check(self, ctx: RequestContext) -> None:
-        now = datetime.now(timezone.utc)
+    def check(self, ctx: RequestContext, *, question: str | None = None) -> None:
+        now = datetime.now(UTC)
         limits = self.LIMITS.get(ctx.role or "", {"per_hour": 10, "per_minute": 2})
-        minute_cutoff = now - timedelta(minutes=1)
-        hour_cutoff = now - timedelta(hours=1)
 
+        # ── Temp-ban check ──────────────────────────────────────────
+        ban_until = self._banned_until.get(ctx.user_id)
+        if ban_until and now < ban_until:
+            remaining = int((ban_until - now).total_seconds() // 60)
+            raise AppError(
+                "AI_TEMP_BANNED", 429,
+                f"AI access temporarily suspended. Try again in {remaining} minute(s).",
+            )
+
+        # ── Per-minute burst ────────────────────────────────────────
+        minute_cutoff = now - timedelta(minutes=1)
         minute_bucket = self._minute_events[ctx.user_id]
         while minute_bucket and minute_bucket[0] < minute_cutoff:
             minute_bucket.popleft()
         if len(minute_bucket) >= limits["per_minute"]:
-            raise AppError("AI_RATE_LIMITED", 429, "AI request limit exceeded. Try again in a minute.")
+            raise AppError(
+                "AI_RATE_LIMITED", 429, "AI request limit exceeded. Try again in a minute."
+            )
 
+        # ── Per-hour ────────────────────────────────────────────────
+        hour_cutoff = now - timedelta(hours=1)
         hour_bucket = self._hour_events[ctx.user_id]
         while hour_bucket and hour_bucket[0] < hour_cutoff:
             hour_bucket.popleft()
         if len(hour_bucket) >= limits["per_hour"]:
             raise AppError("AI_RATE_LIMITED", 429, "AI hourly limit exceeded.")
 
+        # ── Identical question abuse ────────────────────────────────
+        if question:
+            q_hash = question.strip().lower()
+            q_bucket = self._question_hashes[ctx.user_id]
+            while q_bucket and q_bucket[0][0] < hour_cutoff:
+                q_bucket.popleft()
+            identical_count = sum(1 for _, h in q_bucket if h == q_hash)
+            if identical_count >= self.IDENTICAL_QUESTION_LIMIT:
+                raise AppError(
+                    "AI_ABUSE_DETECTED", 429,
+                    "Too many identical AI questions. Please vary your queries.",
+                )
+            q_bucket.append((now, q_hash))
+
         minute_bucket.append(now)
         hour_bucket.append(now)
+
+    def ban_user(self, user_id: int) -> None:
+        """Temporarily ban a user from AI (e.g. after prompt injection)."""
+        self._banned_until[user_id] = datetime.now(UTC) + timedelta(
+            minutes=self.INJECTION_BAN_MINUTES
+        )

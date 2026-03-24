@@ -8,11 +8,13 @@ from app.core.access import (
     get_project_for_ctx,
     get_user_assignments,
 )
+from app.core.dashboard_cache import invalidate_dashboard_project
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError
 from app.db.models.boundary import BoundaryMembership
 from app.db.models.company_entity import CompanyEntity
 from app.db.models.data_point import DataPoint, DataPointDimension
+from app.db.models.data_point_version import DataPointVersion
 from app.db.models.mapping import RequirementItemSharedElement
 from app.db.models.project import ReportingProjectStandard
 from app.db.models.shared_element import SharedElement, SharedElementDimension
@@ -30,6 +32,43 @@ from app.schemas.data_points import (
     DataPointOut,
     DataPointUpdate,
 )
+
+
+async def create_data_point_version(
+    session,
+    dp: DataPoint,
+    *,
+    changed_by: int | None = None,
+    change_reason: str | None = None,
+) -> DataPointVersion:
+    """Snapshot the current data point state as an immutable version row.
+
+    Automatically increments the version number based on existing versions.
+    Called from both DataPointService (on value update) and WorkflowService
+    (on status transitions).
+    """
+    from sqlalchemy import func as sa_func
+
+    max_version_result = await session.execute(
+        select(sa_func.coalesce(sa_func.max(DataPointVersion.version), 0)).where(
+            DataPointVersion.data_point_id == dp.id
+        )
+    )
+    next_version = int(max_version_result.scalar_one()) + 1
+
+    version = DataPointVersion(
+        data_point_id=dp.id,
+        version=next_version,
+        numeric_value=float(dp.numeric_value) if dp.numeric_value is not None else None,
+        text_value=dp.text_value,
+        unit_code=dp.unit_code,
+        status=dp.status,
+        changed_by=changed_by,
+        change_reason=change_reason,
+    )
+    session.add(version)
+    await session.flush()
+    return version
 
 
 def _collection_status(status: str) -> str:
@@ -103,6 +142,7 @@ class DataPointService:
                 performed_by_platform_admin=ctx.is_platform_admin,
             )
 
+        await invalidate_dashboard_project(project_id)
         return await self._serialize_data_point(dp, project, detail=True)
 
     async def update(
@@ -141,6 +181,13 @@ class DataPointService:
 
         dp = await self.repo.update(dp_id, **update_fields)
 
+        # Snapshot version after value change
+        await create_data_point_version(
+            self.repo.session, dp,
+            changed_by=ctx.user_id,
+            change_reason="value_updated",
+        )
+
         if payload.dimensions is not None:
             await self.repo.session.execute(
                 delete(DataPointDimension).where(DataPointDimension.data_point_id == dp_id)
@@ -164,6 +211,7 @@ class DataPointService:
                 performed_by_platform_admin=ctx.is_platform_admin,
             )
 
+        await invalidate_dashboard_project(dp.reporting_project_id)
         return await self._serialize_data_point(dp, project, detail=True)
 
     async def list_by_project(

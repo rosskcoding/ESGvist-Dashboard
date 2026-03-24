@@ -30,7 +30,7 @@ class RequirementItemSharedElement(Base, TimestampMixin):
 
     __table_args__ = (
         UniqueConstraint(
-            "requirement_item_id", "shared_element_id",
-            name="uq_item_shared_element",
+            "requirement_item_id", "shared_element_id", "version",
+            name="uq_item_shared_element_version",
         ),
     )

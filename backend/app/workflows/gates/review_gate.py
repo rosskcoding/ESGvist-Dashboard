@@ -56,6 +56,64 @@ class NoRequirementsGate(Gate):
         return None
 
 
+class NoReviewerAssignedGate(Gate):
+    """Blocks transition to in_review when no reviewer is assigned.
+
+    Checks ``reviewer_assigned`` boolean in context.  Applied after
+    submit so the system can distinguish "no reviewer yet" from
+    "reviewer assigned → auto-transition".
+    """
+
+    def applies_to(self, action: str) -> bool:
+        return action in ("submit_data_point",)
+
+    async def evaluate(self, context: dict) -> GateFailure | None:
+        if not context.get("reviewer_assigned", True):
+            return GateFailure(
+                code="NO_REVIEWER_ASSIGNED",
+                gate_type="review",
+                message="No reviewer is assigned — data point will stay in 'submitted' until a reviewer is assigned",
+                severity="warning",
+            )
+        return None
+
+
+class NoAssignmentsGate(Gate):
+    """Warns when starting a project without any metric assignments."""
+
+    def applies_to(self, action: str) -> bool:
+        return action in ("start_project",)
+
+    async def evaluate(self, context: dict) -> GateFailure | None:
+        assignment_count = context.get("assignment_count", 0)
+        if assignment_count == 0:
+            return GateFailure(
+                code="NO_ASSIGNMENTS",
+                gate_type="review",
+                message="No metric assignments have been created — collectors won't see any work items",
+                severity="warning",
+            )
+        return None
+
+
+class UnsubmittedDataGate(Gate):
+    """Warns when moving project to review while draft data points exist."""
+
+    def applies_to(self, action: str) -> bool:
+        return action in ("review_project",)
+
+    async def evaluate(self, context: dict) -> GateFailure | None:
+        draft_count = context.get("draft_data_point_count", 0)
+        if draft_count > 0:
+            return GateFailure(
+                code="UNSUBMITTED_DATA",
+                gate_type="review",
+                message=f"{draft_count} data point(s) are still in draft and have not been submitted for review",
+                severity="warning",
+            )
+        return None
+
+
 class ProjectLockedGate(Gate):
     """Blocks edits on published project."""
 

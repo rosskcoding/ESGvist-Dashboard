@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Date, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.models.base import Base, TimestampMixin
@@ -14,6 +14,12 @@ class SharedElement(Base, TimestampMixin):
     concept_domain: Mapped[str | None] = mapped_column(String, nullable=True)  # emissions|energy|water|waste|...
     default_value_type: Mapped[str | None] = mapped_column(String, nullable=True)
     default_unit_code: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Versioning (TZ-Admin 3.14)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    is_current: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
+    valid_from: Mapped[str | None] = mapped_column(Date, nullable=True)
+    valid_to: Mapped[str | None] = mapped_column(Date, nullable=True)
 
     dimensions = relationship("SharedElementDimension", back_populates="shared_element", lazy="noload")
 

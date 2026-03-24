@@ -7,7 +7,44 @@ import {
   type UseMutationOptions,
   type QueryKey,
 } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, type AppApiError } from "@/lib/api";
+
+function queryDefaultsForPath(path: string): Pick<
+  UseQueryOptions<unknown, AppApiError>,
+  | "staleTime"
+  | "gcTime"
+  | "refetchInterval"
+  | "refetchIntervalInBackground"
+  | "refetchOnMount"
+  | "retry"
+> {
+  if (path === "/auth/me") {
+    return {
+      staleTime: 0,
+      gcTime: 30 * 60_000,
+      refetchOnMount: "always",
+      retry: false,
+    };
+  }
+
+  if (path === "/notifications/unread-count") {
+    return {
+      staleTime: 15_000,
+      gcTime: 5 * 60_000,
+      refetchInterval: 30_000,
+      refetchIntervalInBackground: true,
+    };
+  }
+
+  if (/^\/dashboard\/projects\/\d+\/progress$/.test(path)) {
+    return {
+      staleTime: 15_000,
+      gcTime: 5 * 60_000,
+    };
+  }
+
+  return {};
+}
 
 /**
  * Wrapper around useQuery for API GET requests.
@@ -19,11 +56,16 @@ import { api } from "@/lib/api";
 export function useApiQuery<TData = unknown>(
   key: QueryKey,
   path: string,
-  options?: Omit<UseQueryOptions<TData, Error>, "queryKey" | "queryFn">
+  options?: Omit<UseQueryOptions<TData, AppApiError>, "queryKey" | "queryFn">
 ) {
-  return useQuery<TData, Error>({
+  const defaults = queryDefaultsForPath(path) as Omit<
+    UseQueryOptions<TData, AppApiError>,
+    "queryKey" | "queryFn"
+  >;
+  return useQuery<TData, AppApiError>({
     queryKey: key,
     queryFn: () => api.get<TData>(path),
+    ...defaults,
     ...options,
   });
 }
@@ -41,9 +83,9 @@ export function useApiMutation<
 >(
   path: string,
   method: "POST" | "PUT" | "PATCH" | "DELETE" = "POST",
-  options?: Omit<UseMutationOptions<TData, Error, TVariables>, "mutationFn">
+  options?: Omit<UseMutationOptions<TData, AppApiError, TVariables>, "mutationFn">
 ) {
-  return useMutation<TData, Error, TVariables>({
+  return useMutation<TData, AppApiError, TVariables>({
     mutationFn: async (variables: TVariables) => {
       switch (method) {
         case "POST":

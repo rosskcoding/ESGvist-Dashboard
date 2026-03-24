@@ -23,10 +23,23 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [nextPath, setNextPath] = useState<string | null>(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   useEffect(() => {
     setHydrated(true);
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    setNextPath(params.get("next"));
+    setSessionExpired(params.get("reason") === "session-expired");
   }, []);
+
+  function resolveNextRoute(defaultRoute: string): string {
+    if (!nextPath || !nextPath.startsWith("/") || nextPath.startsWith("//")) {
+      return defaultRoute;
+    }
+    return nextPath;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,8 +48,8 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      await login(email, password);
-      router.push("/dashboard");
+      const session = await login(email, password);
+      router.push(resolveNextRoute(session.next_route));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -53,6 +66,11 @@ export default function LoginPage() {
 
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {sessionExpired && !error && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              Your session expired. Sign in again to continue.
+            </div>
+          )}
           {error && (
             <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">
               {error}

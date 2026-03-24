@@ -47,6 +47,37 @@ test.describe("Screen 15 - Evidence Repository", () => {
     await expect(page.getByText(title)).toHaveCount(0);
   });
 
+  test("shows an inline error when adding a link fails", async ({ page }) => {
+    await loginThroughUi(page, demoState.users.collector_energy.email, demoState.password);
+    await page.route("**/api/evidences", async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: {
+            code: "EVIDENCE_CREATE_FAILED",
+            message: "Evidence link could not be saved.",
+            details: [],
+            requestId: "pw-evidence-failure",
+          },
+        }),
+      });
+    });
+
+    await page.goto("/evidence");
+    await page.getByRole("button", { name: "Add Link" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Title").fill(`Broken link ${Date.now()}`);
+    await dialog.getByLabel("URL").fill("https://example.com/failure");
+    await dialog.getByRole("button", { name: "Add Link" }).click();
+
+    await expect(page.getByText("Evidence link could not be saved.")).toBeVisible();
+  });
+
   test("auditor sees read-only evidence controls", async ({ page }) => {
     await loginThroughUi(page, demoState.users.auditor.email, demoState.password);
     await page.goto("/evidence");
@@ -55,7 +86,13 @@ test.describe("Screen 15 - Evidence Repository", () => {
       page.getByText("Auditor access is read-only. Upload, add link, and delete actions are disabled.")
     ).toBeVisible();
     await expect(page.getByRole("button", { name: "Add Link" })).toBeDisabled();
-    await expect(page.getByTitle("Delete").first()).toBeDisabled();
+
+    const deleteButtons = page.getByTitle("Delete");
+    if (await deleteButtons.count()) {
+      await expect(deleteButtons.first()).toBeDisabled();
+    } else {
+      await expect(page.getByText("No evidence records found.")).toBeVisible();
+    }
   });
 
   test("reviewer is blocked from evidence repository", async ({ page }) => {

@@ -1,4 +1,4 @@
-from sqlalchemy import func, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError
@@ -35,7 +35,7 @@ class SharedElementRepository:
 
         q = (
             select(SharedElement)
-            .order_by(SharedElement.id)
+            .order_by(desc(SharedElement.id))
             .offset((page - 1) * page_size)
             .limit(page_size)
         )

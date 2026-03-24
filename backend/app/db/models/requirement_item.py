@@ -1,4 +1,4 @@
-from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, Boolean, Date, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.models.base import Base, TimestampMixin
@@ -32,6 +32,12 @@ class RequirementItem(Base, TimestampMixin):
     granularity_rule: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     validation_rule: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # Versioning (TZ-Admin 3.14)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    is_current: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
+    valid_from: Mapped[str | None] = mapped_column(Date, nullable=True)
+    valid_to: Mapped[str | None] = mapped_column(Date, nullable=True)
 
     children = relationship(
         "RequirementItem", lazy="noload", overlaps="parent",

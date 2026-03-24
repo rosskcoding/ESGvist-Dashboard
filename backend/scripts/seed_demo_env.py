@@ -5,8 +5,10 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.core.schema_runtime import stamp_database_async
 from app.core.security import hash_password
 from app.db.models import Base
 from app.db.models.boundary import BoundaryDefinition, BoundaryMembership
@@ -98,8 +100,14 @@ async def main() -> None:
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+        if conn.dialect.name == "postgresql":
+            await conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
+            await conn.execute(text("CREATE SCHEMA public"))
+            await conn.execute(text("GRANT ALL ON SCHEMA public TO public"))
+        else:
+            await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
+    await stamp_database_async(DATABASE_URL)
 
     async with session_factory() as session:
         users: dict[str, User] = {}

@@ -47,6 +47,49 @@ async def test_create_project(client: AsyncClient, org_ctx: dict):
 
 
 @pytest.mark.asyncio
+async def test_create_project_inherits_org_defaults(client: AsyncClient):
+    await client.post(
+        "/api/auth/register",
+        json={"email": "defaults-project@test.com", "password": "password123", "full_name": "Defaults Project"},
+    )
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": "defaults-project@test.com", "password": "password123"},
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    for payload in (
+        {"code": "GRI", "name": "GRI"},
+        {"code": "IFRS_S2", "name": "IFRS S2"},
+    ):
+        standard = await client.post("/api/standards", json=payload, headers=headers)
+        assert standard.status_code == 201
+
+    org = await client.post(
+        "/api/organizations/setup",
+        json={
+            "name": "Defaults Project Org",
+            "country": "DE",
+            "reporting_year": 2028,
+            "standards": ["GRI", "IFRS_S2"],
+        },
+        headers=headers,
+    )
+    assert org.status_code == 201
+    headers["X-Organization-Id"] = str(org.json()["organization_id"])
+
+    project = await client.post(
+        "/api/projects",
+        json={"name": "Inherited Defaults Project"},
+        headers=headers,
+    )
+    assert project.status_code == 201
+    assert project.json()["reporting_year"] == 2028
+    assert project.json()["boundary_definition_id"] == org.json()["boundary_id"]
+    assert project.json()["standard_codes"] == ["GRI", "IFRS_S2"]
+
+
+@pytest.mark.asyncio
 async def test_list_projects(client: AsyncClient, org_ctx: dict):
     await client.post(
         "/api/projects",

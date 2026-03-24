@@ -27,6 +27,7 @@ class AIInteraction(Base):
     gate_blocked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     gate_reason: Mapped[str | None] = mapped_column(String, nullable=True)
     tools_blocked: Mapped[str | None] = mapped_column(String, nullable=True)
+    tools_used: Mapped[str | None] = mapped_column(String, nullable=True)
     output_filtered: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     output_filter_reason: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

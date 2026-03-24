@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Card,
   CardContent,
@@ -91,7 +91,30 @@ interface CurrentUser {
   id: number;
   email: string;
   full_name: string;
+  roles: Array<{ role: UserRole | "platform_admin" }>;
+}
+
+interface InvitationMutationResponse {
+  id: number;
+  email: string;
   role: UserRole;
+  status: string;
+  expires_at?: string | null;
+}
+
+interface UserRoleUpdateResponse {
+  id: number;
+  role: UserRole;
+}
+
+interface UserStatusUpdateResponse {
+  id: number;
+  status: UserStatus;
+}
+
+interface RemoveUserResponse {
+  user_id: number;
+  removed: boolean;
 }
 
 // ---------- Constants ----------
@@ -139,9 +162,11 @@ function isForbidden(error: Error | null) {
 // ---------- Component ----------
 
 export default function UsersPage() {
+  const queryClient = useQueryClient();
   const [roleFilter, setRoleFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // Dialog states
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -157,79 +182,161 @@ export default function UsersPage() {
   const [editNewRole, setEditNewRole] = useState<UserRole>("collector");
 
   // Queries
-  const { data: currentUser } = useApiQuery<CurrentUser>(
-    ["auth", "me"],
+  const { data: currentUser, isLoading: meLoading } = useApiQuery<CurrentUser>(
+    ["auth-me"],
     "/auth/me"
   );
-
-  const { data, isLoading, error, refetch } = useApiQuery<UsersResponse>(
-    ["users"],
-    "/auth/organization/users"
+  const canManageUsers = (currentUser?.roles ?? []).some((binding) =>
+    ["admin", "platform_admin"].includes(binding.role)
   );
+
+  const { data, isLoading, error } = useApiQuery<UsersResponse>(
+    ["users"],
+    "/auth/organization/users",
+    { enabled: canManageUsers }
+  );
+
+  function updateUsersCache(updater: (current: UsersResponse) => UsersResponse) {
+    queryClient.setQueryData<UsersResponse>(["users"], (current) =>
+      current ? updater(current) : current
+    );
+  }
 
   // Mutations
   const inviteMutation = useApiMutation<
-    void,
+    InvitationMutationResponse,
     { email: string; role: UserRole; message?: string }
   >("/auth/invitations", "POST", {
-    onSuccess: () => {
+    onSuccess: (invitation) => {
+      setActionError(null);
       setInviteOpen(false);
       setInviteEmail("");
       setInviteRole("collector");
       setInviteMessage("");
-      refetch();
+      updateUsersCache((current) => ({
+        ...current,
+        pending_invitations: [
+          {
+            id: invitation.id,
+            email: invitation.email,
+            role: invitation.role,
+            invited_at: new Date().toISOString(),
+            invited_by: currentUser?.full_name || currentUser?.email || "Current user",
+          },
+          ...current.pending_invitations.filter((item) => item.id !== invitation.id),
+        ],
+      }));
+    },
+    onError: (error) => {
+      setActionError(error.message);
     },
   });
 
-  const updateRoleMutation = useApiMutation<void, { role: UserRole }>(
+  const updateRoleMutation = useApiMutation<UserRoleUpdateResponse, { role: UserRole }>(
     editRoleTarget ? `/auth/users/${editRoleTarget.id}/role` : "/auth/users",
     "PATCH",
     {
-      onSuccess: () => {
+      onSuccess: (updated) => {
+        setActionError(null);
+        updateUsersCache((current) => ({
+          ...current,
+          users: current.users.map((user) =>
+            user.id === updated.id ? { ...user, role: updated.role } : user
+          ),
+        }));
         setEditRoleTarget(null);
-        refetch();
+      },
+      onError: (error) => {
+        setActionError(error.message);
       },
     }
   );
 
   const toggleStatusMutation = useMutation<
-    void,
+    UserStatusUpdateResponse,
     Error,
     { userId: number; status: UserStatus }
   >({
     mutationFn: async ({ userId, status }) => {
-      await api.patch(`/auth/users/${userId}/status`, { status });
+      return api.patch<UserStatusUpdateResponse>(`/auth/users/${userId}/status`, { status });
     },
-    onSuccess: () => refetch(),
+    onSuccess: (updated) => {
+      setActionError(null);
+      updateUsersCache((current) => ({
+        ...current,
+        users: current.users.map((user) =>
+          user.id === updated.id ? { ...user, status: updated.status } : user
+        ),
+      }));
+    },
+    onError: (error) => {
+      setActionError(error.message);
+    },
   });
 
-  const removeUserMutation = useApiMutation<void, void>(
+  const removeUserMutation = useApiMutation<RemoveUserResponse, void>(
     removeTarget ? `/auth/users/${removeTarget.id}` : "/auth/users",
     "DELETE",
     {
-      onSuccess: () => {
+      onSuccess: (result) => {
+        setActionError(null);
+        updateUsersCache((current) => ({
+          ...current,
+          users: current.users.filter((user) => user.id !== result.user_id),
+        }));
         setRemoveTarget(null);
-        refetch();
+      },
+      onError: (error) => {
+        setActionError(error.message);
       },
     }
   );
 
-  const resendInviteMutation = useMutation<void, Error, number>({
+  const resendInviteMutation = useMutation<InvitationMutationResponse, Error, number>({
     mutationFn: async (invitationId) => {
-      await api.post(`/auth/invitations/${invitationId}/resend`, {});
+      return api.post<InvitationMutationResponse>(`/auth/invitations/${invitationId}/resend`, {});
     },
-    onSuccess: () => refetch(),
+    onSuccess: (updated) => {
+      setActionError(null);
+      updateUsersCache((current) => ({
+        ...current,
+        pending_invitations: current.pending_invitations.map((invitation) =>
+          invitation.id === updated.id
+            ? {
+                ...invitation,
+                invited_at: new Date().toISOString(),
+                invited_by: currentUser?.full_name || currentUser?.email || invitation.invited_by,
+              }
+            : invitation
+        ),
+      }));
+    },
+    onError: (error) => {
+      setActionError(error.message);
+    },
   });
 
-  const cancelInviteMutation = useMutation<void, Error, number>({
+  const cancelInviteMutation = useMutation<{ id: number; cancelled: boolean }, Error, number>({
     mutationFn: async (invitationId) => {
-      await api.delete(`/auth/invitations/${invitationId}`);
+      return api.delete<{ id: number; cancelled: boolean }>(`/auth/invitations/${invitationId}`);
     },
-    onSuccess: () => refetch(),
+    onSuccess: (result) => {
+      setActionError(null);
+      updateUsersCache((current) => ({
+        ...current,
+        pending_invitations: current.pending_invitations.filter(
+          (invitation) => invitation.id !== result.id
+        ),
+      }));
+    },
+    onError: (error) => {
+      setActionError(error.message);
+    },
   });
 
   const users = data?.users ?? [];
   const pendingInvitations = data?.pending_invitations ?? [];
+  const accessDenied = (Boolean(currentUser) && !canManageUsers) || (Boolean(error) && isForbidden(error));
 
   const filteredUsers = useMemo(() => {
     let result = users;
@@ -262,7 +369,7 @@ export default function UsersPage() {
 
   // ---------- Render ----------
 
-  if (isLoading) {
+  if (meLoading || (canManageUsers && isLoading)) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
@@ -270,7 +377,7 @@ export default function UsersPage() {
     );
   }
 
-  if (error && isForbidden(error)) {
+  if (accessDenied) {
     return (
       <div className="space-y-6">
         <div>
@@ -331,6 +438,12 @@ export default function UsersPage() {
           Add User
         </Button>
       </div>
+
+      {actionError && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="p-4 text-sm text-red-700">{actionError}</CardContent>
+        </Card>
+      )}
 
       {/* Filters */}
       <Card>
@@ -432,6 +545,7 @@ export default function UsersPage() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem
+                            disabled={updateRoleMutation.isPending}
                             onClick={() => {
                               setEditRoleTarget(user);
                               setEditNewRole(user.role);
@@ -441,6 +555,7 @@ export default function UsersPage() {
                             Edit Role
                           </DropdownMenuItem>
                           <DropdownMenuItem
+                            disabled={toggleStatusMutation.isPending}
                             onClick={() => handleToggleStatus(user)}
                           >
                             {user.status === "active" ? (
@@ -457,6 +572,7 @@ export default function UsersPage() {
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
+                            disabled={removeUserMutation.isPending}
                             onClick={() => setRemoveTarget(user)}
                             className="text-red-600"
                           >
@@ -522,6 +638,7 @@ export default function UsersPage() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      disabled={resendInviteMutation.isPending || cancelInviteMutation.isPending}
                       onClick={() => resendInviteMutation.mutate(inv.id)}
                     >
                       <RefreshCw className="mr-1 h-3 w-3" />
@@ -530,6 +647,7 @@ export default function UsersPage() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      disabled={resendInviteMutation.isPending || cancelInviteMutation.isPending}
                       onClick={() => cancelInviteMutation.mutate(inv.id)}
                     >
                       <X className="mr-1 h-3 w-3 text-red-500" />

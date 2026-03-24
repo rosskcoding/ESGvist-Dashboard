@@ -12,7 +12,7 @@ async def admin_headers(client: AsyncClient) -> dict:
         "/api/auth/login",
         json={"email": "admin@test.com", "password": "password123"},
     )
-    return {"Authorization": f"Bearer {resp.json()['access_token']}", "X-Organization-Id": "1"}
+    return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 
 @pytest.mark.asyncio
@@ -88,7 +88,7 @@ async def test_list_dimensions(client: AsyncClient, admin_headers: dict):
         headers=admin_headers,
     )
 
-    resp = await client.get(f"/api/shared-elements/{el_id}/dimensions")
+    resp = await client.get(f"/api/shared-elements/{el_id}/dimensions", headers=admin_headers)
     assert resp.status_code == 200
     assert len(resp.json()) == 2
 
@@ -102,9 +102,10 @@ async def test_list_elements(client: AsyncClient, admin_headers: dict):
             headers=admin_headers,
         )
 
-    resp = await client.get("/api/shared-elements")
+    resp = await client.get("/api/shared-elements?page_size=200", headers=admin_headers)
     assert resp.status_code == 200
     assert resp.json()["total"] == 3
+    assert len(resp.json()["items"]) == 3
 
 
 @pytest.mark.asyncio
@@ -122,7 +123,7 @@ async def test_get_element_with_dimensions(client: AsyncClient, admin_headers: d
         headers=admin_headers,
     )
 
-    resp = await client.get(f"/api/shared-elements/{el_id}")
+    resp = await client.get(f"/api/shared-elements/{el_id}", headers=admin_headers)
     assert resp.status_code == 200
     data = resp.json()
     assert len(data["dimensions"]) == 1

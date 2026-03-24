@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
+import { AIBoundaryWhy } from "@/components/ai-inline-explain";
 import { useApiQuery, useApiMutation } from "@/lib/hooks/use-api";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -70,6 +71,7 @@ interface Membership {
   id: number;
   entity_id: number;
   entity_name: string;
+  entity_code?: string | null;
   entity_type: string;
   included: boolean;
   inclusion_source?: string | null;
@@ -121,6 +123,35 @@ const BOUNDARY_TYPE_VARIANT: Record<
   custom: "secondary",
 };
 
+function upsertBoundaryList(
+  current: Boundary[] | undefined,
+  nextBoundary: Boundary
+): Boundary[] {
+  const existing = current ?? [];
+  const existingIndex = existing.findIndex((boundary) => boundary.id === nextBoundary.id);
+  const nextList =
+    existingIndex === -1
+      ? [nextBoundary, ...existing]
+      : existing.map((boundary, index) => (index === existingIndex ? nextBoundary : boundary));
+  if (!nextBoundary.is_default) {
+    return nextList;
+  }
+  return nextList.map((boundary) =>
+    boundary.id === nextBoundary.id ? boundary : { ...boundary, is_default: false }
+  );
+}
+
+function patchBoundaryCount(
+  current: Boundary[] | undefined,
+  boundaryId: number,
+  entityCount: number
+): Boundary[] | undefined {
+  if (!current) return current;
+  return current.map((boundary) =>
+    boundary.id === boundaryId ? { ...boundary, entity_count: entityCount } : boundary
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Add / Edit Boundary Dialog
 // ---------------------------------------------------------------------------
@@ -145,12 +176,25 @@ function BoundaryDialog({
     is_default: boundary?.is_default ?? false,
   });
 
+  useEffect(() => {
+    setForm({
+      name: boundary?.name ?? "",
+      boundary_type:
+        (boundary?.boundary_type ?? boundary?.type ?? "financial_reporting_default") as BoundaryType,
+      description: boundary?.description ?? "",
+      is_default: boundary?.is_default ?? false,
+    });
+  }, [boundary, open]);
+
   const createMutation = useApiMutation<Boundary, typeof form>(
     "/boundaries",
     "POST",
     {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["boundaries"] });
+      onSuccess: (createdBoundary) => {
+        queryClient.setQueryData<Boundary[]>(
+          ["boundaries"],
+          (current) => upsertBoundaryList(current, createdBoundary)
+        );
         onOpenChange(false);
       },
     }
@@ -160,11 +204,11 @@ function BoundaryDialog({
     `/boundaries/${boundary?.id}`,
     "PATCH",
     {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["boundaries"] });
-        queryClient.invalidateQueries({
-          queryKey: ["boundary", boundary?.id],
-        });
+      onSuccess: (updatedBoundary) => {
+        queryClient.setQueryData<Boundary[]>(
+          ["boundaries"],
+          (current) => upsertBoundaryList(current, updatedBoundary)
+        );
         onOpenChange(false);
       },
     }
@@ -331,11 +375,16 @@ function BoundaryDetail({ boundary }: { boundary: Boundary }) {
       inclusion_reason?: string | null;
     }> }
   >(`/boundaries/${boundary.id}/memberships`, "PUT", {
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["boundary-memberships", boundary.id],
-      });
-      queryClient.invalidateQueries({ queryKey: ["boundaries"] });
+    onSuccess: (result) => {
+      const includedCount = result.memberships.filter((membership) => membership.included).length;
+      queryClient.setQueryData<BoundaryMembershipResponse>(
+        ["boundary-memberships", boundary.id],
+        result
+      );
+      queryClient.setQueryData<Boundary[]>(
+        ["boundaries"],
+        (current) => patchBoundaryCount(current, boundary.id, includedCount)
+      );
     },
   });
 
@@ -448,13 +497,19 @@ function BoundaryDetail({ boundary }: { boundary: Boundary }) {
                     <Badge variant="outline">{m.entity_type}</Badge>
                   </TableCell>
                   <TableCell>
-                    <MembershipIncludedToggle
-                      checked={m.included}
-                      disabled={replaceMembershipsMutation.isPending}
-                      onCheckedChange={(checked) =>
-                        handleMembershipChange(m.entity_id, { included: checked })
-                      }
-                    />
+                    <div className="flex items-center gap-2">
+                      <MembershipIncludedToggle
+                        checked={m.included}
+                        disabled={replaceMembershipsMutation.isPending}
+                        onCheckedChange={(checked) =>
+                          handleMembershipChange(m.entity_id, { included: checked })
+                        }
+                      />
+                      <AIBoundaryWhy
+                        entityId={m.entity_id}
+                        included={m.included}
+                      />
+                    </div>
                   </TableCell>
                   <TableCell>
                     <MembershipMethodSelect
@@ -544,11 +599,14 @@ function DefaultSwitch({
 }) {
   const queryClient = useQueryClient();
   const toggleMutation = useApiMutation<Boundary, { is_default: boolean }>(
-    `/api/boundaries/${boundary.id}`,
+    `/boundaries/${boundary.id}`,
     "PATCH",
     {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["boundaries"] });
+      onSuccess: (updatedBoundary) => {
+        queryClient.setQueryData<Boundary[]>(
+          ["boundaries"],
+          (current) => upsertBoundaryList(current, updatedBoundary)
+        );
       },
     }
   );
@@ -574,7 +632,7 @@ export default function BoundariesPage() {
   const [editBoundary, setEditBoundary] = useState<Boundary | null>(null);
 
   const { data: currentUser } = useApiQuery<CurrentUser>(
-    ["auth", "me"],
+    ["auth-me"],
     "/auth/me"
   );
   const { data: boundaries, isLoading } = useApiQuery<Boundary[]>(

@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError
 from app.db.models.data_point import DataPoint, DataPointDimension
+from app.db.models.data_point_version import DataPointVersion
 from app.db.models.evidence import DataPointEvidence
 
 
@@ -88,3 +89,11 @@ class DataPointRepository:
             )
         )
         return result.scalar_one()
+
+    async def list_versions(self, dp_id: int) -> list[DataPointVersion]:
+        result = await self.session.execute(
+            select(DataPointVersion)
+            .where(DataPointVersion.data_point_id == dp_id)
+            .order_by(DataPointVersion.version.desc())
+        )
+        return list(result.scalars().all())

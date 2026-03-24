@@ -1,7 +1,12 @@
 from fastapi import APIRouter, Depends, Query, status
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import RequestContext, get_current_context
+from app.core.dependencies import (
+    RequestContext,
+    get_current_context,
+    get_current_onboarding_context,
+)
 from app.db.session import get_session
 from app.repositories.audit_repo import AuditRepository
 from app.repositories.entity_repo import EntityRepository
@@ -33,7 +38,7 @@ def _get_service(session: AsyncSession) -> EntityService:
 @router.post("/api/organizations/setup", status_code=status.HTTP_201_CREATED)
 async def setup_organization(
     payload: OrgSetupRequest,
-    ctx: RequestContext = Depends(get_current_context),
+    ctx: RequestContext = Depends(get_current_onboarding_context),
     session: AsyncSession = Depends(get_session),
 ):
     return await _get_service(session).setup_organization(payload, ctx)
@@ -84,3 +89,37 @@ async def create_control(
     session: AsyncSession = Depends(get_session),
 ):
     return await _get_service(session).create_control(payload, ctx)
+
+
+# -- Organization Settings ---------------------------------------------------
+
+
+class OrgSettingsUpdate(BaseModel):
+    name: str | None = None
+    legal_name: str | None = None
+    country: str | None = None
+    jurisdiction: str | None = None
+    industry: str | None = None
+    default_currency: str | None = None
+    default_reporting_year: int | None = None
+    default_consolidation_approach: str | None = None
+    default_ghg_scope_approach: str | None = None
+
+
+@router.get("/api/organizations/settings")
+async def get_org_settings(
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _get_service(session).get_org_settings(ctx)
+
+
+@router.patch("/api/organizations/settings")
+async def update_org_settings(
+    payload: OrgSettingsUpdate,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _get_service(session).update_org_settings(
+        payload.model_dump(exclude_unset=True), ctx
+    )

@@ -29,6 +29,7 @@ async def list_items(
     disclosure_id: int,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
+    ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
     return await _get_service(session).list_items(disclosure_id, page, page_size)
@@ -51,6 +52,7 @@ async def create_item(
 @router.get("/api/items/{item_id}/dependencies", response_model=list[DependencyOut])
 async def list_dependencies(
     item_id: int,
+    ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
     return await _get_service(session).list_dependencies(item_id)

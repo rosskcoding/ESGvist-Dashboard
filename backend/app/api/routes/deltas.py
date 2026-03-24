@@ -1,12 +1,11 @@
 from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import RequestContext, get_current_context
-from app.core.exceptions import AppError
-from app.db.models.delta import RequirementDelta
 from app.db.session import get_session
+from app.repositories.delta_repo import DeltaRepository
+from app.services.delta_service import DeltaService
 
 router = APIRouter(prefix="/api/deltas", tags=["Deltas"])
 
@@ -32,18 +31,17 @@ class DeltaOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+def _get_service(session: AsyncSession) -> DeltaService:
+    return DeltaService(repo=DeltaRepository(session))
+
+
 @router.post("", response_model=DeltaOut, status_code=status.HTTP_201_CREATED)
 async def create_delta(
     payload: DeltaCreate,
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    if ctx.role not in ("admin", "platform_admin"):
-        raise AppError("FORBIDDEN", 403, "Only admin can create deltas")
-
-    delta = RequirementDelta(**payload.model_dump())
-    session.add(delta)
-    await session.flush()
+    delta = await _get_service(session).create(payload.model_dump(), ctx)
     return DeltaOut.model_validate(delta)
 
 
@@ -52,8 +50,5 @@ async def list_deltas(
     standard_id: int | None = None,
     session: AsyncSession = Depends(get_session),
 ):
-    q = select(RequirementDelta)
-    if standard_id:
-        q = q.where(RequirementDelta.standard_id == standard_id)
-    result = await session.execute(q)
-    return [DeltaOut.model_validate(d) for d in result.scalars().all()]
+    deltas = await _get_service(session).list(standard_id=standard_id)
+    return [DeltaOut.model_validate(d) for d in deltas]

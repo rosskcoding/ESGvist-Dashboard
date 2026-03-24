@@ -2,9 +2,21 @@ name: Backend CI
 
 on:
   push:
-    paths: ["backend/**"]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend.yml"
+      - "docker-compose.yml"
+      - ".env.example"
+      - "docs/DB-SCHEMA-RUNTIME.md"
+      - "docs/RUNTIME-CONFIG.md"
   pull_request:
-    paths: ["backend/**"]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend.yml"
+      - "docker-compose.yml"
+      - ".env.example"
+      - "docs/DB-SCHEMA-RUNTIME.md"
+      - "docs/RUNTIME-CONFIG.md"
 
 jobs:
   lint-and-test:
@@ -48,6 +60,9 @@ jobs:
 
       - name: Type check (mypy)
         run: mypy app/ --ignore-missing-imports
+
+      - name: Schema Runtime Smoke
+        run: python scripts/schema_smoke.py
 
       - name: Test (pytest)
         run: pytest tests/ -v

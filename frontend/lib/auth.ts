@@ -1,12 +1,15 @@
 import { api } from "./api";
+import { clearSupportModeForLogout } from "./support-mode";
+
+const LEGACY_ACCESS_TOKEN_KEY = "access_token";
+const LEGACY_REFRESH_TOKEN_KEY = "refresh_token";
+const ORGANIZATION_ID_KEY = "organization_id";
 
 interface TokenResponse {
-  access_token: string;
-  refresh_token: string;
   token_type: string;
 }
 
-interface UserResponse {
+export interface UserResponse {
   id: number;
   email: string;
   full_name: string;
@@ -19,29 +22,57 @@ interface UserResponse {
   }>;
 }
 
+export function clearClientAuthState(): void {
+  if (typeof window === "undefined") return;
+  clearSupportModeForLogout();
+  localStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
+  localStorage.removeItem(LEGACY_REFRESH_TOKEN_KEY);
+  localStorage.removeItem(ORGANIZATION_ID_KEY);
+}
+
+function resolvePostLoginRoute(me: UserResponse) {
+  const orgRole = me.roles.find((role) => role.scope_type === "organization" && role.scope_id);
+  if (orgRole?.scope_id) {
+    return "/dashboard";
+  }
+  if (me.roles.some((role) => role.role === "platform_admin")) {
+    return "/platform/tenants";
+  }
+  return "/onboarding";
+}
+
 export async function login(
   email: string,
   password: string
-): Promise<TokenResponse> {
-  const data = await api.post<TokenResponse>("/auth/login", {
+): Promise<{ next_route: string }> {
+  await api.post<TokenResponse>("/auth/login", {
     email,
     password,
   });
-  localStorage.setItem("access_token", data.access_token);
-  localStorage.setItem("refresh_token", data.refresh_token);
+  localStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
+  localStorage.removeItem(LEGACY_REFRESH_TOKEN_KEY);
 
   // Auto-set organization_id from user's first org role
+  let nextRoute = "/dashboard";
   try {
     const me = await api.get<UserResponse>("/auth/me");
     const orgRole = me.roles.find((r) => r.scope_type === "organization" && r.scope_id);
     if (orgRole?.scope_id) {
-      localStorage.setItem("organization_id", String(orgRole.scope_id));
+      await api.post("/auth/context/organization", {
+        organization_id: orgRole.scope_id,
+      });
+    } else {
+      await api.post("/auth/context/organization", {
+        organization_id: null,
+      });
+      localStorage.removeItem(ORGANIZATION_ID_KEY);
     }
+    nextRoute = resolvePostLoginRoute(me);
   } catch {
     // Ignore — org will be set later
   }
 
-  return data;
+  return { next_route: nextRoute };
 }
 
 export async function register(
@@ -64,13 +95,14 @@ export async function logout(): Promise<void> {
   try {
     await api.post("/auth/logout");
   } finally {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
-    localStorage.removeItem("organization_id");
+    clearClientAuthState();
   }
 }
 
-export function isAuthenticated(): boolean {
-  if (typeof window === "undefined") return false;
-  return !!localStorage.getItem("access_token");
+export async function logoutAll(): Promise<{ revoked_sessions: number }> {
+  try {
+    return await api.post<{ revoked_sessions: number }>("/auth/logout-all");
+  } finally {
+    clearClientAuthState();
+  }
 }

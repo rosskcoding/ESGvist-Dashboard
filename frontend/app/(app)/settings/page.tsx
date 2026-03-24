@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Building2, Globe, Loader2, LockKeyhole, Save, ShieldAlert } from "lucide-react";
 
 import { useApiMutation, useApiQuery } from "@/lib/hooks/use-api";
@@ -42,6 +43,7 @@ type OrgAuthSettings = {
 const currentYear = new Date().getFullYear();
 
 export default function OrganizationSettingsPage() {
+  const queryClient = useQueryClient();
   const [form, setForm] = useState({
     name: "",
     country: "",
@@ -60,7 +62,7 @@ export default function OrganizationSettingsPage() {
   const [authError, setAuthError] = useState("");
 
   const { data: me, isLoading: meLoading } = useApiQuery<{ roles: RoleBinding[] }>(
-    ["auth-me", "organization-settings"],
+    ["auth-me"],
     "/auth/me"
   );
   const canAccess = (me?.roles ?? []).some((binding) =>
@@ -68,7 +70,7 @@ export default function OrganizationSettingsPage() {
   );
   const accessDenied = Boolean(me) && !canAccess;
 
-  const { data, isLoading, refetch } = useApiQuery<OrgSettings>(
+  const { data, isLoading } = useApiQuery<OrgSettings>(
     ["org-settings"],
     "/auth/me/organization",
     { enabled: canAccess }
@@ -80,7 +82,7 @@ export default function OrganizationSettingsPage() {
     { enabled: canAccess }
   );
 
-  const { data: authSettings, refetch: refetchAuthSettings } = useApiQuery<OrgAuthSettings>(
+  const { data: authSettings } = useApiQuery<OrgAuthSettings>(
     ["organization-auth-settings"],
     "/auth/organization/auth-settings",
     { enabled: canAccess }
@@ -118,7 +120,7 @@ export default function OrganizationSettingsPage() {
 
   async function saveOrganizationSettings() {
     setSaved(false);
-    await saveMutation.mutateAsync({
+    const updated = await saveMutation.mutateAsync({
       name: form.name,
       country: form.country || null,
       industry: form.industry || null,
@@ -126,7 +128,7 @@ export default function OrganizationSettingsPage() {
       reporting_year: Number(form.reporting_year),
       default_boundary_id: form.default_boundary_id ? Number(form.default_boundary_id) : null,
     });
-    await refetch();
+    queryClient.setQueryData(["org-settings"], updated);
     setSaved(true);
   }
 
@@ -134,8 +136,8 @@ export default function OrganizationSettingsPage() {
     setAuthError("");
     setAuthSaved(false);
     try {
-      await authSettingsMutation.mutateAsync(authForm);
-      await refetchAuthSettings();
+      const updated = await authSettingsMutation.mutateAsync(authForm);
+      queryClient.setQueryData(["organization-auth-settings"], updated);
       setAuthSaved(true);
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "Failed to save auth settings.");

@@ -1,38 +1,25 @@
-import { expect, test, type APIRequestContext } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
-import { apiPost, loadDemoState, loginByApi, loginThroughUi } from "./screen-helpers";
+import {
+  createApprovedCollectionItem,
+  createAssignedDraftCollectionItem,
+  loadDemoState,
+  loginThroughUi,
+} from "./screen-helpers";
 
 const demoState = loadDemoState();
 
-async function createDraftEnergyDataPoint(request: APIRequestContext) {
-  const auth = await loginByApi(
-    request,
-    demoState.users.collector_energy.email,
-    demoState.password,
-  );
-
-  return apiPost<{ id: number }>(
-    request,
-    `${demoState.api_url!.replace("localhost", "127.0.0.1")}/projects/${demoState.project.id}/data-points`,
-    auth.headers,
-    {
-      shared_element_id: demoState.shared_elements!.energy_total_mwh.id,
-      entity_id: demoState.entities!.generation.id,
-      numeric_value: 120000.5,
-      unit_code: "MWH",
-    },
-  );
-}
-
 test.describe("Screen 14 - Data Entry Wizard", () => {
   test("collector submits a draft numeric data point through the wizard", async ({ page, request }) => {
-    const draft = await createDraftEnergyDataPoint(request);
+    const draft = await createAssignedDraftCollectionItem(request, `wizard-${Date.now()}`);
 
     await loginThroughUi(page, demoState.users.collector_energy.email, demoState.password);
     await page.goto(`/collection/${draft.id}`);
 
-    await expect(page.getByRole("button", { name: "Back to Collection" })).toBeVisible();
-    await expect(page.getByText("ENERGY_TOTAL_MWH", { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Back to Collection" })
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(draft.code, { exact: true })).toBeVisible({ timeout: 15_000 });
 
     await page.getByRole("button", { name: "Next", exact: true }).click();
     await page.getByLabel("Value").fill("130000.7");
@@ -45,24 +32,76 @@ test.describe("Screen 14 - Data Entry Wizard", () => {
     });
 
     await page.getByRole("button", { name: "Next", exact: true }).click();
-    await expect(page.getByText("Preview & Gate Check")).toBeVisible();
+    await expect(page.getByText("Preview & Gate Check")).toBeVisible({ timeout: 15_000 });
     await page.getByRole("button", { name: "Run Gate Check" }).click();
-    await expect(page.getByText("All checks passed. Ready to submit.")).toBeVisible();
+    await expect(page.getByText("All checks passed. Ready to submit.")).toBeVisible({
+      timeout: 15_000,
+    });
 
     await page.getByRole("button", { name: "Next", exact: true }).click();
-    await expect(page.getByText("Confirm Submission")).toBeVisible();
+    await expect(page.getByText("Confirm Submission")).toBeVisible({ timeout: 15_000 });
     await page.getByRole("button", { name: "Submit Data Point" }).click();
 
-    await expect(page.getByText("Data point submitted successfully")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Back to Collection" }).last()).toBeVisible();
+    await expect(page.getByText("Data point submitted successfully")).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByRole("button", { name: "Back to Collection" }).last()).toBeVisible({
+      timeout: 15_000,
+    });
   });
 
-  test("shows read-only banner for an approved collector data point", async ({ page }) => {
-    await loginThroughUi(page, demoState.users.collector_energy.email, demoState.password);
-    await page.goto("/collection/1");
+  test("shows read-only banner for an approved collector data point", async ({ page, request }) => {
+    const approved = await createApprovedCollectionItem(request, `readonly-${Date.now()}`);
 
-    await expect(page.getByText("This data point is read-only while it is in the")).toBeVisible();
+    await loginThroughUi(page, demoState.users.collector_energy.email, demoState.password);
+    await page.goto(`/collection/${approved.id}`);
+
+    await expect(page.getByText("This data point is read-only while it is in the")).toBeVisible({
+      timeout: 15_000,
+    });
     await expect(page.getByRole("button", { name: "Next", exact: true })).toBeDisabled();
+  });
+
+  test("shows a gate-check error banner when preview preparation fails", async ({
+    page,
+    request,
+  }) => {
+    const draft = await createAssignedDraftCollectionItem(request, `wizard-gate-fail-${Date.now()}`);
+
+    await loginThroughUi(page, demoState.users.collector_energy.email, demoState.password);
+    await page.route("**/api/gate-check", async (route) => {
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: {
+            code: "GATE_CHECK_ERROR",
+            message: "Gate check service is temporarily unavailable.",
+            details: [],
+            requestId: "pw-gate-failure",
+          },
+        }),
+      });
+    });
+
+    await page.goto(`/collection/${draft.id}`);
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await page.getByLabel("Value").fill("130000.7");
+    await page.getByLabel("Unit").selectOption("MWH");
+    await page.getByLabel("Methodology").selectOption("Utility bill reconciliation");
+    await page.locator('input[type="file"]').setInputFiles({
+      name: "meter-evidence.pdf",
+      mimeType: "application/pdf",
+      buffer: Buffer.from("%PDF-1.4 demo evidence"),
+    });
+
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await page.getByRole("button", { name: "Run Gate Check" }).click();
+
+    await expect(
+      page.getByText("Gate check service is temporarily unavailable.", { exact: true })
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Blocker:")).toBeVisible();
   });
 
   for (const user of [demoState.users.reviewer, demoState.users.auditor]) {

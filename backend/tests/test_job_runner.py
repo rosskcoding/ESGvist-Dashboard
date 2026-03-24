@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta, timezone
+import socket
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -11,6 +12,22 @@ from app.db.models.worker_lease import WorkerLease
 from app.repositories.worker_lease_repo import WorkerLeaseRepository
 from app.workers.job_runner import JobRunner
 from tests.conftest import TestSessionLocal
+
+
+@pytest.fixture(autouse=True)
+def stub_public_webhook_dns(monkeypatch):
+    def fake_getaddrinfo(host: str, port: int, type: int = 0):
+        return [
+            (
+                socket.AF_INET,
+                socket.SOCK_STREAM,
+                socket.IPPROTO_TCP,
+                "",
+                ("93.184.216.34", port),
+            )
+        ]
+
+    monkeypatch.setattr("app.services.webhook_service.socket.getaddrinfo", fake_getaddrinfo)
 
 
 @pytest.mark.asyncio
@@ -52,7 +69,7 @@ async def test_job_runner_retries_due_webhook_deliveries():
             response_body="temporary failure",
             attempt=1,
             max_attempts=5,
-            next_retry_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+            next_retry_at=datetime.now(UTC) - timedelta(seconds=1),
         )
         session.add(delivery)
         await session.commit()
@@ -81,7 +98,11 @@ async def test_job_runner_retries_due_webhook_deliveries():
 @pytest.mark.asyncio
 async def test_job_runner_all_includes_dead_letter_notifications():
     async with TestSessionLocal() as session:
-        user = User(email="admin+runner-all@org.com", password_hash="hash", full_name="Runner Admin All")
+        user = User(
+            email="admin+runner-all@org.com",
+            password_hash="hash",
+            full_name="Runner Admin All",
+        )
         session.add(user)
         await session.flush()
 
@@ -117,12 +138,14 @@ async def test_job_runner_all_includes_dead_letter_notifications():
             response_body="still failing",
             attempt=4,
             max_attempts=5,
-            next_retry_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+            next_retry_at=datetime.now(UTC) - timedelta(seconds=1),
         )
         session.add(delivery)
         await session.commit()
 
-    async def failing_sender(url: str, payload: dict, headers: dict[str, str], timeout_seconds: int):
+    async def failing_sender(
+        url: str, payload: dict, headers: dict[str, str], timeout_seconds: int
+    ):
         return 500, "still failing"
 
     runner = JobRunner(session_factory=TestSessionLocal, webhook_sender=failing_sender)
@@ -135,9 +158,11 @@ async def test_job_runner_all_includes_dead_letter_notifications():
     async with TestSessionLocal() as session:
         delivery = await session.get(WebhookDelivery, 1)
         assert delivery.status == "dead_letter"
-        notifications = (await session.execute(
-            Notification.__table__.select().where(Notification.type == "webhook_dead_letter")
-        )).all()
+        notifications = (
+            await session.execute(
+                Notification.__table__.select().where(Notification.type == "webhook_dead_letter")
+            )
+        ).all()
         assert notifications
 
 
@@ -224,7 +249,7 @@ async def test_job_runner_collect_status_reports_queue_depths():
                 response_body="status failure",
                 attempt=1,
                 max_attempts=5,
-                next_retry_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+                next_retry_at=datetime.now(UTC) - timedelta(seconds=1),
             )
         )
         await WorkerLeaseRepository(session).acquire_or_renew(
@@ -234,7 +259,9 @@ async def test_job_runner_collect_status_reports_queue_depths():
         )
         await session.commit()
 
-    status = await JobRunner(session_factory=TestSessionLocal, lease_name="status-active").collect_status()
+    status = await JobRunner(
+        session_factory=TestSessionLocal, lease_name="status-active"
+    ).collect_status()
 
     assert status["queues"]["webhooks"]["due_retries"] == 1
     assert status["queues"]["webhooks"]["queue_depth"] == 1

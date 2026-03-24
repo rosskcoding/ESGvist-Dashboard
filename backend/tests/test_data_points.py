@@ -40,6 +40,56 @@ async def ctx(client: AsyncClient) -> dict:
     }
 
 
+async def _create_requirement_item(
+    client: AsyncClient,
+    *,
+    headers: dict,
+    project_id: int,
+    attach_to_project: bool,
+) -> int:
+    standard = await client.post(
+        "/api/standards",
+        json={"code": "GRI", "name": "GRI"},
+        headers=headers,
+    )
+    assert standard.status_code == 201
+
+    disclosure = await client.post(
+        f"/api/standards/{standard.json()['id']}/disclosures",
+        json={
+            "code": "305-1",
+            "title": "Gross direct GHG emissions",
+            "requirement_type": "quantitative",
+            "mandatory_level": "mandatory",
+        },
+        headers=headers,
+    )
+    assert disclosure.status_code == 201
+
+    item = await client.post(
+        f"/api/disclosures/{disclosure.json()['id']}/items",
+        json={
+            "name": "Scope 1 total",
+            "item_type": "metric",
+            "value_type": "number",
+            "unit_code": "tCO2e",
+            "item_code": "305-1.a",
+        },
+        headers=headers,
+    )
+    assert item.status_code == 201
+
+    if attach_to_project:
+        linked = await client.post(
+            f"/api/projects/{project_id}/standards",
+            json={"standard_id": standard.json()["id"], "is_base_standard": True},
+            headers=headers,
+        )
+        assert linked.status_code == 200
+
+    return item.json()["id"]
+
+
 @pytest.mark.asyncio
 async def test_create_data_point(client: AsyncClient, ctx: dict):
     resp = await client.post(
@@ -140,6 +190,29 @@ async def test_create_evidence_link(client: AsyncClient, ctx: dict):
 
 
 @pytest.mark.asyncio
+async def test_create_evidence_rejects_oversized_file_message_matches_limit(
+    client: AsyncClient,
+    ctx: dict,
+):
+    resp = await client.post(
+        "/api/evidences",
+        json={
+            "type": "file",
+            "title": "Too Large",
+            "file_name": "large.pdf",
+            "file_uri": "s3://bucket/large.pdf",
+            "mime_type": "application/pdf",
+            "file_size": 10 * 1024 * 1024 + 1,
+        },
+        headers=ctx["headers"],
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "FILE_TOO_LARGE"
+    assert "10MB" in resp.json()["error"]["message"]
+    assert "50MB" not in resp.json()["error"]["message"]
+
+
+@pytest.mark.asyncio
 async def test_list_evidences(client: AsyncClient, ctx: dict):
     await client.post(
         "/api/evidences",
@@ -179,3 +252,60 @@ async def test_link_evidence_to_data_point(client: AsyncClient, ctx: dict):
     )
     assert resp.status_code == 200
     assert resp.json()["linked"] is True
+
+
+@pytest.mark.asyncio
+async def test_bind_requirement_rejects_item_outside_active_reporting_context(
+    client: AsyncClient,
+    ctx: dict,
+):
+    evidence = await client.post(
+        "/api/evidences",
+        json={"type": "file", "title": "Proof", "file_name": "proof.pdf", "file_uri": "s3://proof"},
+        headers=ctx["headers"],
+    )
+    assert evidence.status_code == 201
+
+    requirement_item_id = await _create_requirement_item(
+        client,
+        headers=ctx["headers"],
+        project_id=ctx["project_id"],
+        attach_to_project=False,
+    )
+
+    resp = await client.post(
+        f"/api/evidence/{evidence.json()['id']}/bind-requirement",
+        json={"requirement_item_id": requirement_item_id},
+        headers=ctx["headers"],
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "INVALID_REQUIREMENT_ITEM_CONTEXT"
+
+
+@pytest.mark.asyncio
+async def test_bind_requirement_allows_item_active_in_org_project_context(
+    client: AsyncClient,
+    ctx: dict,
+):
+    evidence = await client.post(
+        "/api/evidences",
+        json={"type": "file", "title": "Proof", "file_name": "proof.pdf", "file_uri": "s3://proof"},
+        headers=ctx["headers"],
+    )
+    assert evidence.status_code == 201
+
+    requirement_item_id = await _create_requirement_item(
+        client,
+        headers=ctx["headers"],
+        project_id=ctx["project_id"],
+        attach_to_project=True,
+    )
+
+    resp = await client.post(
+        f"/api/evidence/{evidence.json()['id']}/bind-requirement",
+        json={"requirement_item_id": requirement_item_id},
+        headers=ctx["headers"],
+    )
+    assert resp.status_code == 200
+    assert resp.json()["linked"] is True
+    assert resp.json()["requirement_item_id"] == requirement_item_id

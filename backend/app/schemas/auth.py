@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field
@@ -17,13 +18,38 @@ class LoginRequest(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    refresh_token: str | None = None
 
 
 class TokenResponse(BaseModel):
     access_token: str
-    refresh_token: str
+    refresh_token: str | None = None
     token_type: str = "bearer"
+
+
+class AuthSessionOut(BaseModel):
+    id: int
+    created_at: datetime
+    expires_at: datetime
+    last_used_at: datetime | None = None
+    ip_address: str | None = None
+    user_agent: str | None = None
+    is_current: bool = False
+
+
+class AuthSessionListOut(BaseModel):
+    items: list[AuthSessionOut]
+    total: int
+
+
+class AuthSessionRevokeOut(BaseModel):
+    session_id: int
+    revoked: bool
+    is_current: bool = False
+
+
+class LogoutAllOut(BaseModel):
+    revoked_sessions: int
 
 
 class RoleBindingOut(BaseModel):
@@ -139,18 +165,30 @@ class TwoFactorDisableRequest(BaseModel):
 class OrganizationSettingsOut(BaseModel):
     id: int
     name: str
+    legal_name: str | None = None
+    registration_number: str | None = None
     country: str | None = None
+    jurisdiction: str | None = None
     industry: str | None = None
     currency: str
     reporting_year: int | None = None
+    default_standards: list[str] = Field(default_factory=list)
+    consolidation_approach: str | None = None
+    ghg_scope_approach: str | None = None
     logo_url: str | None = None
     default_boundary_id: int | None = None
 
 
 class OrganizationSettingsUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=500)
+    legal_name: str | None = None
+    registration_number: str | None = None
     country: str | None = None
+    jurisdiction: str | None = None
     industry: str | None = None
     currency: str | None = Field(default=None, min_length=3, max_length=10)
     reporting_year: int | None = None
+    default_standards: list[str] | None = None
+    consolidation_approach: str | None = None
+    ghg_scope_approach: str | None = None
     default_boundary_id: int | None = None

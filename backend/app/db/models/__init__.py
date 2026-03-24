@@ -3,6 +3,7 @@ from app.db.models.audit_log import AuditLog
 from app.db.models.base import Base
 from app.db.models.boundary import BoundaryDefinition, BoundaryMembership
 from app.db.models.boundary_snapshot import BoundarySnapshot
+from app.db.models.calculation_rule import CalculationRule
 from app.db.models.company_entity import CompanyEntity, ControlLink, OwnershipLink
 from app.db.models.completeness import (
     DisclosureRequirementStatus,
@@ -10,9 +11,11 @@ from app.db.models.completeness import (
     RequirementItemStatus,
 )
 from app.db.models.data_point import DataPoint, DataPointDimension
+from app.db.models.data_point_version import DataPointVersion
 from app.db.models.delta import RequirementDelta
 from app.db.models.evidence import DataPointEvidence, Evidence, EvidenceFile, EvidenceLink
 from app.db.models.export_job import ExportJob
+from app.db.models.form_config import FormConfiguration
 from app.db.models.invitation import UserInvitation
 from app.db.models.idempotency_record import IdempotencyRecord
 from app.db.models.mapping import RequirementItemSharedElement
@@ -25,6 +28,7 @@ from app.db.models.requirement_item_evidence import RequirementItemEvidence
 from app.db.models.role_binding import RoleBinding
 from app.db.models.shared_element import SharedElement, SharedElementDimension
 from app.db.models.standard import DisclosureRequirement, Standard, StandardSection
+from app.db.models.support_session import SupportSession
 from app.db.models.sso import ExternalIdentity, SSOLoginState, SSOProvider
 from app.db.models.unit_reference import BoundaryApproach, Methodology, UnitReference
 from app.db.models.comment import Comment
@@ -40,7 +44,8 @@ __all__ = [
     "CompanyEntity", "OwnershipLink", "ControlLink",
     "BoundaryDefinition", "BoundaryMembership", "BoundarySnapshot",
     "ReportingProject", "ReportingProjectStandard", "MetricAssignment",
-    "DataPoint", "DataPointDimension",
+    "DataPoint", "DataPointDimension", "DataPointVersion",
+    "FormConfiguration", "CalculationRule", "SupportSession",
     "Evidence", "EvidenceFile", "EvidenceLink", "DataPointEvidence",
     "RequirementItemDataPoint", "RequirementItemStatus", "DisclosureRequirementStatus",
     "Notification", "RequirementDelta",

@@ -1,13 +1,10 @@
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import RequestContext, get_current_context
 from app.core.exceptions import AppError
-from app.db.models.data_point import DataPoint
-from app.db.models.evidence import DataPointEvidence, Evidence
-from app.db.models.requirement_item_evidence import RequirementItemEvidence
 from app.db.session import get_session
 from app.policies.auth_policy import AuthPolicy
 from app.policies.evidence_policy import EvidencePolicy
@@ -38,7 +35,7 @@ ALLOWED_MIME_TYPES = {
     "image/png",
     "image/jpeg",
 }
-MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 router = APIRouter(tags=["Data Points & Evidence"])
 
@@ -107,6 +104,40 @@ async def update_data_point(
     return await _dp_service(session).update(dp_id, payload, ctx)
 
 
+# --- Version History ---
+@router.get("/api/data-points/{dp_id}/versions")
+async def list_data_point_versions(
+    dp_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    """Return the immutable version history for a data point.
+
+    Accessible to any user who can view the data point (collector for own,
+    reviewer for assigned, admin/esg_manager/auditor for project scope).
+    """
+    from app.core.access import get_data_point_for_ctx
+    from app.repositories.data_point_repo import DataPointRepository
+
+    await get_data_point_for_ctx(session, dp_id, ctx)
+    versions = await DataPointRepository(session).list_versions(dp_id)
+    return [
+        {
+            "id": v.id,
+            "data_point_id": v.data_point_id,
+            "version": v.version,
+            "numeric_value": float(v.numeric_value) if v.numeric_value is not None else None,
+            "text_value": v.text_value,
+            "unit_code": v.unit_code,
+            "status": v.status,
+            "changed_by": v.changed_by,
+            "change_reason": v.change_reason,
+            "created_at": v.created_at.isoformat() if v.created_at else None,
+        }
+        for v in versions
+    ]
+
+
 # --- Evidence ---
 @router.post("/api/evidences", response_model=EvidenceOut, status_code=status.HTTP_201_CREATED)
 async def create_evidence(
@@ -119,7 +150,7 @@ async def create_evidence(
         if payload.file_size and payload.file_size > MAX_FILE_SIZE:
             raise AppError(
                 "FILE_TOO_LARGE", 422,
-                f"File size {payload.file_size} exceeds maximum of {MAX_FILE_SIZE} bytes (50MB)"
+                f"File size {payload.file_size} exceeds maximum of {MAX_FILE_SIZE} bytes (10MB)"
             )
         if payload.mime_type and payload.mime_type not in ALLOWED_MIME_TYPES:
             raise AppError(
@@ -129,6 +160,46 @@ async def create_evidence(
             )
 
     return await _ev_service(session).create(payload, ctx)
+
+
+@router.post("/api/evidences/upload", response_model=EvidenceOut, status_code=status.HTTP_201_CREATED)
+async def upload_evidence(
+    file: UploadFile = File(...),
+    title: str = Form(...),
+    description: str = Form(""),
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    if not file.content_type or file.content_type not in ALLOWED_MIME_TYPES:
+        raise AppError(
+            "INVALID_MIME_TYPE", 422,
+            f"MIME type '{file.content_type}' is not allowed. "
+            f"Allowed types: pdf, xlsx, docx, csv, png, jpg"
+        )
+    file_data = await file.read()
+    if len(file_data) > MAX_FILE_SIZE:
+        raise AppError(
+            "FILE_TOO_LARGE", 422,
+            f"File size {len(file_data)} exceeds maximum of {MAX_FILE_SIZE} bytes (10MB)"
+        )
+    return await _ev_service(session).create_with_file(
+        file_data=file_data,
+        file_name=file.filename or "unnamed",
+        mime_type=file.content_type,
+        title=title,
+        description=description or None,
+        ctx=ctx,
+    )
+
+
+@router.get("/api/evidences/{evidence_id}/download")
+async def download_evidence(
+    evidence_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    url = await _ev_service(session).get_download_url(evidence_id, ctx)
+    return RedirectResponse(url=url)
 
 
 @router.get("/api/evidences", response_model=EvidenceListOut)
@@ -164,36 +235,11 @@ async def bind_evidence_to_requirement(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    EvidencePolicy().can_create(ctx)
-
-    # Verify evidence exists
-    repo = EvidenceRepository(session)
-    evidence = await repo.get_or_raise(evidence_id)
-    if evidence.organization_id != ctx.organization_id and not ctx.is_platform_admin:
-        raise AppError("FORBIDDEN", 403, "Evidence belongs to another organization")
-
-    # Check for existing binding (dedup)
-    existing = await session.execute(
-        select(RequirementItemEvidence).where(
-            RequirementItemEvidence.requirement_item_id == payload.requirement_item_id,
-            RequirementItemEvidence.evidence_id == evidence_id,
-        )
+    return await _ev_service(session).bind_to_requirement(
+        evidence_id,
+        payload.requirement_item_id,
+        ctx,
     )
-    if existing.scalar_one_or_none():
-        raise AppError("ALREADY_LINKED", 409, "Evidence already linked to this requirement item")
-
-    binding = RequirementItemEvidence(
-        requirement_item_id=payload.requirement_item_id,
-        evidence_id=evidence_id,
-        linked_by=ctx.user_id,
-    )
-    session.add(binding)
-    await session.flush()
-    return {
-        "evidence_id": evidence_id,
-        "requirement_item_id": payload.requirement_item_id,
-        "linked": True,
-    }
 
 
 # --- Evidence: delete with protection ---

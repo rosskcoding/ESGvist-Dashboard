@@ -52,6 +52,7 @@ import {
   CircleDot,
   ShieldAlert,
 } from "lucide-react";
+import { AIBoundaryWhy } from "@/components/ai-inline-explain";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -170,6 +171,103 @@ function isForbidden(error: Error | null) {
   return code === "FORBIDDEN" || /not allowed|access denied|forbidden/i.test(error?.message || "");
 }
 
+function normalizeEntityRecord(
+  entity: Partial<Entity> & {
+    id: number;
+    name: string;
+    entity_type: EntityType;
+    status: EntityStatus;
+    code?: string | null;
+    country?: string | null;
+    jurisdiction?: string | null;
+    parent_entity_id?: number | null;
+  }
+): Entity {
+  return {
+    id: entity.id,
+    name: entity.name,
+    code: entity.code ?? "",
+    entity_type: entity.entity_type,
+    country: entity.country ?? "",
+    jurisdiction: entity.jurisdiction ?? "",
+    status: entity.status,
+    created_at: entity.created_at ?? new Date().toISOString(),
+    valid_from: entity.valid_from ?? null,
+    valid_to: entity.valid_to ?? null,
+    parent_id: entity.parent_id ?? entity.parent_entity_id ?? null,
+    ownership_percentage: entity.ownership_percentage ?? null,
+  };
+}
+
+function patchEntitiesCacheWithEntity(
+  current: EntitiesResponse | undefined,
+  entityInput: Partial<Entity> & {
+    id: number;
+    name: string;
+    entity_type: EntityType;
+    status: EntityStatus;
+    code?: string | null;
+    country?: string | null;
+    jurisdiction?: string | null;
+    parent_entity_id?: number | null;
+  },
+  incrementTotal: boolean
+): EntitiesResponse | undefined {
+  if (!current) return current;
+  const entity = normalizeEntityRecord(entityInput);
+  const existed =
+    (current.items ?? []).some((item) => item.id === entity.id) ||
+    (current.entities ?? []).some((item) => item.id === entity.id);
+  const upsert = (list: Entity[] | undefined) => {
+    const existing = list ?? [];
+    const next = [entity, ...existing.filter((item) => item.id !== entity.id)];
+    return next;
+  };
+  return {
+    ...current,
+    items: upsert(current.items),
+    entities: upsert(current.entities),
+    total:
+      typeof current.total === "number"
+        ? current.total + (!existed && incrementTotal ? 1 : 0)
+        : current.total,
+    boundary_memberships: {
+      ...(current.boundary_memberships ?? {}),
+      [entity.id]: current.boundary_memberships?.[entity.id] ?? [],
+    },
+  };
+}
+
+function patchEntitiesCacheWithOwnershipLink(
+  current: EntitiesResponse | undefined,
+  link: OwnershipLink
+): EntitiesResponse | undefined {
+  if (!current) return current;
+  const nextLinks = [
+    ...(current.ownership_links ?? []).filter((item) => item.id !== link.id),
+    link,
+  ];
+  return {
+    ...current,
+    ownership_links: nextLinks,
+  };
+}
+
+function patchEntitiesCacheWithControlLink(
+  current: EntitiesResponse | undefined,
+  link: ControlLink
+): EntitiesResponse | undefined {
+  if (!current) return current;
+  const nextLinks = [
+    ...(current.control_links ?? []).filter((item) => item.id !== link.id),
+    link,
+  ];
+  return {
+    ...current,
+    control_links: nextLinks,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Custom Node
 // ---------------------------------------------------------------------------
@@ -242,6 +340,14 @@ function EntityNode({ data }: NodeProps<Node<EntityNodeData>>) {
         {entity.ownership_percentage != null && (
           <div className="mt-1.5 text-[11px] text-slate-600">
             Ownership: {entity.ownership_percentage}%
+          </div>
+        )}
+        {viewMode === "boundary" && boundaryMemberships.length > 0 && (
+          <div className="mt-1.5">
+            <AIBoundaryWhy
+              entityId={entity.id}
+              included={boundaryMemberships.some((b) => b.included)}
+            />
           </div>
         )}
       </div>
@@ -387,21 +493,22 @@ function EntityTreeItem({
 
   return (
     <div>
-      <button
-        onClick={() => onSelect(node.id)}
+      <div
         className={cn(
-          "flex w-full items-center gap-1 rounded px-2 py-1.5 text-left text-sm hover:bg-slate-100 transition-colors",
-          selectedId === node.id && "bg-blue-50 text-blue-700 font-medium"
+          "flex w-full items-center gap-1 rounded px-2 py-1 text-left text-sm transition-colors",
+          selectedId === node.id ? "bg-blue-50 text-blue-700" : "hover:bg-slate-100"
         )}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
       >
         {(node.children ?? []).length > 0 ? (
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               setExpanded(!expanded);
             }}
             className="shrink-0 p-0.5 hover:bg-slate-200 rounded"
+            aria-label={expanded ? `Collapse ${node.name}` : `Expand ${node.name}`}
           >
             {expanded ? (
               <ChevronDown className="h-3.5 w-3.5" />
@@ -412,17 +519,26 @@ function EntityTreeItem({
         ) : (
           <span className="w-[18px]" />
         )}
-        <Building2 className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-        <span className="truncate">{node.name}</span>
-        <span
+        <button
+          type="button"
+          onClick={() => onSelect(node.id)}
           className={cn(
-            "ml-auto shrink-0 inline-flex items-center rounded px-1 py-0.5 text-[9px] font-medium",
-            STATUS_COLORS[node.status]
+            "flex min-w-0 flex-1 items-center gap-1 rounded px-1.5 py-0.5 text-left",
+            selectedId === node.id && "font-medium"
           )}
         >
-          {node.status}
-        </span>
-      </button>
+          <Building2 className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+          <span className="truncate">{node.name}</span>
+          <span
+            className={cn(
+              "ml-auto shrink-0 inline-flex items-center rounded px-1 py-0.5 text-[9px] font-medium",
+              STATUS_COLORS[node.status]
+            )}
+          >
+            {node.status}
+          </span>
+        </button>
+      </div>
       {expanded &&
         node.children.map((child) => (
           <EntityTreeItem
@@ -465,8 +581,11 @@ function AddEntityDialog({
     "/entities",
     "POST",
     {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["entities"] });
+      onSuccess: (createdEntity) => {
+        queryClient.setQueryData<EntitiesResponse>(
+          ["entities"],
+          (current) => patchEntitiesCacheWithEntity(current, createdEntity, true)
+        );
         queryClient.invalidateQueries({ queryKey: ["entities", "tree"] });
         onOpenChange(false);
         setForm({
@@ -600,8 +719,11 @@ function AddOwnershipLinkDialog({
     "/ownership-links",
     "POST",
     {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["entities"] });
+      onSuccess: (createdLink) => {
+        queryClient.setQueryData<EntitiesResponse>(
+          ["entities"],
+          (current) => patchEntitiesCacheWithOwnershipLink(current, createdLink)
+        );
         queryClient.invalidateQueries({ queryKey: ["entities", "tree"] });
         onOpenChange(false);
       },
@@ -720,8 +842,11 @@ function AddControlLinkDialog({
     "/control-links",
     "POST",
     {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["entities"] });
+      onSuccess: (createdLink) => {
+        queryClient.setQueryData<EntitiesResponse>(
+          ["entities"],
+          (current) => patchEntitiesCacheWithControlLink(current, createdLink)
+        );
         queryClient.invalidateQueries({ queryKey: ["entities", "tree"] });
         onOpenChange(false);
       },
@@ -821,8 +946,11 @@ function EntityDetailPanel({
     `/entities/${entity.id}`,
     "PATCH",
     {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["entities"] });
+      onSuccess: (updatedEntity) => {
+        queryClient.setQueryData<EntitiesResponse>(
+          ["entities"],
+          (current) => patchEntitiesCacheWithEntity(current, updatedEntity, false)
+        );
         queryClient.invalidateQueries({ queryKey: ["entities", "tree"] });
         setEditing(false);
       },

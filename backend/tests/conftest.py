@@ -5,10 +5,13 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
+from app.core.ai_cache import ai_cache
+from app.core.rate_limit import RateLimitMiddleware
 from app.db.models import Base
 from app.db.session import get_session
 from app.events.registry import configure_event_session_factory, register_event_handlers
 from app.main import app
+from app.policies.ai_gate import AIRateGate
 
 TEST_DATABASE_URL = "sqlite+aiosqlite://"
 
@@ -23,10 +26,22 @@ TestSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 @pytest.fixture(autouse=True)
 async def setup_db():
+    RateLimitMiddleware._buckets.clear()
+    AIRateGate._minute_events.clear()
+    AIRateGate._hour_events.clear()
+    AIRateGate._question_hashes.clear()
+    AIRateGate._banned_until.clear()
+    ai_cache.clear()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     yield
+    RateLimitMiddleware._buckets.clear()
+    AIRateGate._minute_events.clear()
+    AIRateGate._hour_events.clear()
+    AIRateGate._question_hashes.clear()
+    AIRateGate._banned_until.clear()
+    ai_cache.clear()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 

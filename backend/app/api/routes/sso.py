@@ -1,6 +1,12 @@
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth_cookies import (
+    generate_csrf_token,
+    set_access_token_cookie,
+    set_csrf_token_cookie,
+    set_refresh_token_cookie,
+)
 from app.core.dependencies import RequestContext, get_current_context
 from app.db.session import get_session
 from app.repositories.audit_repo import AuditRepository
@@ -8,6 +14,7 @@ from app.repositories.refresh_token_repo import RefreshTokenRepository
 from app.repositories.role_binding_repo import RoleBindingRepository
 from app.repositories.sso_repo import SSORepository
 from app.repositories.user_repo import UserRepository
+from app.schemas.auth import TokenResponse
 from app.schemas.sso import (
     SSOCallbackRequest,
     SSOProviderCreate,
@@ -15,12 +22,29 @@ from app.schemas.sso import (
     SSOProviderOut,
     SSOProviderPublicListOut,
     SSOProviderUpdate,
-    SSOStartRequest,
     SSOStartOut,
+    SSOStartRequest,
 )
 from app.services.sso_service import SSOService
 
 router = APIRouter(prefix="/api/auth/sso", tags=["SSO"])
+
+
+def _resolve_client_ip(request: Request) -> str | None:
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip() or None
+    if request.client:
+        return request.client.host
+    return None
+
+
+def _resolve_user_agent(request: Request) -> str | None:
+    user_agent = request.headers.get("User-Agent")
+    if not user_agent:
+        return None
+    normalized = user_agent.strip()
+    return normalized[:512] if normalized else None
 
 
 def _get_service(session: AsyncSession) -> SSOService:
@@ -77,10 +101,26 @@ async def start_login(
     return await _get_service(session).start_login(provider_id, payload.organization_id)
 
 
-@router.post("/providers/{provider_id}/callback")
+@router.post(
+    "/providers/{provider_id}/callback",
+    response_model=TokenResponse,
+    response_model_exclude_none=True,
+)
 async def callback(
     provider_id: int,
     payload: SSOCallbackRequest,
+    request: Request,
+    response: Response,
     session: AsyncSession = Depends(get_session),
 ):
-    return await _get_service(session).handle_callback(provider_id, payload)
+    tokens = await _get_service(session).handle_callback_with_session_metadata(
+        provider_id,
+        payload,
+        client_ip=_resolve_client_ip(request),
+        user_agent=_resolve_user_agent(request),
+    )
+    set_access_token_cookie(response, tokens.access_token)
+    set_csrf_token_cookie(response, generate_csrf_token())
+    if tokens.refresh_token:
+        set_refresh_token_cookie(response, tokens.refresh_token)
+    return TokenResponse(access_token=tokens.access_token, token_type=tokens.token_type)

@@ -1,18 +1,22 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Search,
   Filter,
   ArrowUpDown,
   Repeat2,
+  RefreshCcw,
   AlertTriangle,
   Loader2,
   ShieldAlert,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import { useApiQuery } from "@/lib/hooks/use-api";
+import { useApiMutation, useApiQuery } from "@/lib/hooks/use-api";
+import { GuidedEntryDialog } from "./components/guided-entry-dialog";
+import { WizardRenderer } from "./components/wizard-renderer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -64,6 +68,59 @@ interface AssignmentMatrixResponse {
   assignments: AssignmentRow[];
 }
 
+interface FormConfigField {
+  shared_element_id: number;
+  requirement_item_id?: number;
+  assignment_id?: number | null;
+  entity_id?: number | null;
+  facility_id?: number | null;
+  visible: boolean;
+  required: boolean;
+  help_text?: string | null;
+  tooltip?: string | null;
+  order: number;
+}
+
+interface FormConfigStep {
+  id: string;
+  title: string;
+  fields: FormConfigField[];
+}
+
+interface FormConfigHealthIssue {
+  code: string;
+  message: string;
+  affected_fields: number;
+}
+
+interface FormConfigHealth {
+  status: string;
+  is_stale: boolean;
+  target_project_id?: number | null;
+  field_count: number;
+  assignment_scoped_fields: number;
+  context_scoped_fields: number;
+  issue_count: number;
+  issues: FormConfigHealthIssue[];
+  latest_assignment_updated_at?: string | null;
+  latest_boundary_updated_at?: string | null;
+}
+
+interface ActiveFormConfig {
+  id: number;
+  project_id: number | null;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  updated_at?: string | null;
+  resolved_for_project_id?: number | null;
+  resolution_scope?: string | null;
+  health?: FormConfigHealth | null;
+  config: {
+    steps: FormConfigStep[];
+  };
+}
+
 /* ---------- Helpers ---------- */
 
 const STATUS_CONFIG: Record<
@@ -84,6 +141,14 @@ const BOUNDARY_CONFIG: Record<
   partial: { label: "Partial", variant: "warning" },
 };
 
+function buildContextKey(
+  sharedElementId?: number | null,
+  entityId?: number | null,
+  facilityId?: number | null
+) {
+  return [sharedElementId ?? 0, entityId ?? 0, facilityId ?? 0].join(":");
+}
+
 /* ---------- Component ---------- */
 
 function isForbidden(error: Error | null) {
@@ -92,9 +157,21 @@ function isForbidden(error: Error | null) {
 }
 
 export default function CollectionPage() {
+  const queryClient = useQueryClient();
   const router = useRouter();
-  const [projectId] = useState(1);
+  const searchParams = useSearchParams();
+  const projectId = useMemo(() => {
+    const raw = searchParams.get("projectId");
+    const parsed = Number(raw ?? "1");
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+  }, [searchParams]);
   const [openingRowId, setOpeningRowId] = useState<number | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [guidedField, setGuidedField] = useState<FormConfigField | null>(null);
+  const [guidedRowKey, setGuidedRowKey] = useState<string | null>(null);
+  const [resolvedDataPointIds, setResolvedDataPointIds] = useState<Record<string, number>>({});
+  const [configActionMessage, setConfigActionMessage] = useState<string | null>(null);
+  const [configActionError, setConfigActionError] = useState<string | null>(null);
 
   /* Filters */
   const [search, setSearch] = useState("");
@@ -110,10 +187,13 @@ export default function CollectionPage() {
 
   const { data: me, isLoading: meLoading } = useApiQuery<{
     roles: Array<{ role: string }>;
-  }>(["auth-me", "collection"], "/auth/me");
+  }>(["auth-me"], "/auth/me");
   const roles = me?.roles?.map((binding) => binding.role) ?? [];
   const canAccess = roles.some((role) =>
     ["collector", "esg_manager", "admin", "platform_admin"].includes(role)
+  );
+  const canResyncConfig = roles.some((role) =>
+    ["esg_manager", "admin", "platform_admin"].includes(role)
   );
 
   /* Data */
@@ -132,6 +212,34 @@ export default function CollectionPage() {
     `/projects/${projectId}/data-points`,
     { enabled: canAccess }
   );
+  const {
+    data: activeFormConfig,
+    isLoading: configLoading,
+    error: configError,
+  } = useApiQuery<ActiveFormConfig | null>(
+    ["active-form-config", projectId],
+    `/form-configs/projects/${projectId}/active`,
+    { enabled: canAccess }
+  );
+  const resyncConfigMutation = useApiMutation<ActiveFormConfig, undefined>(
+    `/form-configs/projects/${projectId}/resync`,
+    "POST",
+    {
+      onSuccess: async () => {
+        setConfigActionError(null);
+        setConfigActionMessage("Guided collection config re-synced from live assignments.");
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["active-form-config", projectId] }),
+          queryClient.invalidateQueries({ queryKey: ["form-configs"] }),
+          queryClient.invalidateQueries({ queryKey: ["collection-assignments", projectId] }),
+        ]);
+      },
+      onError: (error) => {
+        setConfigActionMessage(null);
+        setConfigActionError(error.message);
+      },
+    }
+  );
 
   const items = useMemo(() => {
     const points = data?.items ?? [];
@@ -139,11 +247,11 @@ export default function CollectionPage() {
 
     const pointsByKey = new Map<string, DataPoint>();
     for (const point of points) {
-      const key = [
+      const key = buildContextKey(
         point.shared_element_id ?? 0,
         point.entity_id ?? 0,
-        point.facility_id ?? 0,
-      ].join(":");
+        point.facility_id ?? 0
+      );
       if (!pointsByKey.has(key)) {
         pointsByKey.set(key, point);
       }
@@ -154,14 +262,18 @@ export default function CollectionPage() {
     }
 
     return assignments.map((assignment) => {
-      const key = [
+      const key = buildContextKey(
         assignment.shared_element_id,
         assignment.entity_id ?? 0,
-        assignment.facility_id ?? 0,
-      ].join(":");
+        assignment.facility_id ?? 0
+      );
       const point = pointsByKey.get(key);
+      const resolvedDataPointId = point?.id ?? resolvedDataPointIds[key] ?? null;
       const collectionStatus =
         point?.collection_status
+        ?? (resolvedDataPointId
+          ? "partial"
+          : undefined)
         ?? (assignment.status === "completed"
           ? "complete"
           : assignment.status === "in_progress"
@@ -169,8 +281,8 @@ export default function CollectionPage() {
             : "missing");
 
       return {
-        id: point?.id ?? -assignment.id,
-        data_point_id: point?.id ?? null,
+        id: point?.id ?? resolvedDataPointId ?? -assignment.id,
+        data_point_id: point?.id ?? resolvedDataPointId,
         assignment_id: assignment.id,
         shared_element_id: assignment.shared_element_id,
         entity_id: assignment.entity_id,
@@ -189,12 +301,110 @@ export default function CollectionPage() {
         standards: point?.standards ?? [],
       } satisfies DataPoint;
     });
-  }, [assignmentsData?.assignments, data?.items]);
+  }, [assignmentsData?.assignments, data?.items, resolvedDataPointIds]);
 
   const accessDenied =
     (Boolean(me) && !canAccess)
     || (!!assignmentsError && isForbidden(assignmentsError))
     || (!!error && isForbidden(error));
+
+  const rowsByElement = useMemo(() => {
+    const map = new Map<number, DataPoint[]>();
+    for (const item of items) {
+      if (!item.shared_element_id) continue;
+      const current = map.get(item.shared_element_id) ?? [];
+      current.push(item);
+      map.set(item.shared_element_id, current);
+    }
+    return map;
+  }, [items]);
+
+  const rowsByAssignment = useMemo(() => {
+    const map = new Map<number, DataPoint>();
+    for (const item of items) {
+      if (item.assignment_id) {
+        map.set(item.assignment_id, item);
+      }
+    }
+    return map;
+  }, [items]);
+
+  const rowsByContext = useMemo(() => {
+    const map = new Map<string, DataPoint[]>();
+    for (const item of items) {
+      const key = buildContextKey(
+        item.shared_element_id ?? 0,
+        item.entity_id ?? 0,
+        item.facility_id ?? 0
+      );
+      const current = map.get(key) ?? [];
+      current.push(item);
+      map.set(key, current);
+    }
+    return map;
+  }, [items]);
+
+  const elementNamesById = useMemo(() => {
+    const entries = items
+      .filter((item) => item.shared_element_id)
+      .map((item) => [item.shared_element_id as number, item.element_name] as const);
+    return Object.fromEntries(entries);
+  }, [items]);
+
+  const resolveFieldMatches = (field: FormConfigField) => {
+    if (field.assignment_id) {
+      const match = rowsByAssignment.get(field.assignment_id);
+      return match ? [match] : [];
+    }
+    if (field.entity_id != null || field.facility_id != null) {
+      return (
+        rowsByContext.get(
+          buildContextKey(
+            field.shared_element_id,
+            field.entity_id ?? 0,
+            field.facility_id ?? 0
+          )
+        ) ?? []
+      );
+    }
+    return rowsByElement.get(field.shared_element_id) ?? [];
+  };
+
+  const guidedSummary = useMemo(() => {
+    const steps = activeFormConfig?.config?.steps ?? [];
+    if (steps.length === 0) return null;
+
+    let total = 0;
+    let complete = 0;
+    let missing = 0;
+    let ambiguous = 0;
+
+    for (const step of steps) {
+      for (const field of step.fields.filter((entry) => entry.visible)) {
+        total += 1;
+        const matches = resolveFieldMatches(field);
+        if (matches.length === 0) {
+          missing += 1;
+          continue;
+        }
+        if (matches.length > 1) {
+          ambiguous += 1;
+          continue;
+        }
+        if (matches[0].collection_status === "complete") {
+          complete += 1;
+        }
+      }
+    }
+
+    return { total, complete, missing, ambiguous };
+  }, [activeFormConfig, rowsByAssignment, rowsByContext, rowsByElement]);
+
+  const guidedRow = useMemo(() => {
+    if (!guidedField) return null;
+    const matches = resolveFieldMatches(guidedField);
+    return matches.length === 1 ? matches[0] : null;
+  }, [guidedField, rowsByAssignment, rowsByContext, rowsByElement]);
 
   /* Derived entity / standard lists for filter dropdowns */
   const entities = useMemo(
@@ -249,11 +459,13 @@ export default function CollectionPage() {
   };
 
   const openDataEntry = async (row: DataPoint) => {
+    setActionError(null);
     if (row.data_point_id) {
-      router.push(`/collection/${row.data_point_id}`);
+      router.push(`/collection/${row.data_point_id}?projectId=${projectId}`);
       return;
     }
     if (!row.shared_element_id) {
+      setActionError("This assignment is missing its shared element binding and cannot be opened.");
       return;
     }
 
@@ -264,10 +476,37 @@ export default function CollectionPage() {
         entity_id: row.entity_id ?? undefined,
         facility_id: row.facility_id ?? undefined,
       });
-      router.push(`/collection/${created.id}`);
+      router.push(`/collection/${created.id}?projectId=${projectId}`);
+    } catch (error) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : "Unable to open data entry for this row. Please try again."
+      );
     } finally {
       setOpeningRowId(null);
     }
+  };
+
+  const scrollToTable = () => {
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => {
+        document.getElementById("collection-table")?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      });
+    }
+  };
+
+  const showFieldInTable = (sharedElementId?: number) => {
+    const firstMatch = sharedElementId
+      ? rowsByElement.get(sharedElementId)?.[0]
+      : undefined;
+    if (firstMatch) {
+      setSearch(firstMatch.element_code || firstMatch.element_name);
+    }
+    scrollToTable();
   };
 
   /* ---------- Render ---------- */
@@ -281,6 +520,314 @@ export default function CollectionPage() {
           Manage and enter ESG data points for the current reporting period.
         </p>
       </div>
+
+      {actionError && (
+        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          {actionError}
+        </div>
+      )}
+
+      {configActionError && (
+        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          {configActionError}
+        </div>
+      )}
+
+      {configActionMessage && (
+        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+          {configActionMessage}
+        </div>
+      )}
+
+      <GuidedEntryDialog
+        open={Boolean(guidedField && guidedRow && guidedRowKey)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setGuidedField(null);
+            setGuidedRowKey(null);
+          }
+        }}
+        projectId={projectId}
+        row={guidedRow}
+        field={guidedField}
+        rowKey={guidedRowKey}
+        onDataPointResolved={(rowKey, dataPointId) => {
+          setResolvedDataPointIds((current) =>
+            current[rowKey] === dataPointId
+              ? current
+              : { ...current, [rowKey]: dataPointId }
+          );
+        }}
+      />
+
+      {!accessDenied && !assignmentsLoading && !isLoading && configLoading && !meLoading && (
+        <Card className="border-slate-200 p-4">
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading guided collection configuration...
+          </div>
+        </Card>
+      )}
+
+      {!accessDenied && !assignmentsLoading && !isLoading && !configLoading && configError && (
+        <Card className="border-red-200 bg-red-50 p-4">
+          <div className="flex items-start gap-2 text-sm text-red-700">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <p className="font-medium">Guided collection is unavailable.</p>
+              <p className="mt-1">{configError.message}</p>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {!accessDenied && !assignmentsLoading && !isLoading && !configLoading && activeFormConfig?.config?.steps?.length ? (
+        <Card className="border-blue-200 bg-gradient-to-br from-white via-blue-50 to-slate-50 p-4">
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Guided Collection</h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  {activeFormConfig.name}
+                  {activeFormConfig.project_id === null ? " (organization default)" : ""}
+                </p>
+                {activeFormConfig.description && (
+                  <p className="mt-2 max-w-3xl text-sm text-slate-500">
+                    {activeFormConfig.description}
+                  </p>
+                )}
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {activeFormConfig.resolution_scope === "organization_default" && (
+                    <Badge variant="outline">Organization default</Badge>
+                  )}
+                  {activeFormConfig.health?.status === "healthy" && (
+                    <Badge variant="success">Healthy</Badge>
+                  )}
+                  {activeFormConfig.health?.is_stale && (
+                    <Badge variant="warning">Stale config</Badge>
+                  )}
+                  {activeFormConfig.updated_at && (
+                    <span className="text-xs text-slate-500">
+                      Last updated{" "}
+                      {new Intl.DateTimeFormat(undefined, {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      }).format(new Date(activeFormConfig.updated_at))}
+                    </span>
+                  )}
+                </div>
+              </div>
+              {guidedSummary && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline">
+                    {guidedSummary.complete}/{guidedSummary.total} complete
+                  </Badge>
+                  {guidedSummary.missing > 0 && (
+                    <Badge variant="secondary">{guidedSummary.missing} not assigned</Badge>
+                  )}
+                  {guidedSummary.ambiguous > 0 && (
+                    <Badge variant="warning">{guidedSummary.ambiguous} multi-context</Badge>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {activeFormConfig.health?.is_stale && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="space-y-2">
+                    <p className="font-medium">
+                      This guided config is out of sync with the current assignments or boundary.
+                    </p>
+                    <div className="space-y-1 text-sm text-amber-900/90">
+                      {activeFormConfig.health.issues.map((issue) => (
+                        <p key={issue.code}>
+                          {issue.message}
+                          {issue.affected_fields > 0 ? ` (${issue.affected_fields})` : ""}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                  {canResyncConfig && activeFormConfig.project_id !== null && (
+                    <Button
+                      variant="outline"
+                      disabled={resyncConfigMutation.isPending}
+                      onClick={() => {
+                        setConfigActionMessage(null);
+                        setConfigActionError(null);
+                        void resyncConfigMutation.mutateAsync(undefined);
+                      }}
+                    >
+                      {resyncConfigMutation.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCcw className="mr-2 h-4 w-4" />
+                      )}
+                      Re-sync Config
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {guidedSummary && guidedSummary.ambiguous > 0 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                Some configured fields resolve to multiple entity or facility contexts. Those entries
+                stay actionable through the collection table below so the collector keeps explicit
+                boundary context.
+              </div>
+            )}
+
+            <WizardRenderer
+              config={activeFormConfig.config}
+              values={{}}
+              elementNames={elementNamesById}
+              onSubmit={scrollToTable}
+              submitLabel="Open Table View"
+              renderField={(field) => {
+                const matches = resolveFieldMatches(field);
+                const singleMatch = matches.length === 1 ? matches[0] : null;
+                const firstMatch = matches[0] ?? null;
+                const elementName =
+                  singleMatch?.element_name
+                  ?? firstMatch?.element_name
+                  ?? field.tooltip?.split(": ").slice(1).join(": ")
+                  ?? `Element #${field.shared_element_id}`;
+                const elementCode = singleMatch?.element_code ?? firstMatch?.element_code ?? null;
+                const contextPreview = Array.from(
+                  new Set(
+                    matches
+                      .map((row) =>
+                        row.facility_name
+                          ? `${row.entity_name} / ${row.facility_name}`
+                          : row.entity_name
+                      )
+                      .filter(Boolean)
+                  )
+                );
+                const standards = Array.from(
+                  new Set(matches.flatMap((row) => row.standards ?? []))
+                );
+
+                return (
+                  <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {elementCode && (
+                            <span className="rounded-md bg-slate-100 px-2 py-1 font-mono text-[11px] text-slate-600">
+                              {elementCode}
+                            </span>
+                          )}
+                          <p className="font-medium text-slate-900">{elementName}</p>
+                          {field.required && (
+                            <Badge variant="outline" className="text-[10px]">
+                              Required
+                            </Badge>
+                          )}
+                          {singleMatch ? (
+                            <Badge variant={STATUS_CONFIG[singleMatch.collection_status].variant}>
+                              {STATUS_CONFIG[singleMatch.collection_status].label}
+                            </Badge>
+                          ) : matches.length === 0 ? (
+                            <Badge variant="secondary">Not assigned</Badge>
+                          ) : (
+                            <Badge variant="warning">{matches.length} contexts</Badge>
+                          )}
+                          {singleMatch?.reused_across_standards && (
+                            <Badge variant="secondary" className="text-[10px]">
+                              <Repeat2 className="mr-1 h-3 w-3" />
+                              Reused
+                            </Badge>
+                          )}
+                        </div>
+
+                        {field.help_text && (
+                          <p className="whitespace-pre-line text-xs text-slate-500">
+                            {field.help_text}
+                          </p>
+                        )}
+
+                        {singleMatch ? (
+                          <div className="flex flex-wrap gap-3 text-xs text-slate-500">
+                            <span>Entity: {singleMatch.entity_name}</span>
+                            {singleMatch.facility_name && (
+                              <span>Facility: {singleMatch.facility_name}</span>
+                            )}
+                            <span>
+                              Boundary: {BOUNDARY_CONFIG[singleMatch.boundary_status].label}
+                            </span>
+                            <span>Consolidation: {singleMatch.consolidation_method}</span>
+                          </div>
+                        ) : matches.length > 1 ? (
+                          <p className="text-xs text-slate-500">
+                            Multiple contexts found: {contextPreview.slice(0, 3).join(", ")}
+                            {contextPreview.length > 3 ? ` +${contextPreview.length - 3} more` : ""}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-slate-500">
+                            This field is present in the live config, but no matching assignment or data
+                            point context was found in the project.
+                          </p>
+                        )}
+
+                        {standards.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {standards.map((standard) => (
+                              <Badge key={standard} variant="outline" className="text-[10px]">
+                                {standard}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex shrink-0 flex-col items-end gap-2">
+                        {singleMatch && (
+                          <Badge variant={BOUNDARY_CONFIG[singleMatch.boundary_status].variant}>
+                            {BOUNDARY_CONFIG[singleMatch.boundary_status].label}
+                          </Badge>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={matches.length === 0}
+                          onClick={() => {
+                            if (singleMatch) {
+                              setGuidedField(field);
+                              setGuidedRowKey(
+                                buildContextKey(
+                                  singleMatch.shared_element_id,
+                                  singleMatch.entity_id,
+                                  singleMatch.facility_id
+                                )
+                              );
+                              return;
+                            }
+                            if (matches.length > 1) {
+                              showFieldInTable(field.shared_element_id);
+                            }
+                          }}
+                        >
+                          {singleMatch ? (
+                            singleMatch.data_point_id ? "Continue entry" : "Quick entry"
+                          ) : matches.length > 1 ? (
+                            "Show rows"
+                          ) : (
+                            "Unavailable"
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }}
+            />
+          </div>
+        </Card>
+      ) : null}
 
       {/* Filters row */}
       <Card className="p-4">
@@ -357,7 +904,7 @@ export default function CollectionPage() {
       </Card>
 
       {/* Table */}
-      <Card>
+      <Card id="collection-table">
         {meLoading || assignmentsLoading || isLoading ? (
           <div className="flex min-h-[300px] items-center justify-center p-12 text-gray-400">
             <Loader2 className="mr-2 h-5 w-5 animate-spin" />

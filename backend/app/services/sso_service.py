@@ -1,5 +1,5 @@
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
 
 from sqlalchemy import select
@@ -7,7 +7,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError
-from app.core.security import create_access_token, create_refresh_token, hash_password
+from app.core.security import create_access_token, create_refresh_token, decode_token, hash_password
 from app.db.models.organization import Organization
 from app.db.models.sso import SSOProvider
 from app.repositories.audit_repo import AuditRepository
@@ -32,8 +32,8 @@ class SSOService:
     @staticmethod
     def _as_utc(value: datetime) -> datetime:
         if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
 
     async def _get_organization_or_raise(self, organization_id: int) -> Organization:
         result = await self.sso_repo.session.execute(
@@ -114,7 +114,9 @@ class SSOService:
             total=len(providers),
         )
 
-    async def create_provider(self, payload: SSOProviderCreate, ctx: RequestContext) -> SSOProviderOut:
+    async def create_provider(
+        self, payload: SSOProviderCreate, ctx: RequestContext
+    ) -> SSOProviderOut:
         org_id = self._require_admin(ctx)
         provider = await self.sso_repo.create_provider(
             organization_id=org_id,
@@ -167,7 +169,7 @@ class SSOService:
         self._require_sso_enabled(organization)
 
         state = secrets.token_urlsafe(24)
-        expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+        expires_at = datetime.now(UTC) + timedelta(minutes=10)
         await self.sso_repo.create_login_state(
             sso_provider_id=provider.id,
             organization_id=organization_id,
@@ -194,6 +196,21 @@ class SSOService:
         )
 
     async def handle_callback(self, provider_id: int, payload: SSOCallbackRequest) -> TokenResponse:
+        return await self.handle_callback_with_session_metadata(
+            provider_id,
+            payload,
+            client_ip=None,
+            user_agent=None,
+        )
+
+    async def handle_callback_with_session_metadata(
+        self,
+        provider_id: int,
+        payload: SSOCallbackRequest,
+        *,
+        client_ip: str | None,
+        user_agent: str | None,
+    ) -> TokenResponse:
         provider = await self.sso_repo.get_provider_or_raise(provider_id)
         if not provider.is_active:
             raise AppError("SSO_PROVIDER_INACTIVE", 403, "SSO provider is inactive")
@@ -205,7 +222,7 @@ class SSOService:
             raise AppError("SSO_STATE_INVALID", 422, "SSO login state is invalid")
         if login_state.used_at is not None:
             raise AppError("SSO_STATE_USED", 409, "SSO login state has already been used")
-        if self._as_utc(login_state.expires_at) < datetime.now(timezone.utc):
+        if self._as_utc(login_state.expires_at) < datetime.now(UTC):
             raise AppError("SSO_STATE_EXPIRED", 422, "SSO login state has expired")
 
         identity = await self.sso_repo.get_identity(provider_id, payload.external_subject)
@@ -245,21 +262,30 @@ class SSOService:
                 user_id=user.id,
                 external_subject=payload.external_subject,
                 email=payload.email,
-                last_login_at=datetime.now(timezone.utc),
+                last_login_at=datetime.now(UTC),
             )
         else:
             identity.email = payload.email
-            identity.last_login_at = datetime.now(timezone.utc)
+            identity.last_login_at = datetime.now(UTC)
             await self.sso_repo.session.flush()
 
         if not user.is_active:
             raise AppError("FORBIDDEN", 403, "Account is deactivated")
 
-        login_state.used_at = datetime.now(timezone.utc)
-        access = create_access_token(user.id, user.email)
+        login_state.used_at = datetime.now(UTC)
         refresh = create_refresh_token(user.id, user.email)
-        expires_at = datetime.now(timezone.utc) + timedelta(days=settings.jwt_refresh_ttl_days)
-        await self.refresh_token_repo.create(user.id, refresh, expires_at)
+        refresh_payload = decode_token(refresh)
+        expires_at = datetime.now(UTC) + timedelta(days=settings.jwt_refresh_ttl_days)
+        refresh_session = await self.refresh_token_repo.create(
+            user.id,
+            refresh,
+            expires_at,
+            token_jti=refresh_payload.jti,
+            ip_address=client_ip,
+            user_agent=user_agent,
+            last_used_at=datetime.now(UTC),
+        )
+        access = create_access_token(user.id, user.email, session_id=refresh_session.id)
 
         await self.audit_repo.log(
             entity_type="User",
@@ -271,6 +297,7 @@ class SSOService:
                 "provider_id": provider.id,
                 "provider_type": provider.provider_type,
                 "external_subject": payload.external_subject,
+                "session_id": refresh_session.id,
             },
         )
         return TokenResponse(access_token=access, refresh_token=refresh)

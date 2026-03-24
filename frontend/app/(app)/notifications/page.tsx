@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   BellOff,
   CheckCheck,
@@ -44,6 +45,7 @@ type NotificationPreferences = {
   email: boolean;
   in_app: boolean;
   email_info_level: boolean;
+  digest_frequency: "none" | "daily" | "weekly";
 };
 
 function relativeTime(value: string | null) {
@@ -63,12 +65,19 @@ function severityVariant(severity: Notification["severity"]) {
   return "outline" as const;
 }
 
+function digestLabel(value: NotificationPreferences["digest_frequency"]) {
+  if (value === "daily") return "Daily digest";
+  if (value === "weekly") return "Weekly digest";
+  return "Immediate email";
+}
+
 export default function NotificationsPage() {
   const [readFilter, setReadFilter] = useState<"all" | "unread" | "read">("unread");
   const [severityFilter, setSeverityFilter] = useState("");
+  const queryClient = useQueryClient();
 
   const { data: me, isLoading: meLoading } = useApiQuery<{ roles: RoleBinding[] }>(
-    ["auth-me", "notifications-page"],
+    ["auth-me"],
     "/auth/me"
   );
 
@@ -85,7 +94,6 @@ export default function NotificationsPage() {
     data,
     isLoading,
     error,
-    refetch,
   } = useApiQuery<NotificationListResponse>(
     ["notifications", readFilter, severityFilter],
     `/notifications?${params.toString()}`,
@@ -95,7 +103,6 @@ export default function NotificationsPage() {
   const {
     data: preferences,
     isLoading: preferencesLoading,
-    refetch: refetchPreferences,
   } = useApiQuery<NotificationPreferences>(
     ["notification-preferences"],
     "/notifications/preferences",
@@ -115,24 +122,65 @@ export default function NotificationsPage() {
   );
   const emailEnabled = preferences?.email ?? true;
   const inAppEnabled = preferences?.in_app ?? true;
+  const digestFrequency = preferences?.digest_frequency ?? "none";
+
+  function updateUnreadCount(updater: (count: number) => number) {
+    queryClient.setQueryData<{ unread_count: number }>(
+      ["notifications-unread-count"],
+      (current) => {
+        if (!current) return current;
+        return { unread_count: Math.max(0, updater(current.unread_count)) };
+      }
+    );
+  }
+
+  function patchNotificationCaches(updater: (notification: Notification) => Notification) {
+    for (const [key, current] of queryClient.getQueriesData<NotificationListResponse>({
+      queryKey: ["notifications"],
+    })) {
+      if (!current) continue;
+      const [, cachedReadFilter] = key as [
+        string,
+        "all" | "unread" | "read",
+        string
+      ];
+      let items = current.items.map(updater);
+      if (cachedReadFilter === "unread") {
+        items = items.filter((notification) => !notification.is_read);
+      }
+      if (cachedReadFilter === "read") {
+        items = items.filter((notification) => notification.is_read);
+      }
+      queryClient.setQueryData<NotificationListResponse>(key, {
+        ...current,
+        items,
+        total: items.length,
+      });
+    }
+  }
 
   async function markNotificationRead(notificationId: number) {
     await api.patch(`/notifications/${notificationId}/read`);
-    await refetch();
+    patchNotificationCaches((notification) =>
+      notification.id === notificationId ? { ...notification, is_read: true } : notification
+    );
+    updateUnreadCount((count) => count - 1);
   }
 
   async function markAll() {
     await markAllRead.mutateAsync(undefined as never);
-    await refetch();
+    patchNotificationCaches((notification) => ({ ...notification, is_read: true }));
+    queryClient.setQueryData(["notifications-unread-count"], { unread_count: 0 });
   }
 
   async function updatePreference<K extends keyof NotificationPreferences>(
     key: K,
     value: NotificationPreferences[K]
   ) {
-    await updatePreferences.mutateAsync({ [key]: value } as Partial<NotificationPreferences>);
-    await refetchPreferences();
-    await refetch();
+    const updated = await updatePreferences.mutateAsync({
+      [key]: value,
+    } as Partial<NotificationPreferences>);
+    queryClient.setQueryData(["notification-preferences"], updated);
   }
 
   if (meLoading || (!accessDenied && (isLoading || preferencesLoading))) {
@@ -205,6 +253,9 @@ export default function NotificationsPage() {
             <p className="mt-1 text-xs text-slate-500">
               {emailEnabled ? "Email notifications are active." : "Email notifications are paused."}
             </p>
+            <p className="mt-1 text-xs text-slate-500">
+              {digestLabel(digestFrequency)}
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -222,7 +273,7 @@ export default function NotificationsPage() {
         <CardHeader>
           <CardTitle>Delivery Preferences</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-4 lg:grid-cols-3">
+        <CardContent className="grid gap-4 lg:grid-cols-4">
           <div className="rounded-lg border border-slate-200 p-4">
             <Switch
               checked={preferences?.in_app ?? true}
@@ -251,6 +302,26 @@ export default function NotificationsPage() {
             />
             <p className="mt-2 text-xs text-slate-500">
               Include informational events in email delivery, not just important and critical ones.
+            </p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-4">
+            <Select
+              label="Email digest"
+              value={digestFrequency}
+              onChange={(value) =>
+                void updatePreference(
+                  "digest_frequency",
+                  value as NotificationPreferences["digest_frequency"]
+                )
+              }
+              options={[
+                { value: "none", label: "Immediate email" },
+                { value: "daily", label: "Daily digest" },
+                { value: "weekly", label: "Weekly digest" },
+              ]}
+            />
+            <p className="mt-2 text-xs text-slate-500">
+              Bundle email notifications into a digest instead of sending each alert immediately.
             </p>
           </div>
         </CardContent>

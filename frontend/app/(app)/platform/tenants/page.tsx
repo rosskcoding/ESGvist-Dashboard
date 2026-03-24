@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Loader2,
   Pause,
@@ -59,19 +60,20 @@ function tenantStatusVariant(status: Tenant["status"]) {
 }
 
 export default function TenantsPage() {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [isRefreshingJobs, setIsRefreshingJobs] = useState(false);
 
   const { data: me, isLoading: meLoading } = useApiQuery<{ roles: RoleBinding[] }>(
-    ["auth-me", "platform-tenants"],
+    ["auth-me"],
     "/auth/me"
   );
 
   const canAccess = (me?.roles ?? []).some((binding) => binding.role === "platform_admin");
   const accessDenied = Boolean(me) && !canAccess;
 
-  const { data, isLoading, refetch } = useApiQuery<TenantListResponse>(
+  const { data, isLoading } = useApiQuery<TenantListResponse>(
     ["platform-tenants"],
     "/platform/tenants?page_size=100",
     { enabled: canAccess }
@@ -101,19 +103,34 @@ export default function TenantsPage() {
     };
   }, [data?.items]);
 
+  function patchTenantStatus(tenantId: number, status: Tenant["status"]) {
+    queryClient.setQueryData<TenantListResponse>(["platform-tenants"], (current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        items: current.items.map((tenant) =>
+          tenant.id === tenantId ? { ...tenant, status } : tenant
+        ),
+      };
+    });
+    queryClient.setQueryData(["platform-tenant", tenantId], (current: Record<string, unknown> | undefined) =>
+      current ? { ...current, status } : current
+    );
+  }
+
   async function suspendTenant(id: number) {
     await api.post(`/platform/tenants/${id}/suspend`);
-    await refetch();
+    patchTenantStatus(id, "suspended");
   }
 
   async function reactivateTenant(id: number) {
     await api.post(`/platform/tenants/${id}/reactivate`);
-    await refetch();
+    patchTenantStatus(id, "active");
   }
 
   async function archiveTenant(id: number) {
     await api.patch(`/platform/tenants/${id}/archive`);
-    await refetch();
+    patchTenantStatus(id, "archived");
   }
 
   async function refreshJobs() {

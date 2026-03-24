@@ -1,19 +1,21 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.access import get_project_for_ctx
 from app.core.dependencies import RequestContext, get_current_context
 from app.core.exceptions import AppError
-from app.db.models.boundary import BoundaryDefinition, BoundaryMembership
-from app.db.models.boundary_snapshot import BoundarySnapshot
 from app.db.session import get_session
+from app.events.bus import SnapshotSaved, get_event_bus
 from app.policies.auth_policy import AuthPolicy
 from app.policies.boundary_policy import BoundaryPolicy
 from app.repositories.audit_repo import AuditRepository
-from app.events.bus import SnapshotSaved, get_event_bus
+from app.repositories.snapshot_repo import SnapshotRepository
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["Boundary Snapshots"])
+
+
+def _repo(session: AsyncSession) -> SnapshotRepository:
+    return SnapshotRepository(session)
 
 
 @router.post("/api/projects/{project_id}/boundary/snapshot")
@@ -28,16 +30,9 @@ async def create_snapshot(
     if not proj.boundary_definition_id:
         raise AppError("BOUNDARY_NOT_DEFINED", 422, "No boundary defined for project")
 
-    # Build snapshot data
-    boundary = (await session.execute(
-        select(BoundaryDefinition).where(BoundaryDefinition.id == proj.boundary_definition_id)
-    )).scalar_one()
-
-    memberships = (await session.execute(
-        select(BoundaryMembership).where(
-            BoundaryMembership.boundary_definition_id == proj.boundary_definition_id
-        )
-    )).scalars().all()
+    repo = _repo(session)
+    boundary = await repo.get_boundary(proj.boundary_definition_id)
+    memberships = await repo.list_memberships(proj.boundary_definition_id)
 
     snapshot_data = {
         "boundary": {
@@ -56,28 +51,20 @@ async def create_snapshot(
         ],
     }
 
-    # Upsert snapshot
-    existing = (await session.execute(
-        select(BoundarySnapshot).where(BoundarySnapshot.reporting_project_id == project_id)
-    )).scalar_one_or_none()
-
+    existing = await repo.get_snapshot_by_project(project_id)
     if existing:
         existing.snapshot_data = snapshot_data
         existing.boundary_definition_id = proj.boundary_definition_id
         existing.created_by = ctx.user_id
+        await session.flush()
         snapshot_id = existing.id
     else:
-        snap = BoundarySnapshot(
+        snap = await repo.create_snapshot(
             reporting_project_id=project_id,
             boundary_definition_id=proj.boundary_definition_id,
             snapshot_data=snapshot_data,
             created_by=ctx.user_id,
         )
-        session.add(snap)
-        snapshot_id = None
-
-    await session.flush()
-    if snapshot_id is None:
         snapshot_id = snap.id
 
     await AuditRepository(session).log(
@@ -108,13 +95,9 @@ async def get_snapshot(
 ):
     AuthPolicy.require_role(ctx, ["admin", "esg_manager", "reviewer", "auditor", "platform_admin"])
     await get_project_for_ctx(session, project_id, ctx, allow_collectors=False, allow_reviewers=True)
-    snap = (await session.execute(
-        select(BoundarySnapshot).where(BoundarySnapshot.reporting_project_id == project_id)
-    )).scalar_one_or_none()
-
+    snap = await _repo(session).get_snapshot_by_project(project_id)
     if not snap:
         raise AppError("NOT_FOUND", 404, "Snapshot not found")
-
     return {
         "id": snap.id,
         "project_id": snap.reporting_project_id,

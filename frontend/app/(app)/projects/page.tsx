@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Card,
   CardContent,
@@ -76,17 +77,19 @@ function isForbidden(error: Error | null) {
 
 export default function ProjectsPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
+  const [actionError, setActionError] = useState<string | null>(null);
   const { data: me, isLoading: meLoading } = useApiQuery<{
     roles: Array<{ role: string }>;
-  }>(["auth-me", "projects"], "/auth/me");
+  }>(["auth-me"], "/auth/me");
   const roles = me?.roles?.map((binding) => binding.role) ?? [];
   const canAccess = roles.some((role) =>
     ["admin", "esg_manager", "platform_admin"].includes(role)
   );
 
-  const { data, isLoading, error, refetch } = useApiQuery<ProjectsResponse>(
+  const { data, isLoading, error } = useApiQuery<ProjectsResponse>(
     ["projects"],
     "/projects?page_size=100",
     { enabled: canAccess }
@@ -96,16 +99,31 @@ export default function ProjectsPage() {
     "/projects",
     "POST",
     {
-      onSuccess: () => {
+      onMutate: () => {
+        setActionError(null);
+      },
+      onSuccess: (project) => {
+        queryClient.setQueryData<ProjectsResponse>(["projects"], (current) =>
+          current
+            ? {
+                ...current,
+                items: [project, ...current.items.filter((item) => item.id !== project.id)],
+                total: current.total + (current.items.some((item) => item.id === project.id) ? 0 : 1),
+              }
+            : { items: [project], total: 1 }
+        );
         setDialogOpen(false);
         setNewProjectName("");
-        refetch();
+      },
+      onError: (error) => {
+        setActionError(error.message || "Unable to create project. Please try again.");
       },
     }
   );
 
   const handleCreate = () => {
-    if (!newProjectName.trim()) return;
+    if (!newProjectName.trim() || createMutation.isPending) return;
+    setActionError(null);
     createMutation.mutate({ name: newProjectName.trim() });
   };
 
@@ -129,6 +147,13 @@ export default function ProjectsPage() {
           </Button>
         )}
       </div>
+
+      {actionError && (
+        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          {actionError}
+        </div>
+      )}
 
       {/* Content */}
       {meLoading || isLoading ? (
@@ -299,6 +324,7 @@ export default function ProjectsPage() {
               onClick={() => {
                 setDialogOpen(false);
                 setNewProjectName("");
+                setActionError(null);
               }}
             >
               Cancel

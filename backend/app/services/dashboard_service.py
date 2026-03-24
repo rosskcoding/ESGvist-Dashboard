@@ -9,6 +9,7 @@ from app.core.assignment_sla import (
     resolve_assignment_sla,
 )
 from app.core.access import get_project_for_ctx
+from app.core.dashboard_cache import get_or_compute_dashboard_progress
 from app.core.dependencies import RequestContext
 from app.db.models.boundary import BoundaryDefinition, BoundaryMembership
 from app.db.models.boundary_snapshot import BoundarySnapshot
@@ -449,7 +450,7 @@ class DashboardService:
         }
         return boundary_summary, boundary_impact
 
-    async def get_project_progress(self, project_id: int, ctx: RequestContext) -> dict:
+    async def _build_project_progress(self, project_id: int, ctx: RequestContext) -> dict:
         project = await self._get_project(project_id, ctx)
         item_counts, total_items, overall_completion_percent = await self._item_status_counts(project_id)
         data_point_statuses = await self._data_point_status_counts(project_id)
@@ -505,6 +506,13 @@ class DashboardService:
             "merge_summary": merge_summary,
             "merge_coverage": merge_coverage,
         }
+
+    async def get_project_progress(self, project_id: int, ctx: RequestContext) -> dict:
+        return await get_or_compute_dashboard_progress(
+            project_id,
+            ctx,
+            lambda: self._build_project_progress(project_id, ctx),
+        )
 
     async def get_project_priority_tasks(self, project_id: int, ctx: RequestContext) -> dict:
         overview = await self.get_project_progress(project_id, ctx)

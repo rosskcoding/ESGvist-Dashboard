@@ -1,15 +1,18 @@
-import logging
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Callable
+from datetime import UTC, datetime
 
-logger = logging.getLogger(__name__)
+import structlog
+
+from app.core.metrics import record_non_blocking_failure
+
+logger = structlog.get_logger("app.event_bus")
 
 
 @dataclass
 class DomainEvent:
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass
@@ -181,6 +184,14 @@ class ManualBoundaryOverride(DomainEvent):
 
 
 @dataclass
+class DataPointValueChanged(DomainEvent):
+    data_point_id: int = 0
+    shared_element_id: int = 0
+    project_id: int = 0
+    organization_id: int = 0
+
+
+@dataclass
 class GateChecked(DomainEvent):
     data_point_id: int = 0
     action: str = ""
@@ -246,8 +257,14 @@ class EventBus:
         for handler in handlers:
             try:
                 await handler(event)
-            except Exception as e:
-                logger.error(f"Event handler failed: {e}", exc_info=True)
+            except Exception:
+                record_non_blocking_failure("event_bus", "handler")
+                logger.error(
+                    "event_handler_failed",
+                    event_type=type(event).__name__,
+                    handler=getattr(handler, "__name__", repr(handler)),
+                    exc_info=True,
+                )
 
 
 # Global singleton

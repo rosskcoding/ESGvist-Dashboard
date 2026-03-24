@@ -8,6 +8,11 @@ class ExplainRequest(BaseModel):
     disclosure_id: int | None = None
 
 
+class ExplainEvidenceRequest(BaseModel):
+    requirement_item_id: int
+    project_id: int | None = None
+
+
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=1000)
     screen: str | None = None

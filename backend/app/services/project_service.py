@@ -8,13 +8,15 @@ from app.core.assignment_sla import (
     resolve_assignment_sla,
 )
 from app.core.access import get_project_for_ctx, get_user_assignments, user_has_project_assignment
+from app.core.dashboard_cache import invalidate_dashboard_project
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError, GateBlockedError
-from app.db.models.boundary import BoundaryMembership
+from app.db.models.boundary import BoundaryDefinition, BoundaryMembership
 from app.db.models.company_entity import CompanyEntity
 from app.db.models.completeness import RequirementItemStatus
 from app.db.models.data_point import DataPoint
 from app.db.models.boundary_snapshot import BoundarySnapshot
+from app.db.models.organization import Organization
 from app.db.models.project import MetricAssignment, ReportingProject, ReportingProjectStandard
 from app.db.models.role_binding import RoleBinding
 from app.db.models.shared_element import SharedElement
@@ -56,8 +58,13 @@ from app.schemas.projects import (
 from app.workflows.gates.base import GateEngine
 from app.workflows.gates.boundary_gate import BoundaryNotDefinedGate, BoundaryNotLockedGate
 from app.workflows.gates.completeness_gate import ProjectIncompleteGate
-from app.workflows.gates.review_gate import NoRequirementsGate, ReviewNotCompletedGate, UnresolvedReviewGate
-
+from app.workflows.gates.review_gate import (
+    NoAssignmentsGate,
+    NoRequirementsGate,
+    ReviewNotCompletedGate,
+    UnresolvedReviewGate,
+    UnsubmittedDataGate,
+)
 
 class ProjectService:
     def __init__(self, repo: ProjectRepository, audit_repo: AuditRepository | None = None):
@@ -67,11 +74,13 @@ class ProjectService:
         self.project_gate_engine = GateEngine(
             [
                 NoRequirementsGate(),
+                NoAssignmentsGate(),
                 BoundaryNotDefinedGate(),
                 BoundaryNotLockedGate(),
                 ProjectIncompleteGate(),
                 ReviewNotCompletedGate(),
                 UnresolvedReviewGate(),
+                UnsubmittedDataGate(),
             ]
         )
 
@@ -279,7 +288,8 @@ class ProjectService:
             "reviewer_id": {"reviewer", "esg_manager", "admin"},
             "backup_collector_id": {"collector", "esg_manager", "admin"},
         }
-        if field_name in allowed_roles and binding.role not in allowed_roles[field_name]:
+        resolved_role = str(getattr(binding.role, "value", binding.role)).strip().lower()
+        if field_name in allowed_roles and resolved_role not in allowed_roles[field_name]:
             readable = {
                 "collector_id": "collector",
                 "reviewer_id": "reviewer",
@@ -512,6 +522,7 @@ class ProjectService:
                 updated_by=ctx.user_id,
             )
         )
+        await invalidate_dashboard_project(assignment.reporting_project_id)
         return updated
 
     async def _build_project_gate_context(
@@ -632,7 +643,47 @@ class ProjectService:
         self._require_manager(ctx)
         if not ctx.organization_id:
             raise AppError("ORG_HEADER_REQUIRED", 400, "Organization context required")
-        p = await self.repo.create_project(ctx.organization_id, **payload.model_dump())
+
+        org_result = await self.repo.session.execute(
+            select(Organization).where(Organization.id == ctx.organization_id)
+        )
+        organization = org_result.scalar_one_or_none()
+        if not organization:
+            raise AppError("NOT_FOUND", 404, f"Organization {ctx.organization_id} not found")
+
+        boundary_result = await self.repo.session.execute(
+            select(BoundaryDefinition).where(
+                BoundaryDefinition.organization_id == ctx.organization_id,
+                BoundaryDefinition.is_default == True,  # noqa: E712
+            )
+        )
+        default_boundary = boundary_result.scalar_one_or_none()
+
+        create_payload = payload.model_dump()
+        if create_payload.get("reporting_year") is None:
+            create_payload["reporting_year"] = organization.default_reporting_year
+        if default_boundary is not None:
+            create_payload["boundary_definition_id"] = default_boundary.id
+
+        p = await self.repo.create_project(ctx.organization_id, **create_payload)
+
+        default_standard_codes = organization.default_standards or []
+        if default_standard_codes:
+            standards_result = await self.repo.session.execute(
+                select(Standard).where(Standard.code.in_(default_standard_codes))
+            )
+            standards_by_code = {
+                standard.code: standard for standard in standards_result.scalars().all()
+            }
+            attached_codes: set[str] = set()
+            for code in default_standard_codes:
+                standard = standards_by_code.get(code)
+                if not standard or code in attached_codes:
+                    continue
+                await self.repo.add_standard(p.id, standard.id, is_base=not attached_codes)
+                attached_codes.add(code)
+
+        await invalidate_dashboard_project(p.id)
         return await self._build_project_out(p)
 
     async def list_projects(self, ctx: RequestContext, page: int = 1, page_size: int = 20) -> ProjectListOut:
@@ -669,6 +720,7 @@ class ProjectService:
         self._require_manager(ctx)
         await get_project_for_ctx(self.repo.session, project_id, ctx)
         await self.repo.add_standard(project_id, payload.standard_id, payload.is_base_standard)
+        await invalidate_dashboard_project(project_id)
         await self._audit(
             "ReportingProject",
             "project_standard_added",
@@ -863,6 +915,7 @@ class ProjectService:
                 assigned_by=ctx.user_id,
             )
         )
+        await invalidate_dashboard_project(project_id)
         return AssignmentOut.model_validate(a)
 
     async def list_assignments(self, project_id: int, ctx: RequestContext) -> AssignmentMatrixOut:
@@ -958,6 +1011,7 @@ class ProjectService:
                 org_id=project.organization_id,
             )
             updated_ids.append(updated.id)
+        await invalidate_dashboard_project(project_id)
         return {"updated_count": len(updated_ids), "assignment_ids": updated_ids}
 
     # --- Boundaries ---
@@ -1025,6 +1079,7 @@ class ProjectService:
                 applied_by=ctx.user_id,
             )
         )
+        await invalidate_dashboard_project(project_id)
         return ProjectOut.model_validate(p)
 
     async def start_project(self, project_id: int, ctx: RequestContext) -> dict:
@@ -1049,6 +1104,7 @@ class ProjectService:
                 project_name=project.name,
             )
         )
+        await invalidate_dashboard_project(project_id)
         return {"id": project.id, "status": project.status, **gate_result}
 
     async def review_project(self, project_id: int, ctx: RequestContext) -> dict:
@@ -1075,6 +1131,7 @@ class ProjectService:
                 target_user_ids=sorted({a.reviewer_id for a in assignments if a.reviewer_id}),
             )
         )
+        await invalidate_dashboard_project(project_id)
         return {"id": project.id, "status": project.status, **gate_result}
 
     async def publish_project(self, project_id: int, ctx: RequestContext) -> dict:
@@ -1101,6 +1158,7 @@ class ProjectService:
                 project_name=project.name,
             )
         )
+        await invalidate_dashboard_project(project_id)
         return {"project_id": project.id, "status": project.status, **gate_result}
 
     async def rollback_project(self, project_id: int, comment: str | None, ctx: RequestContext) -> dict:
@@ -1120,4 +1178,5 @@ class ProjectService:
             entity_id=project_id,
             changes={"comment": comment},
         )
+        await invalidate_dashboard_project(project_id)
         return {"project_id": project.id, "status": project.status}

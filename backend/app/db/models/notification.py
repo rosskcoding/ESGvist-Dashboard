@@ -27,6 +27,8 @@ class Notification(Base):
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     email_sent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     email_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    digest_sent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    digest_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

@@ -1,7 +1,9 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { useAIScreenContext } from "@/lib/ai-context";
+import { AICompletenessWhy } from "@/components/ai-inline-explain";
 import {
   Card,
   CardContent,
@@ -113,6 +115,11 @@ export default function CompletenessPage() {
   const [aiExplain, setAiExplain] = useState<AIExplainResponse | null>(null);
   const [aiExplainError, setAiExplainError] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
+  const { enrichScreenContext } = useAIScreenContext();
+
+  useEffect(() => {
+    enrichScreenContext({ projectId });
+  }, [projectId, enrichScreenContext]);
 
   const {
     data: completeness,
@@ -127,7 +134,7 @@ export default function CompletenessPage() {
     isLoading: dashboardLoading,
     error: dashboardError,
   } = useApiQuery<DashboardProgress>(
-    ["dashboard", "progress", projectId, "completeness-page"],
+    ["dashboard", "progress", projectId],
     `/dashboard/projects/${projectId}/progress`
   );
 
@@ -410,10 +417,17 @@ export default function CompletenessPage() {
                         </TableCell>
                         <TableCell>{disclosure.title ?? "Untitled disclosure"}</TableCell>
                         <TableCell>
-                          <Badge variant={statusCfg.variant}>
-                            <StatusIcon className="mr-1 h-3 w-3" />
-                            {statusCfg.label}
-                          </Badge>
+                          <div className="flex items-center gap-2">
+                            <Badge variant={statusCfg.variant}>
+                              <StatusIcon className="mr-1 h-3 w-3" />
+                              {statusCfg.label}
+                            </Badge>
+                            <AICompletenessWhy
+                              projectId={projectId}
+                              disclosureId={disclosure.disclosure_requirement_id}
+                              status={disclosure.status}
+                            />
+                          </div>
                         </TableCell>
                         <TableCell>
                           <span className="text-sm text-green-600">{coveredCount}</span>

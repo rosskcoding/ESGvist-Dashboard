@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { register, login, isAuthenticated } from "@/lib/auth";
+import { getMe, register, login } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -91,7 +91,9 @@ export default function InvitePage() {
 
       await api.post(`/invitations/accept`, { token });
       if (invitation?.organization_id) {
-        localStorage.setItem("organization_id", String(invitation.organization_id));
+        await api.post("/auth/context/organization", {
+          organization_id: invitation.organization_id,
+        });
       }
       setAccepted(true);
 
@@ -109,7 +111,12 @@ export default function InvitePage() {
     setLoading(true);
     try {
       await api.post(`/invitations/decline`, { token });
-      router.push(isAuthenticated() ? "/dashboard" : "/login");
+      try {
+        await getMe();
+        router.push("/dashboard");
+      } catch {
+        router.push("/login");
+      }
     } catch {
       setError("Failed to decline invitation");
     } finally {

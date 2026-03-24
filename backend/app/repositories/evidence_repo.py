@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError
 from app.db.models.evidence import DataPointEvidence, Evidence, EvidenceFile, EvidenceLink
+from app.db.models.requirement_item_evidence import RequirementItemEvidence
 
 
 class EvidenceRepository:
@@ -72,3 +73,24 @@ class EvidenceRepository:
             DataPointEvidence.data_point_id == dp_id
         )
         return (await self.session.execute(q)).scalar_one()
+
+    async def requirement_item_link_exists(self, requirement_item_id: int, evidence_id: int) -> bool:
+        result = await self.session.execute(
+            select(RequirementItemEvidence).where(
+                RequirementItemEvidence.requirement_item_id == requirement_item_id,
+                RequirementItemEvidence.evidence_id == evidence_id,
+            )
+        )
+        return result.scalar_one_or_none() is not None
+
+    async def link_to_requirement_item(
+        self, requirement_item_id: int, evidence_id: int, user_id: int
+    ) -> RequirementItemEvidence:
+        binding = RequirementItemEvidence(
+            requirement_item_id=requirement_item_id,
+            evidence_id=evidence_id,
+            linked_by=user_id,
+        )
+        self.session.add(binding)
+        await self.session.flush()
+        return binding

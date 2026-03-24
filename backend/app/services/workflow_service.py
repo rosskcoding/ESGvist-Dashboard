@@ -3,6 +3,7 @@ import logging
 from sqlalchemy import select
 
 from app.core.access import assignment_matches_data_point, get_data_point_for_ctx
+from app.core.dashboard_cache import invalidate_dashboard_project
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError, GateBlockedError
 from app.db.models.completeness import RequirementItemDataPoint, RequirementItemStatus
@@ -17,6 +18,7 @@ from app.events.bus import (
     get_event_bus,
 )
 from app.repositories.audit_repo import AuditRepository
+from app.services.data_point_service import create_data_point_version
 from app.repositories.completeness_repo import CompletenessRepository
 from app.repositories.data_point_repo import DataPointRepository
 from app.repositories.evidence_repo import EvidenceRepository
@@ -28,9 +30,16 @@ from app.workflows.gates.boundary_gate import (
     BoundaryNotLockedGate,
 )
 from app.workflows.gates.completeness_gate import ProjectIncompleteGate, RequirementIncompleteGate
-from app.workflows.gates.data_gate import DataValidationGate
+from app.workflows.gates.data_gate import DataValidationGate, InvalidValueTypeGate, MissingDataGate
 from app.workflows.gates.evidence_gate import EvidenceRequiredGate
-from app.workflows.gates.review_gate import NoRequirementsGate, ProjectLockedGate, UnresolvedReviewGate
+from app.workflows.gates.review_gate import (
+    NoAssignmentsGate,
+    NoRequirementsGate,
+    NoReviewerAssignedGate,
+    ProjectLockedGate,
+    UnresolvedReviewGate,
+    UnsubmittedDataGate,
+)
 from app.workflows.gates.workflow_gate import (
     CommentRequiredGate,
     DataPointLockedGate,
@@ -57,6 +66,8 @@ class WorkflowService:
             ProjectLockedGate(),
             # Data gates
             DataValidationGate(),
+            InvalidValueTypeGate(),
+            MissingDataGate(),
             # Evidence gates
             EvidenceRequiredGate(evidence_repo),
             # Boundary gates
@@ -69,6 +80,7 @@ class WorkflowService:
             # Review gates
             UnresolvedReviewGate(),
             NoRequirementsGate(),
+            NoReviewerAssignedGate(),
         ])
 
     async def _refresh_bound_item_statuses(self, project_id: int, dp_id: int) -> None:
@@ -220,6 +232,9 @@ class WorkflowService:
         gate_result = await self._check_gates("submit_data_point", context, ctx)
 
         dp = await self.dp_repo.update(dp_id, status="submitted")
+        await create_data_point_version(
+            self.dp_repo.session, dp, changed_by=ctx.user_id, change_reason="submitted"
+        )
         await self._audit("data_point_submitted", dp_id, ctx)
 
         # Auto-transition to in_review if reviewer is assigned
@@ -238,6 +253,9 @@ class WorkflowService:
         ]
         if matching_reviewers:
             dp = await self.dp_repo.update(dp_id, status="in_review")
+            await create_data_point_version(
+                self.dp_repo.session, dp, changed_by=ctx.user_id, change_reason="auto_in_review"
+            )
             final_status = "in_review"
         await self._refresh_bound_item_statuses(dp.reporting_project_id, dp.id)
         await get_event_bus().publish(
@@ -255,6 +273,7 @@ class WorkflowService:
                 ),
             )
         )
+        await invalidate_dashboard_project(dp.reporting_project_id)
 
         return {"id": dp.id, "status": final_status, **gate_result}
 
@@ -265,6 +284,9 @@ class WorkflowService:
         gate_result = await self._check_gates("approve_data_point", context, ctx)
 
         dp = await self.dp_repo.update(dp_id, status="approved", review_comment=comment)
+        await create_data_point_version(
+            self.dp_repo.session, dp, changed_by=ctx.user_id, change_reason="approved"
+        )
         await self._refresh_bound_item_statuses(dp.reporting_project_id, dp.id)
         await self._audit("data_point_approved", dp_id, ctx, {"comment": comment})
         await get_event_bus().publish(
@@ -275,6 +297,7 @@ class WorkflowService:
                 target_user_ids=[dp.created_by] if dp.created_by else [],
             )
         )
+        await invalidate_dashboard_project(dp.reporting_project_id)
         return {"id": dp.id, "status": dp.status, **gate_result}
 
     async def reject(self, dp_id: int, comment: str | None, ctx: RequestContext) -> dict:
@@ -284,6 +307,9 @@ class WorkflowService:
         gate_result = await self._check_gates("reject_data_point", context, ctx)
 
         dp = await self.dp_repo.update(dp_id, status="rejected", review_comment=comment)
+        await create_data_point_version(
+            self.dp_repo.session, dp, changed_by=ctx.user_id, change_reason="rejected"
+        )
         await self._refresh_bound_item_statuses(dp.reporting_project_id, dp.id)
         await self._audit("data_point_rejected", dp_id, ctx, {"comment": comment})
         await get_event_bus().publish(
@@ -295,6 +321,7 @@ class WorkflowService:
                 comment=comment or "",
             )
         )
+        await invalidate_dashboard_project(dp.reporting_project_id)
         return {"id": dp.id, "status": dp.status, **gate_result}
 
     async def request_revision(self, dp_id: int, comment: str | None, ctx: RequestContext) -> dict:
@@ -304,6 +331,9 @@ class WorkflowService:
         gate_result = await self._check_gates("request_revision", context, ctx)
 
         dp = await self.dp_repo.update(dp_id, status="needs_revision", review_comment=comment)
+        await create_data_point_version(
+            self.dp_repo.session, dp, changed_by=ctx.user_id, change_reason="needs_revision"
+        )
         await self._refresh_bound_item_statuses(dp.reporting_project_id, dp.id)
         await self._audit("data_point_revision_requested", dp_id, ctx, {"comment": comment})
         await get_event_bus().publish(
@@ -315,6 +345,7 @@ class WorkflowService:
                 comment=comment or "",
             )
         )
+        await invalidate_dashboard_project(dp.reporting_project_id)
         return {"id": dp.id, "status": dp.status, **gate_result}
 
     async def rollback(self, dp_id: int, comment: str | None, ctx: RequestContext) -> dict:
@@ -324,6 +355,9 @@ class WorkflowService:
         gate_result = await self._check_gates("rollback_data_point", context, ctx)
 
         dp = await self.dp_repo.update(dp_id, status="draft", review_comment=comment)
+        await create_data_point_version(
+            self.dp_repo.session, dp, changed_by=ctx.user_id, change_reason="rolled_back"
+        )
         await self._refresh_bound_item_statuses(dp.reporting_project_id, dp.id)
         await self._audit("data_point_rolled_back", dp_id, ctx, {"comment": comment})
         await get_event_bus().publish(
@@ -335,6 +369,7 @@ class WorkflowService:
                 reason=comment or "",
             )
         )
+        await invalidate_dashboard_project(dp.reporting_project_id)
         return {"id": dp.id, "status": dp.status, **gate_result}
 
     async def gate_check(self, action: str, dp_id: int, ctx: RequestContext, comment: str | None = None) -> dict:

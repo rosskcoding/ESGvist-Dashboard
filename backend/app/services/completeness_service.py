@@ -2,6 +2,7 @@ from sqlalchemy import select
 
 from app.core.access import get_project_for_ctx
 from app.core.access import get_project_or_raise
+from app.core.dashboard_cache import invalidate_dashboard_project
 from app.core.dependencies import RequestContext
 from app.db.models.boundary import BoundaryDefinition, BoundaryMembership
 from app.db.models.boundary_snapshot import BoundarySnapshot
@@ -112,6 +113,7 @@ class CompletenessService:
         b = await self.repo.create_binding(project_id, item_id, dp_id)
         # Recalculate after binding
         await self.calculate_item_status(project_id, item_id)
+        await invalidate_dashboard_project(project_id)
         return {"binding_id": b.id}
 
     async def calculate_item_status(
@@ -418,6 +420,7 @@ class CompletenessService:
                     triggered_by=ctx.user_id if ctx else None,
                 )
             )
+            await invalidate_dashboard_project(project_id)
 
         return CompletenessOut(
             project_id=project_id,

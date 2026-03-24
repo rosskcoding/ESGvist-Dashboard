@@ -2,17 +2,34 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Loader2, PlayCircle, ShieldAlert } from "lucide-react";
 
 import { api } from "@/lib/api";
 import { useApiMutation, useApiQuery } from "@/lib/hooks/use-api";
+import {
+  readSupportMode,
+  startSupportMode,
+  stopSupportMode,
+  subscribeSupportMode,
+  type SupportModeState,
+} from "@/lib/support-mode";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 
 type RoleBinding = { role: string };
 
@@ -59,6 +76,7 @@ function statusVariant(status: TenantDetail["status"]) {
 }
 
 export default function TenantDetailPage() {
+  const queryClient = useQueryClient();
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const tenantId = Number(params.id);
@@ -72,16 +90,21 @@ export default function TenantDetailPage() {
   const [assignmentMessage, setAssignmentMessage] = useState("");
   const [tenantMessage, setTenantMessage] = useState("");
   const [jobMessage, setJobMessage] = useState("");
+  const [supportMode, setSupportMode] = useState<SupportModeState>(() => readSupportMode());
+  const [supportDialogOpen, setSupportDialogOpen] = useState(false);
+  const [supportReason, setSupportReason] = useState("");
+  const [supportMessage, setSupportMessage] = useState("");
+  const [supportError, setSupportError] = useState("");
 
   const { data: me, isLoading: meLoading } = useApiQuery<{ roles: RoleBinding[] }>(
-    ["auth-me", "tenant-detail"],
+    ["auth-me"],
     "/auth/me"
   );
 
   const canAccess = (me?.roles ?? []).some((binding) => binding.role === "platform_admin");
   const accessDenied = Boolean(me) && !canAccess;
 
-  const { data: tenant, isLoading, refetch } = useApiQuery<TenantDetail>(
+  const { data: tenant, isLoading } = useApiQuery<TenantDetail>(
     ["platform-tenant", tenantId],
     `/platform/tenants/${tenantId}`,
     { enabled: canAccess && Number.isFinite(tenantId) }
@@ -91,7 +114,7 @@ export default function TenantDetailPage() {
     enabled: canAccess,
   });
 
-  const { data: selfRegistration, refetch: refetchSelfRegistration } = useApiQuery<SelfRegistrationConfig>(
+  const { data: selfRegistration } = useApiQuery<SelfRegistrationConfig>(
     ["self-registration"],
     "/platform/config/self-registration",
     { enabled: canAccess }
@@ -115,6 +138,16 @@ export default function TenantDetailPage() {
     "/platform/config/self-registration",
     "PATCH"
   );
+  const startSupportSession = useApiMutation<
+    { session_id: number; tenant_id: number; started_at: string | null },
+    { reason: string }
+  >(`/platform/tenants/${tenantId}/support-session`, "POST");
+
+  useEffect(() => {
+    const syncSupportMode = () => setSupportMode(readSupportMode());
+    syncSupportMode();
+    return subscribeSupportMode(syncSupportMode);
+  }, []);
 
   useEffect(() => {
     if (!tenant) return;
@@ -129,6 +162,28 @@ export default function TenantDetailPage() {
   const selectableUsers = useMemo(() => {
     return (users?.items ?? []).filter((user) => user.is_active);
   }, [users?.items]);
+  const supportActiveForThisTenant =
+    supportMode.active && Number(supportMode.tenantId) === tenantId;
+  const supportActiveElsewhere =
+    supportMode.active && Number(supportMode.tenantId) !== tenantId;
+
+  function patchTenantCaches(patch: Partial<TenantDetail>) {
+    queryClient.setQueryData<TenantDetail>(["platform-tenant", tenantId], (current) =>
+      current ? { ...current, ...patch } : current
+    );
+    queryClient.setQueryData<{ items: Array<Record<string, unknown>>; total: number }>(
+      ["platform-tenants"],
+      (current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          items: current.items.map((item) =>
+            Number(item.id) === tenantId ? { ...item, ...patch } : item
+          ),
+        };
+      }
+    );
+  }
 
   async function saveTenant() {
     setTenantMessage("");
@@ -139,7 +194,7 @@ export default function TenantDetailPage() {
       status: form.status,
     };
     await updateTenant.mutateAsync(payload);
-    await refetch();
+    patchTenantCaches(payload);
     setTenantMessage("Tenant settings saved.");
   }
 
@@ -152,7 +207,7 @@ export default function TenantDetailPage() {
     } else {
       await api.patch(`/platform/tenants/${tenantId}/archive`);
     }
-    await refetch();
+    patchTenantCaches({ status });
     setForm((current) => ({ ...current, status }));
     setTenantMessage(`Tenant moved to ${status}.`);
   }
@@ -170,8 +225,8 @@ export default function TenantDetailPage() {
   }
 
   async function toggleSelfRegistration(value: boolean) {
-    await updateSelfRegistration.mutateAsync({ allow_self_registration: value });
-    await refetchSelfRegistration();
+    const updated = await updateSelfRegistration.mutateAsync({ allow_self_registration: value });
+    queryClient.setQueryData(["self-registration"], updated);
   }
 
   async function runJob(kind: "sla-check" | "project-deadlines" | "webhook-retries" | "export-jobs" | "all") {
@@ -189,6 +244,39 @@ export default function TenantDetailPage() {
     await api.post(path);
     await refetchJobStatus();
     setJobMessage(kind === "all" ? "All scheduled jobs triggered." : `Job '${kind}' triggered.`);
+  }
+
+  async function beginSupportSession() {
+    if (!tenant || !supportReason.trim()) return;
+    setSupportError("");
+    setSupportMessage("");
+    try {
+      await startSupportSession.mutateAsync({ reason: supportReason.trim() });
+      startSupportMode(tenant.id, tenant.name);
+      setSupportDialogOpen(false);
+      setSupportReason("");
+      setSupportMessage(`Support mode started for ${tenant.name}.`);
+      router.push("/dashboard");
+    } catch (error) {
+      setSupportError(
+        error instanceof Error ? error.message : "Unable to start support mode."
+      );
+    }
+  }
+
+  async function endSupportSession() {
+    if (!supportMode.active) return;
+    setSupportError("");
+    setSupportMessage("");
+    try {
+      await api.delete("/platform/support-session/current");
+      stopSupportMode();
+      setSupportMessage("Support mode ended.");
+    } catch (error) {
+      setSupportError(
+        error instanceof Error ? error.message : "Unable to end support mode."
+      );
+    }
   }
 
   if (meLoading || (canAccess && isLoading)) {
@@ -347,6 +435,48 @@ export default function TenantDetailPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="rounded-lg border border-slate-200 p-4">
+              <p className="text-sm font-medium text-slate-900">Support Mode</p>
+              <p className="mt-2 text-sm text-slate-600">
+                Start a scoped support session to work inside this tenant with full tenant context.
+              </p>
+              {supportActiveForThisTenant ? (
+                <div className="mt-3 space-y-3 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+                  <p>
+                    Support mode is currently active for this tenant.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" onClick={() => router.push("/dashboard")}>
+                      Open Tenant Workspace
+                    </Button>
+                    <Button variant="outline" onClick={() => void endSupportSession()}>
+                      End Support Session
+                    </Button>
+                  </div>
+                </div>
+              ) : supportActiveElsewhere ? (
+                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  Another support session is already active for {supportMode.tenantName ?? `tenant #${supportMode.tenantId}`}.
+                  End it before starting a new one here.
+                </div>
+              ) : (
+                <div className="mt-3">
+                  <Button variant="outline" onClick={() => setSupportDialogOpen(true)}>
+                    Start Support Session
+                  </Button>
+                </div>
+              )}
+              {supportMessage && (
+                <div className="mt-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+                  {supportMessage}
+                </div>
+              )}
+              {supportError && (
+                <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {supportError}
+                </div>
+              )}
+            </div>
+            <div className="rounded-lg border border-slate-200 p-4">
               <Switch
                 checked={selfRegistration?.allow_self_registration ?? false}
                 onCheckedChange={(value) => void toggleSelfRegistration(value)}
@@ -422,6 +552,41 @@ export default function TenantDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={supportDialogOpen} onOpenChange={setSupportDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Start Support Session</DialogTitle>
+            <DialogDescription>
+              Explain why you need access to this tenant. The session will switch the app into tenant context.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2 py-2">
+            <Label htmlFor="support-reason">Reason</Label>
+            <Textarea
+              id="support-reason"
+              value={supportReason}
+              onChange={(event) => setSupportReason(event.target.value)}
+              rows={5}
+              placeholder="Investigating configuration issue in reporting workflow..."
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSupportDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void beginSupportSession()}
+              disabled={startSupportSession.isPending || !supportReason.trim()}
+            >
+              {startSupportSession.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Start Session
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

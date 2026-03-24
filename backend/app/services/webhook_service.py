@@ -1,15 +1,21 @@
+import asyncio
 import hashlib
 import hmac
+import ipaddress
 import json
 import secrets
+import socket
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlsplit
 
 import httpx
+import structlog
 from sqlalchemy import select
 
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError
+from app.core.metrics import record_non_blocking_failure
 from app.db.models.role_binding import RoleBinding
 from app.db.models.webhook import WebhookDelivery, WebhookEndpoint
 from app.repositories.audit_repo import AuditRepository
@@ -41,6 +47,7 @@ SUPPORTED_WEBHOOK_EVENTS = {
     "completeness.updated",
 }
 RETRY_DELAYS_SECONDS = [1, 2, 4, 8, 16]
+logger = structlog.get_logger("app.webhooks")
 
 
 async def send_webhook_request(
@@ -66,6 +73,91 @@ class WebhookService:
         self.audit_repo = audit_repo
         self.notification_service = NotificationService(notification_repo) if notification_repo else None
         self.sender = sender or send_webhook_request
+
+    @staticmethod
+    def _is_forbidden_ip(address: str) -> bool:
+        ip = ipaddress.ip_address(address)
+        return any(
+            (
+                ip.is_private,
+                ip.is_loopback,
+                ip.is_link_local,
+                ip.is_multicast,
+                ip.is_reserved,
+                ip.is_unspecified,
+            )
+        )
+
+    @classmethod
+    async def _resolve_host_addresses(cls, hostname: str, port: int | None) -> set[str]:
+        lookup_port = port or 443
+        infos = await asyncio.to_thread(
+            socket.getaddrinfo,
+            hostname,
+            lookup_port,
+            type=socket.SOCK_STREAM,
+        )
+        addresses: set[str] = set()
+        for family, _socktype, _proto, _canonname, sockaddr in infos:
+            if family == socket.AF_INET:
+                addresses.add(sockaddr[0])
+            elif family == socket.AF_INET6:
+                addresses.add(sockaddr[0])
+        return addresses
+
+    @classmethod
+    async def _validate_outbound_url(cls, url: str, *, resolve_hostname: bool) -> str:
+        parsed = urlsplit(url)
+        hostname = parsed.hostname
+        if not hostname:
+            raise AppError("INVALID_WEBHOOK_URL", 422, "Webhook URL hostname is required")
+        normalized_host = hostname.strip().lower()
+        if normalized_host == "localhost" or normalized_host.endswith(".localhost"):
+            raise AppError(
+                "WEBHOOK_URL_FORBIDDEN",
+                422,
+                "Webhook URL cannot target localhost",
+            )
+
+        try:
+            if cls._is_forbidden_ip(normalized_host):
+                raise AppError(
+                    "WEBHOOK_URL_FORBIDDEN",
+                    422,
+                    "Webhook URL cannot target private or local network addresses",
+                )
+            return url
+        except ValueError:
+            pass
+
+        if not resolve_hostname:
+            return url
+
+        try:
+            resolved_addresses = await cls._resolve_host_addresses(normalized_host, parsed.port)
+        except socket.gaierror as exc:
+            raise AppError(
+                "WEBHOOK_URL_RESOLUTION_FAILED",
+                422,
+                f"Webhook hostname '{normalized_host}' could not be resolved",
+            ) from exc
+
+        if not resolved_addresses:
+            raise AppError(
+                "WEBHOOK_URL_RESOLUTION_FAILED",
+                422,
+                f"Webhook hostname '{normalized_host}' did not resolve to any address",
+            )
+
+        blocked = sorted(address for address in resolved_addresses if cls._is_forbidden_ip(address))
+        if blocked:
+            raise AppError(
+                "WEBHOOK_URL_FORBIDDEN",
+                422,
+                "Webhook URL resolved to private or local network addresses",
+            )
+
+        return url
 
     @staticmethod
     def _require_admin(ctx: RequestContext) -> int:
@@ -155,9 +247,10 @@ class WebhookService:
 
     async def create_endpoint(self, payload: WebhookEndpointCreate, ctx: RequestContext) -> WebhookEndpointCreateOut:
         org_id = self._require_admin(ctx)
+        url = await self._validate_outbound_url(str(payload.url), resolve_hostname=False)
         endpoint = await self.repo.create_endpoint(
             organization_id=org_id,
-            url=str(payload.url),
+            url=url,
             secret=payload.secret or secrets.token_hex(16),
             events=self._normalize_events(payload.events),
             is_active=payload.is_active,
@@ -181,7 +274,10 @@ class WebhookService:
         endpoint = await self._get_endpoint_for_ctx(endpoint_id, ctx)
         changes = payload.model_dump(exclude_unset=True)
         if "url" in changes:
-            endpoint.url = str(payload.url)
+            endpoint.url = await self._validate_outbound_url(
+                str(payload.url),
+                resolve_hostname=False,
+            )
             changes["url"] = endpoint.url
         if "events" in changes and payload.events is not None:
             endpoint.events = self._normalize_events(payload.events)
@@ -276,6 +372,7 @@ class WebhookService:
             "X-Webhook-Signature": self._build_signature(endpoint.secret, timestamp, delivery.payload),
         }
         try:
+            await self._validate_outbound_url(endpoint.url, resolve_hostname=True)
             http_status, response_body = await self.sender(endpoint.url, delivery.payload, headers, 10)
             response_preview = response_body[:2000] if response_body else None
             if 200 <= http_status < 300:
@@ -288,6 +385,16 @@ class WebhookService:
                 await self.repo.session.flush()
                 return delivery
         except Exception as exc:
+            record_non_blocking_failure("webhook_service", "delivery_attempt")
+            logger.warning(
+                "webhook_delivery_attempt_failed",
+                webhook_endpoint_id=endpoint.id,
+                organization_id=endpoint.organization_id,
+                delivery_id=delivery.id,
+                event_type=delivery.event_type,
+                attempt=attempt_index,
+                exc_info=True,
+            )
             http_status = None
             response_preview = str(exc)[:2000]
 

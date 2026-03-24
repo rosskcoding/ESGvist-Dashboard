@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -135,13 +136,16 @@ function formatTimestamp(value: string | null) {
 export default function ReportPage() {
   const searchParams = useSearchParams();
   const resolvedProjectId = Number(searchParams.get("projectId") || "1");
-  const [projectId] = useState(Number.isFinite(resolvedProjectId) && resolvedProjectId > 0 ? resolvedProjectId : 1);
+  const projectId = Number.isFinite(resolvedProjectId) && resolvedProjectId > 0 ? resolvedProjectId : 1;
+  const queryClient = useQueryClient();
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
   const [activeExportKey, setActiveExportKey] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const { data: me, isLoading: meLoading } = useApiQuery<{
     roles: Array<{ role: string }>;
-  }>(["auth-me", "report"], "/auth/me");
+  }>(["auth-me"], "/auth/me");
 
   const role = me?.roles?.[0]?.role ?? "";
   const canAccess = role === "admin" || role === "esg_manager";
@@ -151,7 +155,6 @@ export default function ReportPage() {
     data: readiness,
     isLoading: readinessLoading,
     error: readinessError,
-    refetch: refetchReadiness,
   } = useApiQuery<ReadinessResponse>(
     ["report", "readiness", projectId],
     `/projects/${projectId}/export/readiness`,
@@ -161,14 +164,46 @@ export default function ReportPage() {
   const {
     data: exportJobs,
     isLoading: exportJobsLoading,
-    refetch: refetchExportJobs,
   } = useApiQuery<ExportListResponse>(
     ["report", "exports", projectId],
     `/projects/${projectId}/exports`,
     { enabled: canAccess }
   );
 
-  const publishMutation = useApiMutation(`/projects/${projectId}/publish`, "POST");
+  const publishMutation = useApiMutation<{ id: number; status: string }, void>(
+    `/projects/${projectId}/publish`,
+    "POST",
+    {
+      onMutate: () => {
+        setActionError(null);
+      },
+      onSuccess: async (result) => {
+        queryClient.setQueryData(["project", String(projectId)], (current: Record<string, unknown> | undefined) =>
+          current ? { ...current, status: result.status } : current
+        );
+        queryClient.setQueryData<ExportListResponse>(["report", "exports", projectId], (current) => current);
+        queryClient.setQueryData<{ items: Array<Record<string, unknown>>; total: number }>(
+          ["projects"],
+          (current) => {
+            if (!current) return current;
+            return {
+              ...current,
+              items: current.items.map((item) =>
+                Number(item.id) === projectId ? { ...item, status: result.status } : item
+              ),
+            };
+          }
+        );
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["report", "readiness", projectId] }),
+          queryClient.invalidateQueries({ queryKey: ["dashboard", "progress", projectId] }),
+        ]);
+      },
+      onError: (error) => {
+        setActionError(error.message || "Unable to publish project.");
+      },
+    }
+  );
 
   const latestCompletedJob = useMemo(
     () => exportJobs?.items.find((job) => job.status === "completed") ?? null,
@@ -201,23 +236,52 @@ export default function ReportPage() {
   }, [readiness?.overall_ready, readiness?.warning_details?.length]);
 
   async function refreshAll() {
-    await Promise.all([refetchReadiness(), refetchExportJobs()]);
+    setActionError(null);
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["report", "readiness", projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["report", "exports", projectId] }),
+      ]);
+    } finally {
+      setIsRefreshing(false);
+    }
   }
 
   async function queueExport(route: string, exportKey: string) {
+    if (activeExportKey) return;
     setActiveExportKey(exportKey);
+    setActionError(null);
     try {
-      await api.post(`/projects/${projectId}/${route}`);
-      await refetchExportJobs();
+      const queued = await api.post<ExportJob>(`/projects/${projectId}/${route}`);
+      queryClient.setQueryData<ExportListResponse>(["report", "exports", projectId], (current) => {
+        if (!current) {
+          return { items: [queued], total: 1 };
+        }
+        const exists = current.items.some((item) => item.id === queued.id);
+        return {
+          items: exists ? current.items.map((item) => (item.id === queued.id ? queued : item)) : [queued, ...current.items],
+          total: exists ? current.total : current.total + 1,
+        };
+      });
+    } catch (error) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : "Unable to queue export job. Please try again."
+      );
     } finally {
       setActiveExportKey(null);
     }
   }
 
   async function handlePublish() {
-    await publishMutation.mutateAsync(undefined);
-    setPublishDialogOpen(false);
-    await refreshAll();
+    try {
+      await publishMutation.mutateAsync(undefined);
+      setPublishDialogOpen(false);
+    } catch {
+      // Error banner is handled by mutation state.
+    }
   }
 
   if (meLoading || (canAccess && (readinessLoading || exportJobsLoading))) {
@@ -286,8 +350,12 @@ export default function ReportPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <Button variant="outline" onClick={refreshAll}>
-            <RefreshCw className="mr-2 h-4 w-4" />
+          <Button variant="outline" onClick={refreshAll} disabled={isRefreshing}>
+            {isRefreshing ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-2 h-4 w-4" />
+            )}
             Refresh readiness
           </Button>
           <Button variant="outline" asChild disabled={!latestCompletedJob}>
@@ -302,12 +370,22 @@ export default function ReportPage() {
               Preview latest
             </Link>
           </Button>
-          <Button onClick={() => setPublishDialogOpen(true)} disabled={!readiness.overall_ready}>
+          <Button
+            onClick={() => setPublishDialogOpen(true)}
+            disabled={!readiness.overall_ready || publishMutation.isPending || activeExportKey !== null}
+          >
             <Send className="mr-2 h-4 w-4" />
             Publish Project
           </Button>
         </div>
       </div>
+
+      {actionError && (
+        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          {actionError}
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
         <Card className={cn("border", statusTone.className)}>
@@ -421,6 +499,7 @@ export default function ReportPage() {
           {exportActions.map((action) => {
             const Icon = action.icon;
             const isRunning = activeExportKey === action.key;
+            const exportBusy = activeExportKey !== null || publishMutation.isPending;
             return (
               <div key={action.key} className="rounded-lg border border-slate-200 p-4">
                 <div className="flex items-start justify-between gap-3">
@@ -434,7 +513,7 @@ export default function ReportPage() {
                   <Button
                     size="sm"
                     onClick={() => queueExport(action.route, action.key)}
-                    disabled={!readiness.overall_ready || isRunning}
+                    disabled={!readiness.overall_ready || exportBusy}
                     aria-label={`Queue ${action.label}`}
                   >
                     {isRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : "Generate"}

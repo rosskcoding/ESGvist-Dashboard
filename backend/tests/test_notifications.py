@@ -174,15 +174,25 @@ async def test_mark_all_read(client: AsyncClient, ctx: dict):
 async def test_notification_preferences_can_be_read_and_updated(client: AsyncClient, ctx: dict):
     initial = await client.get("/api/notifications/preferences", headers=ctx["headers"])
     assert initial.status_code == 200
-    assert initial.json() == {"email": True, "in_app": True, "email_info_level": False}
+    assert initial.json() == {
+        "email": True,
+        "in_app": True,
+        "email_info_level": False,
+        "digest_frequency": "none",
+    }
 
     updated = await client.patch(
         "/api/notifications/preferences",
-        json={"email": False, "email_info_level": True},
+        json={"email": False, "email_info_level": True, "digest_frequency": "daily"},
         headers=ctx["headers"],
     )
     assert updated.status_code == 200
-    assert updated.json() == {"email": False, "in_app": True, "email_info_level": True}
+    assert updated.json() == {
+        "email": False,
+        "in_app": True,
+        "email_info_level": True,
+        "digest_frequency": "daily",
+    }
 
 
 @pytest.mark.asyncio
@@ -234,6 +244,34 @@ async def test_notification_preferences_affect_delivery_channels(client: AsyncCl
     assert result is not None
     assert result["channel"] == "both"
     assert result["email_sent"] is True
+
+
+@pytest.mark.asyncio
+async def test_digest_frequency_defers_immediate_email_delivery(client: AsyncClient, ctx: dict):
+    updated = await client.patch(
+        "/api/notifications/preferences",
+        json={"email": True, "digest_frequency": "weekly"},
+        headers=ctx["headers"],
+    )
+    assert updated.status_code == 200
+    assert updated.json()["digest_frequency"] == "weekly"
+
+    async with TestSessionLocal() as session:
+        service = NotificationService(NotificationRepository(session))
+        result = await service.notify(
+            user_id=1,
+            org_id=ctx["org_id"],
+            type="prefs_test_digest",
+            title="Digest me",
+            message="This should wait for the digest worker",
+            severity="important",
+            channel="both",
+        )
+        await session.commit()
+
+    assert result is not None
+    assert result["channel"] == "both"
+    assert result["email_sent"] is False
 
 
 @pytest.mark.asyncio

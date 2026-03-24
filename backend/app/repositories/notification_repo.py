@@ -80,3 +80,25 @@ class NotificationRepository:
             Notification.is_read == False,
         )
         return (await self.session.execute(q)).scalar_one()
+
+    async def list_pending_digest(self) -> dict[int, list[Notification]]:
+        q = select(Notification).where(
+            Notification.email_sent == False,
+            Notification.digest_sent == False,
+            Notification.is_read == False,
+        ).order_by(Notification.user_id, Notification.created_at.desc())
+        result = await self.session.execute(q)
+        notifications = list(result.scalars().all())
+        grouped: dict[int, list[Notification]] = {}
+        for n in notifications:
+            grouped.setdefault(n.user_id, []).append(n)
+        return grouped
+
+    async def mark_digest_sent(self, notification_ids: list[int]) -> None:
+        if not notification_ids:
+            return
+        await self.session.execute(
+            update(Notification)
+            .where(Notification.id.in_(notification_ids))
+            .values(digest_sent=True, digest_sent_at=datetime.now(timezone.utc))
+        )

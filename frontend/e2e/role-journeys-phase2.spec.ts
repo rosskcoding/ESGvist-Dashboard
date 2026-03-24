@@ -66,8 +66,8 @@ test("collector revision cycle ends in reviewer approval and auditor-visible aud
     await expect(collectionRow(page, journey.code)).toBeVisible();
     await collectionRow(page, journey.code).getByRole("button", { name: "Enter Data" }).click();
 
-    await expect(page).toHaveURL(/\/collection\/\d+$/, { timeout: 15_000 });
-    const openedId = page.url().match(/\/collection\/(\d+)$/)?.[1];
+    await expect(page).toHaveURL(/\/collection\/\d+(\?projectId=\d+)?$/, { timeout: 15_000 });
+    const openedId = page.url().match(/\/collection\/(\d+)/)?.[1];
     expect(openedId).toBeTruthy();
     dataPointId = Number(openedId);
 
@@ -371,7 +371,7 @@ test("platform admin manages a tenant and updates organization auth policy", asy
 
     await page.goto("/platform/tenants");
     await expect(page.getByRole("heading", { name: "Tenants" })).toBeVisible();
-    await page.getByRole("button", { name: "Create Tenant" }).click();
+    await page.getByRole("link", { name: "Create Tenant" }).click();
     await expect(page.getByRole("heading", { name: "Create Tenant" })).toBeVisible();
     await page.getByLabel("Name").fill(tenantName);
     await page.getByLabel("Country").fill("United Kingdom");

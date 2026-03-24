@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback } from "react";
 import { api } from "@/lib/api";
+import { AIEvidenceGuidance } from "@/components/ai-inline-explain";
 import {
   Card,
   CardContent,
@@ -31,7 +32,8 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { useApiQuery, useApiMutation } from "@/lib/hooks/use-api";
+import { useApiMutation, useApiQuery } from "@/lib/hooks/use-api";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Loader2,
   AlertTriangle,
@@ -103,6 +105,7 @@ function formatDate(dateStr: string): string {
 // ---------- Component ----------
 
 export default function EvidencePage() {
+  const queryClient = useQueryClient();
   const [typeFilter, setTypeFilter] = useState("");
   const [bindingFilter, setBindingFilter] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -114,55 +117,111 @@ export default function EvidencePage() {
   const [linkDescription, setLinkDescription] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const { data: me } = useApiQuery<{
+  const { data: me, isLoading: meLoading } = useApiQuery<{
     roles: Array<{ role: string }>;
-  }>(["auth-me", "evidence"], "/auth/me");
+  }>(["auth-me"], "/auth/me");
+  const role = me?.roles?.[0]?.role ?? "";
+  const isReviewer = role === "reviewer";
 
-  const { data, isLoading, error, refetch } = useApiQuery<EvidenceResponse>(
+  const { data, isLoading, error } = useApiQuery<EvidenceResponse>(
     ["evidence"],
-    "/evidences"
+    "/evidences",
+    { enabled: !isReviewer }
   );
 
-  const uploadMutation = useApiMutation<
-    EvidenceItem,
-    {
-      type: "file";
-      title: string;
-      description: string;
-      source_type: "manual";
-      file_name: string;
-      file_uri: string;
-      mime_type: string;
-      file_size: number;
-    }
-  >(
-    "/evidences",
-    "POST",
-    {
-      onSuccess: () => {
-        refetch();
-      },
-    }
+  const syncEvidenceCache = useCallback(
+    (updater: (current: EvidenceResponse | undefined) => EvidenceResponse | undefined) => {
+      queryClient.setQueryData<EvidenceResponse>(["evidence"], updater);
+    },
+    [queryClient]
   );
+
+  const upsertEvidenceCache = useCallback(
+    (item: EvidenceItem) => {
+      syncEvidenceCache((current) => {
+        if (!current) {
+          return { items: [item], total: 1 };
+        }
+        const existingIndex = current.items.findIndex((entry) => entry.id === item.id);
+        if (existingIndex === -1) {
+          return {
+            ...current,
+            items: [item, ...current.items],
+            total: current.total + 1,
+          };
+        }
+        const items = [...current.items];
+        items[existingIndex] = { ...items[existingIndex], ...item };
+        return { ...current, items };
+      });
+    },
+    [syncEvidenceCache]
+  );
+
+  const removeEvidenceFromCache = useCallback(
+    (evidenceId: number) => {
+      syncEvidenceCache((current) => {
+        if (!current) return current;
+        const items = current.items.filter((item) => item.id !== evidenceId);
+        if (items.length === current.items.length) {
+          return current;
+        }
+        return {
+          ...current,
+          items,
+          total: Math.max(0, current.total - 1),
+        };
+      });
+      setDeleteTarget((current) => (current?.id === evidenceId ? null : current));
+      setDetailTarget((current) => (current?.id === evidenceId ? null : current));
+    },
+    [syncEvidenceCache]
+  );
+
+  const uploadMutation = useMutation<EvidenceItem, Error, File>({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("title", file.name);
+      formData.append("description", "Uploaded from evidence repository");
+      return api.upload<EvidenceItem>("/evidences/upload", formData);
+    },
+    onMutate: () => {
+      setActionError(null);
+    },
+    onSuccess: (item) => {
+      upsertEvidenceCache(item);
+    },
+    onError: (error) => {
+      setActionError(error.message || "Failed to upload evidence. Please try again.");
+    },
+  });
 
   const addLinkMutation = useApiMutation<
     EvidenceItem,
     { title: string; url: string; description: string; type: "link" }
   >("/evidences", "POST", {
-    onSuccess: () => {
+    onMutate: () => {
+      setActionError(null);
+    },
+    onSuccess: (item) => {
       setAddLinkOpen(false);
       setLinkTitle("");
       setLinkUrl("");
       setLinkDescription("");
-      refetch();
+      upsertEvidenceCache(item);
+    },
+    onError: (error) => {
+      setActionError(error.message || "Failed to add evidence link. Please try again.");
     },
   });
 
   const items = data?.items ?? [];
-  const role = me?.roles?.[0]?.role ?? "";
   const canManageEvidence = !["auditor", "reviewer"].includes(role);
   const accessDenied =
+    isReviewer ||
     ((error as Error & { code?: string } | null)?.code === "FORBIDDEN") ||
     /not allowed|access denied|forbidden/i.test((error as Error | null)?.message || "");
 
@@ -204,20 +263,10 @@ export default function EvidencePage() {
       e.preventDefault();
       setIsDragOver(false);
       if (!canManageEvidence) return;
+      setActionError(null);
       const files = e.dataTransfer.files;
-      if (files.length > 0) {
-        for (let i = 0; i < files.length; i++) {
-          uploadMutation.mutate({
-            type: "file",
-            title: files[i].name,
-            description: `Uploaded from evidence repository`,
-            source_type: "manual",
-            file_name: files[i].name,
-            file_uri: `file:///uploads/${encodeURIComponent(files[i].name)}`,
-            mime_type: files[i].type || "application/pdf",
-            file_size: files[i].size,
-          });
-        }
+      for (let i = 0; i < files.length; i++) {
+        uploadMutation.mutate(files[i]);
       }
     },
     [canManageEvidence, uploadMutation]
@@ -226,19 +275,10 @@ export default function EvidencePage() {
   const handleFileInput = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
-      if (!files) return;
-      if (!canManageEvidence) return;
+      if (!files || !canManageEvidence) return;
+      setActionError(null);
       for (let i = 0; i < files.length; i++) {
-        uploadMutation.mutate({
-          type: "file",
-          title: files[i].name,
-          description: `Uploaded from evidence repository`,
-          source_type: "manual",
-          file_name: files[i].name,
-          file_uri: `file:///uploads/${encodeURIComponent(files[i].name)}`,
-          mime_type: files[i].type || "application/pdf",
-          file_size: files[i].size,
-        });
+        uploadMutation.mutate(files[i]);
       }
       e.target.value = "";
     },
@@ -249,17 +289,23 @@ export default function EvidencePage() {
     if (!deleteTarget) return;
     try {
       setIsDeleting(true);
+      setActionError(null);
       await api.delete(`/evidence/${deleteTarget.id}`);
-      setDeleteTarget(null);
-      refetch();
+      removeEvidenceFromCache(deleteTarget.id);
+    } catch (error) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : "Failed to delete evidence. Please try again."
+      );
     } finally {
       setIsDeleting(false);
     }
-  }, [deleteTarget, refetch]);
+  }, [deleteTarget, removeEvidenceFromCache]);
 
   // ---------- Render ----------
 
-  if (isLoading) {
+  if (meLoading || (!isReviewer && isLoading)) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
@@ -327,6 +373,13 @@ export default function EvidencePage() {
         </p>
       </div>
 
+      {actionError && (
+        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          {actionError}
+        </div>
+      )}
+
       {/* Upload section */}
       <Card>
         <CardContent className="py-4">
@@ -361,11 +414,15 @@ export default function EvidencePage() {
                   multiple
                   className="hidden"
                   onChange={handleFileInput}
-                  disabled={!canManageEvidence}
+                  disabled={!canManageEvidence || uploadMutation.isPending}
                 />
                 <span className="inline-flex h-8 items-center rounded-md border border-slate-200 bg-white px-3 text-xs font-medium shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
-                  <Upload className="mr-1.5 h-3 w-3" />
-                  Browse Files
+                  {uploadMutation.isPending ? (
+                    <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                  ) : (
+                    <Upload className="mr-1.5 h-3 w-3" />
+                  )}
+                  {uploadMutation.isPending ? "Uploading..." : "Browse Files"}
                 </span>
               </label>
             </div>
@@ -375,7 +432,7 @@ export default function EvidencePage() {
               variant="outline"
               onClick={() => setAddLinkOpen(true)}
               className="shrink-0"
-              disabled={!canManageEvidence}
+              disabled={!canManageEvidence || addLinkMutation.isPending || uploadMutation.isPending}
             >
               <Link2 className="mr-1.5 h-4 w-4" />
               Add Link
@@ -513,7 +570,7 @@ export default function EvidencePage() {
                             size="icon"
                             title="Download"
                             onClick={() => {
-                              if (item.url) window.open(item.url, "_blank");
+                              window.open(`/api/evidences/${item.id}/download`, "_blank");
                             }}
                           >
                             <Download className="h-4 w-4" />
@@ -536,7 +593,7 @@ export default function EvidencePage() {
                           size="icon"
                           onClick={() => setDeleteTarget(item)}
                           title="Delete"
-                          disabled={!canManageEvidence}
+                          disabled={!canManageEvidence || isDeleting}
                         >
                           <Trash2 className="h-4 w-4 text-red-500" />
                         </Button>
@@ -670,10 +727,15 @@ export default function EvidencePage() {
                         key={ri.requirement_item_id}
                         className="rounded border border-slate-100 px-2 py-1 text-xs"
                       >
-                        <span className="font-medium">{ri.code}</span>{" "}
-                        <span className="text-slate-500">
-                          {ri.description}
-                        </span>
+                        <div className="flex items-center justify-between gap-2">
+                          <span>
+                            <span className="font-medium">{ri.code}</span>{" "}
+                            <span className="text-slate-500">
+                              {ri.description}
+                            </span>
+                          </span>
+                          <AIEvidenceGuidance requirementItemId={ri.requirement_item_id} />
+                        </div>
                       </div>
                     ))}
                   </div>

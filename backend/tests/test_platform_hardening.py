@@ -109,6 +109,160 @@ async def test_suspended_tenant_blocks_member_access_but_not_platform_support(
 
 
 @pytest.mark.asyncio
+async def test_platform_admin_nonexistent_tenant_context_returns_404(
+    client: AsyncClient,
+    platform_ctx: dict,
+):
+    resp = await client.get(
+        "/api/projects",
+        headers={
+            **platform_ctx["platform_headers"],
+            "X-Organization-Id": "999999",
+        },
+    )
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_support_session_allows_platform_admin_tenant_access_without_org_header(
+    client: AsyncClient,
+    platform_ctx: dict,
+):
+    project = await client.post(
+        "/api/projects",
+        json={"name": "Support Tenant Project"},
+        headers=platform_ctx["tenant_headers"],
+    )
+    assert project.status_code == 201
+
+    started = await client.post(
+        f"/api/platform/tenants/{platform_ctx['org_id']}/support-session",
+        json={"reason": "Investigate tenant issue"},
+        headers=platform_ctx["platform_headers"],
+    )
+    assert started.status_code == 200
+
+    support_view = await client.get(
+        "/api/projects",
+        headers={
+            **platform_ctx["platform_headers"],
+            "X-Support-Session-Id": str(started.json()["session_id"]),
+        },
+    )
+    assert support_view.status_code == 200
+    assert support_view.json()["total"] == 1
+    assert support_view.json()["items"][0]["id"] == project.json()["id"]
+
+
+@pytest.mark.asyncio
+async def test_invalid_support_session_id_is_rejected(
+    client: AsyncClient,
+    platform_ctx: dict,
+):
+    resp = await client.get(
+        "/api/projects",
+        headers={
+            **platform_ctx["platform_headers"],
+            "X-Support-Session-Id": "999999",
+        },
+    )
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_support_session_org_mismatch_is_rejected(
+    client: AsyncClient,
+    platform_ctx: dict,
+):
+    second_tenant = await client.post(
+        "/api/platform/tenants",
+        json={"name": "Tenant B", "country": "DE"},
+        headers=platform_ctx["platform_headers"],
+    )
+    assert second_tenant.status_code == 201
+
+    started = await client.post(
+        f"/api/platform/tenants/{platform_ctx['org_id']}/support-session",
+        json={"reason": "Investigate mismatch"},
+        headers=platform_ctx["platform_headers"],
+    )
+    assert started.status_code == 200
+
+    resp = await client.get(
+        "/api/projects",
+        headers={
+            **platform_ctx["platform_headers"],
+            "X-Support-Session-Id": str(started.json()["session_id"]),
+            "X-Organization-Id": str(second_tenant.json()["id"]),
+        },
+    )
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "SUPPORT_SESSION_ORG_MISMATCH"
+
+
+@pytest.mark.asyncio
+async def test_platform_admin_can_end_current_support_session_via_cookie(
+    client: AsyncClient,
+    platform_ctx: dict,
+):
+    started = await client.post(
+        f"/api/platform/tenants/{platform_ctx['org_id']}/support-session",
+        json={"reason": "Investigate tenant issue"},
+        headers=platform_ctx["platform_headers"],
+    )
+    assert started.status_code == 200
+    assert client.cookies.get("support_session_id") == str(started.json()["session_id"])
+
+    ended = await client.delete(
+        "/api/platform/support-session/current",
+        headers=platform_ctx["platform_headers"],
+    )
+    assert ended.status_code == 200
+    assert ended.json()["session_id"] == started.json()["session_id"]
+    assert client.cookies.get("support_session_id") is None
+
+
+@pytest.mark.asyncio
+async def test_support_session_cannot_be_used_by_other_platform_admin(
+    client: AsyncClient,
+    platform_ctx: dict,
+):
+    second_admin = await _register_and_login(
+        client,
+        email="platform-two@test.com",
+        full_name="Platform Two",
+    )
+    second_admin_me = await client.get("/api/auth/me", headers=second_admin["headers"])
+    assert second_admin_me.status_code == 200
+
+    grant = await client.post(
+        f"/api/users/{second_admin_me.json()['id']}/roles",
+        json={"role": "platform_admin", "scope_type": "platform", "scope_id": None},
+        headers=platform_ctx["platform_headers"],
+    )
+    assert grant.status_code == 201
+
+    started = await client.post(
+        f"/api/platform/tenants/{platform_ctx['org_id']}/support-session",
+        json={"reason": "Investigate tenant issue"},
+        headers=platform_ctx["platform_headers"],
+    )
+    assert started.status_code == 200
+
+    foreign_use = await client.get(
+        "/api/projects",
+        headers={
+            **second_admin["headers"],
+            "X-Support-Session-Id": str(started.json()["session_id"]),
+        },
+    )
+    assert foreign_use.status_code == 404
+    assert foreign_use.json()["error"]["code"] == "NOT_FOUND"
+
+
+@pytest.mark.asyncio
 async def test_last_admin_cannot_be_demoted_deactivated_or_removed(
     client: AsyncClient,
     platform_ctx: dict,

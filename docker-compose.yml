@@ -51,11 +51,14 @@ services:
     volumes:
       - ./backend:/app
     environment:
+      APP_ENV: ${APP_ENV:-local}
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/esgvist
       REDIS_URL: redis://redis:6379/0
       JWT_SECRET: dev-secret-change-in-production
       CORS_ORIGINS: '["http://localhost:3000"]'
       DEBUG: "true"
+      DB_AUTO_UPGRADE: ${DB_AUTO_UPGRADE:-false}
+      DB_REQUIRE_CURRENT_REVISION: ${DB_REQUIRE_CURRENT_REVISION:-false}
 
 volumes:
   postgres_data:

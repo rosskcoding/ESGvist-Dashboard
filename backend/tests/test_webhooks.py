@@ -1,5 +1,23 @@
+import socket
+
 import pytest
 from httpx import AsyncClient
+
+
+@pytest.fixture(autouse=True)
+def stub_public_webhook_dns(monkeypatch):
+    def fake_getaddrinfo(host: str, port: int, type: int = 0):
+        return [
+            (
+                socket.AF_INET,
+                socket.SOCK_STREAM,
+                socket.IPPROTO_TCP,
+                "",
+                ("93.184.216.34", port),
+            )
+        ]
+
+    monkeypatch.setattr("app.services.webhook_service.socket.getaddrinfo", fake_getaddrinfo)
 
 
 async def _setup_org_admin(client: AsyncClient) -> dict:
@@ -165,6 +183,59 @@ async def test_webhook_failed_delivery_becomes_dead_letter_and_notifies_admin(
     notifications = await client.get("/api/notifications", headers=org["headers"])
     assert notifications.status_code == 200
     assert any(item["type"] == "webhook_dead_letter" for item in notifications.json()["items"])
+
+
+@pytest.mark.asyncio
+async def test_webhook_rejects_localhost_targets(client: AsyncClient):
+    org = await _setup_org_admin(client)
+
+    created = await client.post(
+        "/api/webhooks",
+        json={"url": "http://localhost:8080/hooks/internal", "events": ["project.published"]},
+        headers=org["headers"],
+    )
+    assert created.status_code == 422
+    assert created.json()["error"]["code"] == "WEBHOOK_URL_FORBIDDEN"
+
+
+@pytest.mark.asyncio
+async def test_webhook_blocks_private_dns_resolution(monkeypatch, client: AsyncClient):
+    captured: list[str] = []
+
+    async def fake_sender(url: str, payload: dict, headers: dict[str, str], timeout_seconds: int):
+        captured.append(url)
+        return 200, "ok"
+
+    def fake_getaddrinfo(host: str, port: int, type: int = 0):
+        return [
+            (
+                socket.AF_INET,
+                socket.SOCK_STREAM,
+                socket.IPPROTO_TCP,
+                "",
+                ("127.0.0.1", port),
+            )
+        ]
+
+    monkeypatch.setattr("app.services.webhook_service.send_webhook_request", fake_sender)
+    monkeypatch.setattr("app.services.webhook_service.socket.getaddrinfo", fake_getaddrinfo)
+
+    org = await _setup_org_admin(client)
+    created = await client.post(
+        "/api/webhooks",
+        json={"url": "https://ssrf-check.example/hooks/events", "events": ["project.published"]},
+        headers=org["headers"],
+    )
+    assert created.status_code == 201
+
+    tested = await client.post(
+        f"/api/webhooks/{created.json()['id']}/test",
+        headers=org["headers"],
+    )
+    assert tested.status_code == 200
+    assert tested.json()["delivery"]["status"] == "dead_letter"
+    assert tested.json()["delivery"]["attempt"] == 5
+    assert captured == []
 
 
 @pytest.mark.asyncio

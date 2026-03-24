@@ -77,10 +77,23 @@ test.describe("Screen 3 - Invite Acceptance", () => {
       refreshToken: localStorage.getItem("refresh_token"),
       organizationId: localStorage.getItem("organization_id"),
     }));
+    const accessCookie = (await page.context().cookies()).find(
+      (cookie) => cookie.name === "access_token",
+    );
+    const refreshCookie = (await page.context().cookies()).find(
+      (cookie) => cookie.name === "refresh_token",
+    );
+    const organizationCookie = (await page.context().cookies()).find(
+      (cookie) => cookie.name === "current_organization_id",
+    );
 
-    expect(storage.accessToken).toBeTruthy();
-    expect(storage.refreshToken).toBeTruthy();
-    expect(storage.organizationId).toBe(String(demoState.organization.id));
+    expect(storage.accessToken).toBeNull();
+    expect(storage.refreshToken).toBeNull();
+    expect(storage.organizationId).toBeNull();
+    expect(accessCookie?.httpOnly).toBeTruthy();
+    expect(refreshCookie?.httpOnly).toBeTruthy();
+    expect(organizationCookie?.value).toBe(String(demoState.organization.id));
+    expect(organizationCookie?.httpOnly).toBeTruthy();
   });
 
   test("declines a valid invitation and returns to login", async ({ page, request }) => {

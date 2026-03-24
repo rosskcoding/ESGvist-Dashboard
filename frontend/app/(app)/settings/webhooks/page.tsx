@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Loader2, Plus, Send, ShieldAlert, Trash2, Webhook, XCircle } from "lucide-react";
 
 import { api } from "@/lib/api";
@@ -53,6 +54,8 @@ type WebhookDeliveryResponse = {
   total: number;
 };
 
+type WebhookCreateResponse = WebhookEndpoint & { secret: string };
+
 const supportedEvents = [
   "data_point.submitted",
   "data_point.approved",
@@ -68,6 +71,7 @@ const supportedEvents = [
 ];
 
 export default function WebhooksPage() {
+  const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editing, setEditing] = useState<WebhookEndpoint | null>(null);
@@ -81,13 +85,13 @@ export default function WebhooksPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { data: me, isLoading: meLoading } = useApiQuery<{ roles: RoleBinding[] }>(
-    ["auth-me", "webhooks-settings"],
+    ["auth-me"],
     "/auth/me"
   );
   const canAccess = (me?.roles ?? []).some((binding) => ["admin", "platform_admin"].includes(binding.role));
   const accessDenied = Boolean(me) && !canAccess;
 
-  const { data, isLoading, refetch } = useApiQuery<WebhookListResponse>(["webhooks"], "/webhooks", {
+  const { data, isLoading } = useApiQuery<WebhookListResponse>(["webhooks"], "/webhooks", {
     enabled: canAccess,
   });
 
@@ -106,6 +110,32 @@ export default function WebhooksPage() {
     selectedId ? `/webhooks/${selectedId}/deliveries?page_size=20` : "/webhooks/0/deliveries",
     { enabled: Boolean(selectedId) && canAccess }
   );
+
+  function upsertWebhook(endpoint: WebhookEndpoint) {
+    queryClient.setQueryData<WebhookListResponse>(["webhooks"], (current) => {
+      if (!current) {
+        return { items: [endpoint], total: 1 };
+      }
+      const existingIndex = current.items.findIndex((item) => item.id === endpoint.id);
+      if (existingIndex === -1) {
+        return { ...current, items: [endpoint, ...current.items], total: current.total + 1 };
+      }
+      const items = [...current.items];
+      items[existingIndex] = endpoint;
+      return { ...current, items };
+    });
+  }
+
+  function removeWebhook(endpointId: number) {
+    queryClient.setQueryData<WebhookListResponse>(["webhooks"], (current) => {
+      if (!current) return current;
+      const items = current.items.filter((item) => item.id !== endpointId);
+      if (items.length === current.items.length) {
+        return current;
+      }
+      return { ...current, items, total: Math.max(0, current.total - 1) };
+    });
+  }
 
   function openCreateDialog() {
     setEditing(null);
@@ -144,28 +174,27 @@ export default function WebhooksPage() {
     setIsSubmitting(true);
     try {
       if (editing) {
-        await api.patch(`/webhooks/${editing.id}`, {
+        const updated = await api.patch<WebhookEndpoint>(`/webhooks/${editing.id}`, {
           url: formUrl,
           secret: formSecret || undefined,
           events: formEvents,
           is_active: formIsActive,
         });
+        upsertWebhook(updated);
         setActionMessage("Webhook updated.");
       } else {
-        const created = await api.post<{ secret: string }>("/webhooks", {
+        const created = await api.post<WebhookCreateResponse>("/webhooks", {
           url: formUrl,
           secret: formSecret || undefined,
           events: formEvents,
           is_active: formIsActive,
         });
         setGeneratedSecret(created.secret);
+        upsertWebhook(created);
+        setSelectedId(created.id);
         setActionMessage("Webhook created.");
       }
       setDialogOpen(false);
-      await refetch();
-      if (selectedId) {
-        await refetchDeliveries();
-      }
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Failed to save webhook.");
     } finally {
@@ -190,7 +219,7 @@ export default function WebhooksPage() {
     setActionMessage("");
     try {
       await api.delete(`/webhooks/${endpointId}`);
-      await refetch();
+      removeWebhook(endpointId);
       setActionMessage("Webhook deleted.");
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Failed to delete webhook.");

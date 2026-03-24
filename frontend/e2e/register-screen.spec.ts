@@ -45,7 +45,7 @@ test.describe("Screen 2 - Registration", () => {
     await expect(page).toHaveURL(/register/);
   });
 
-  test("registers a new user and redirects to dashboard", async ({ page }) => {
+  test("registers a new user and redirects to onboarding", async ({ page }) => {
     const email = uniqueEmail("register");
 
     await page.goto("/register");
@@ -56,15 +56,23 @@ test.describe("Screen 2 - Registration", () => {
     await page.getByRole("checkbox").click();
     await page.getByRole("button", { name: "Create account" }).click();
 
-    await expect(page).toHaveURL(/dashboard/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/onboarding/, { timeout: 15_000 });
 
     const storage = await page.evaluate(() => ({
       accessToken: localStorage.getItem("access_token"),
       refreshToken: localStorage.getItem("refresh_token"),
     }));
+    const accessCookie = (await page.context().cookies()).find(
+      (cookie) => cookie.name === "access_token",
+    );
+    const refreshCookie = (await page.context().cookies()).find(
+      (cookie) => cookie.name === "refresh_token",
+    );
 
-    expect(storage.accessToken).toBeTruthy();
-    expect(storage.refreshToken).toBeTruthy();
+    expect(storage.accessToken).toBeNull();
+    expect(storage.refreshToken).toBeNull();
+    expect(accessCookie?.httpOnly).toBeTruthy();
+    expect(refreshCookie?.httpOnly).toBeTruthy();
   });
 
   test("navigates back to login from footer link", async ({ page }) => {

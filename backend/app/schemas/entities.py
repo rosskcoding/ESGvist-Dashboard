@@ -84,8 +84,43 @@ class ControlLinkOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class OrgSetupSubsidiary(BaseModel):
+    name: str = Field(min_length=1, max_length=500)
+    entity_type: str = Field(
+        default="legal_entity",
+        pattern=r"^(legal_entity|branch|joint_venture|associate|facility|business_unit)$",
+    )
+    country: str | None = None
+    jurisdiction: str | None = None
+    ownership_percent: float = Field(default=100, ge=0, le=100)
+
+
+class OrgSetupInviteUser(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    role: str = Field(pattern=r"^(admin|esg_manager|reviewer|collector|auditor)$")
+
+
 class OrgSetupRequest(BaseModel):
     name: str = Field(min_length=1)
+    legal_name: str | None = None
+    registration_number: str | None = None
     country: str | None = None
+    jurisdiction: str | None = None
     industry: str | None = None
     default_currency: str = "USD"
+    reporting_year: int | None = None
+    standards: list[str] = Field(default_factory=list)
+    boundary_type: str = Field(
+        default="financial_reporting_default",
+        pattern=r"^(financial_reporting_default|financial_control|operational_control|equity_share|custom)$",
+    )
+    consolidation_approach: str | None = Field(
+        default=None,
+        pattern=r"^(financial_control|operational_control|equity_share)$",
+    )
+    ghg_scope_approach: str | None = Field(
+        default=None,
+        pattern=r"^(location_based|market_based)$",
+    )
+    subsidiaries: list[OrgSetupSubsidiary] = Field(default_factory=list)
+    invite_users: list[OrgSetupInviteUser] = Field(default_factory=list)

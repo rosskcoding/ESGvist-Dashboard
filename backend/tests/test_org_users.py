@@ -59,7 +59,9 @@ async def _invite_and_accept(
 
 
 @pytest.mark.asyncio
-async def test_organization_users_response_includes_users_and_pending_invitations(client: AsyncClient):
+async def test_organization_users_response_includes_users_and_pending_invitations(
+    client: AsyncClient,
+):
     org = await _setup_org_admin(client)
     invited = await _invite_and_accept(
         client,
@@ -81,9 +83,18 @@ async def test_organization_users_response_includes_users_and_pending_invitation
     assert resp.status_code == 200
     data = resp.json()
     assert {key for key in data.keys()} == {"users", "pending_invitations"}
-    assert any(user["email"] == "admin@org.com" and user["role"] == "admin" for user in data["users"])
-    assert any(user["email"] == "reviewer@org.com" and user["role"] == "reviewer" for user in data["users"])
-    assert any(inv["email"] == "pending@org.com" and inv["role"] == "collector" for inv in data["pending_invitations"])
+    assert any(
+        user["email"] == "admin@org.com" and user["role"] == "admin"
+        for user in data["users"]
+    )
+    assert any(
+        user["email"] == "reviewer@org.com" and user["role"] == "reviewer"
+        for user in data["users"]
+    )
+    assert any(
+        inv["email"] == "pending@org.com" and inv["role"] == "collector"
+        for inv in data["pending_invitations"]
+    )
 
 
 @pytest.mark.asyncio
@@ -114,7 +125,7 @@ async def test_manage_org_user_role_status_and_remove(client: AsyncClient):
     assert status_resp.json()["status"] == "inactive"
 
     blocked = await client.get("/api/auth/me", headers=collector["headers"])
-    assert blocked.status_code == 403
+    assert blocked.status_code == 401
 
     reactivate = await client.patch(
         f"/api/auth/users/{collector['user_id']}/status",
@@ -124,6 +135,16 @@ async def test_manage_org_user_role_status_and_remove(client: AsyncClient):
     assert reactivate.status_code == 200
     assert reactivate.json()["status"] == "active"
 
+    collector_relogin = await client.post(
+        "/api/auth/login",
+        json={"email": "collector@org.com", "password": "password123"},
+    )
+    assert collector_relogin.status_code == 200
+    collector_headers = {
+        "Authorization": f"Bearer {collector_relogin.json()['access_token']}",
+        "X-Organization-Id": org["headers"]["X-Organization-Id"],
+    }
+
     remove = await client.delete(
         f"/api/auth/users/{collector['user_id']}",
         headers=org["headers"],
@@ -131,7 +152,7 @@ async def test_manage_org_user_role_status_and_remove(client: AsyncClient):
     assert remove.status_code == 200
     assert remove.json()["removed"] is True
 
-    no_org_access = await client.get("/api/projects", headers=collector["headers"])
+    no_org_access = await client.get("/api/projects", headers=collector_headers)
     assert no_org_access.status_code == 403
 
 

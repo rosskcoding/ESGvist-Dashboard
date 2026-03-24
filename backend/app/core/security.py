@@ -1,8 +1,9 @@
-from datetime import datetime, timedelta, timezone
 import base64
 import hashlib
 import hmac
+import re
 import secrets
+from datetime import UTC, datetime, timedelta
 
 import bcrypt
 from jose import JWTError, jwt
@@ -11,10 +12,16 @@ from pydantic import BaseModel
 from app.core.config import settings
 from app.core.exceptions import AppError
 
+
 class JWTPayload(BaseModel):
     sub: int
     email: str
     token_type: str = "access"
+    jti: str | None = None
+    sid: int | None = None
+
+
+_HEX_64_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 def hash_password(plain: str) -> str:
@@ -35,7 +42,7 @@ def _normalize_base32(secret: str) -> str:
 
 
 def _totp_counter(for_time: datetime | None = None, period_seconds: int = 30) -> int:
-    instant = for_time or datetime.now(timezone.utc)
+    instant = for_time or datetime.now(UTC)
     return int(instant.timestamp() // period_seconds)
 
 
@@ -56,14 +63,14 @@ def generate_totp_code(
         | (digest[offset + 2] << 8)
         | digest[offset + 3]
     )
-    return str(binary % (10 ** digits)).zfill(digits)
+    return str(binary % (10**digits)).zfill(digits)
 
 
 def verify_totp(secret: str, code: str, *, window: int = 1) -> bool:
     normalized = code.strip()
     if not normalized.isdigit() or len(normalized) != 6:
         return False
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for delta in range(-window, window + 1):
         candidate = generate_totp_code(
             secret,
@@ -91,6 +98,14 @@ def hash_backup_code(code: str) -> str:
     return hashlib.sha256(code.encode("utf-8")).hexdigest()
 
 
+def hash_refresh_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def is_hashed_refresh_token(token: str) -> bool:
+    return bool(_HEX_64_RE.fullmatch(token))
+
+
 def verify_backup_code(code: str, hashed_codes: list[str] | None) -> tuple[bool, list[str]]:
     remaining = list(hashed_codes or [])
     candidate = hash_backup_code(code.strip().lower())
@@ -101,28 +116,29 @@ def verify_backup_code(code: str, hashed_codes: list[str] | None) -> tuple[bool,
     return False, list(hashed_codes or [])
 
 
-def create_access_token(user_id: int, email: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_access_ttl_minutes)
+def create_access_token(user_id: int, email: str, *, session_id: int | None = None) -> str:
+    expire = datetime.now(UTC) + timedelta(minutes=settings.jwt_access_ttl_minutes)
     payload = {
         "sub": str(user_id),
         "email": email,
         "token_type": "access",
         "jti": secrets.token_urlsafe(12),
+        "sid": session_id,
         "exp": expire,
-        "iat": datetime.now(timezone.utc),
+        "iat": datetime.now(UTC),
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
-def create_refresh_token(user_id: int, email: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(days=settings.jwt_refresh_ttl_days)
+def create_refresh_token(user_id: int, email: str, *, jti: str | None = None) -> str:
+    expire = datetime.now(UTC) + timedelta(days=settings.jwt_refresh_ttl_days)
     payload = {
         "sub": str(user_id),
         "email": email,
         "token_type": "refresh",
-        "jti": secrets.token_urlsafe(12),
+        "jti": jti or secrets.token_urlsafe(12),
         "exp": expire,
-        "iat": datetime.now(timezone.utc),
+        "iat": datetime.now(UTC),
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
@@ -134,6 +150,8 @@ def decode_token(token: str) -> JWTPayload:
             sub=int(payload["sub"]),
             email=payload["email"],
             token_type=payload.get("token_type", "access"),
+            jti=payload.get("jti"),
+            sid=payload.get("sid"),
         )
     except (JWTError, KeyError, ValueError):
         raise AppError(code="UNAUTHORIZED", status_code=401, message="Invalid or expired token")

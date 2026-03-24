@@ -12,7 +12,7 @@ async def admin_headers(client: AsyncClient) -> dict:
         "/api/auth/login",
         json={"email": "admin@test.com", "password": "password123"},
     )
-    return {"Authorization": f"Bearer {resp.json()['access_token']}", "X-Organization-Id": "1"}
+    return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 
 async def _create_item(client, admin_headers, std_code, disc_code, item_name):
@@ -24,12 +24,17 @@ async def _create_item(client, admin_headers, std_code, disc_code, item_name):
         sid = std_resp.json()["id"]
     else:
         # Already exists — find it
-        list_resp = await client.get("/api/standards")
+        list_resp = await client.get("/api/standards", headers=admin_headers)
         sid = next(s["id"] for s in list_resp.json()["items"] if s["code"] == std_code)
 
     disc_resp = await client.post(
         f"/api/standards/{sid}/disclosures",
-        json={"code": disc_code, "title": disc_code, "requirement_type": "quantitative", "mandatory_level": "mandatory"},
+        json={
+            "code": disc_code,
+            "title": disc_code,
+            "requirement_type": "quantitative",
+            "mandatory_level": "mandatory",
+        },
         headers=admin_headers,
     )
     did = disc_resp.json()["id"]
@@ -55,7 +60,11 @@ async def test_create_mapping(client: AsyncClient, admin_headers: dict):
 
     resp = await client.post(
         "/api/mappings",
-        json={"requirement_item_id": item_id, "shared_element_id": el_id, "mapping_type": "full"},
+        json={
+            "requirement_item_id": item_id,
+            "shared_element_id": el_id,
+            "mapping_type": "full",
+        },
         headers=admin_headers,
     )
     assert resp.status_code == 201
@@ -63,7 +72,7 @@ async def test_create_mapping(client: AsyncClient, admin_headers: dict):
 
 
 @pytest.mark.asyncio
-async def test_duplicate_mapping_returns_409(client: AsyncClient, admin_headers: dict):
+async def test_duplicate_mapping_creates_new_version(client: AsyncClient, admin_headers: dict):
     item_id = await _create_item(client, admin_headers, "GRI", "305-1", "Scope 1")
 
     el_resp = await client.post(
@@ -73,17 +82,76 @@ async def test_duplicate_mapping_returns_409(client: AsyncClient, admin_headers:
     )
     el_id = el_resp.json()["id"]
 
-    await client.post(
+    first = await client.post(
         "/api/mappings",
         json={"requirement_item_id": item_id, "shared_element_id": el_id},
         headers=admin_headers,
     )
+    assert first.status_code == 201
+    assert first.json()["version"] == 1
+    assert first.json()["is_current"] is True
+
     resp = await client.post(
         "/api/mappings",
         json={"requirement_item_id": item_id, "shared_element_id": el_id},
         headers=admin_headers,
     )
-    assert resp.status_code == 409
+    assert resp.status_code == 201
+    assert resp.json()["version"] == 2
+    assert resp.json()["is_current"] is True
+
+    history = await client.get(
+        f"/api/mappings/{item_id}/{el_id}/history",
+        headers=admin_headers,
+    )
+    assert history.status_code == 200
+    assert history.json()["total"] == 2
+    assert history.json()["items"][0]["version"] == 2
+    assert history.json()["items"][0]["is_current"] is True
+    assert history.json()["items"][1]["version"] == 1
+    assert history.json()["items"][1]["is_current"] is False
+
+
+@pytest.mark.asyncio
+async def test_mapping_diff_between_versions(client: AsyncClient, admin_headers: dict):
+    item_id = await _create_item(client, admin_headers, "GRI", "305-2", "Scope 2")
+
+    el_resp = await client.post(
+        "/api/shared-elements",
+        json={"code": "GHG_S2", "name": "Scope 2 Total"},
+        headers=admin_headers,
+    )
+    el_id = el_resp.json()["id"]
+
+    first = await client.post(
+        "/api/mappings",
+        json={
+            "requirement_item_id": item_id,
+            "shared_element_id": el_id,
+            "mapping_type": "full",
+        },
+        headers=admin_headers,
+    )
+    assert first.status_code == 201
+
+    second = await client.post(
+        "/api/mappings",
+        json={
+            "requirement_item_id": item_id,
+            "shared_element_id": el_id,
+            "mapping_type": "partial",
+        },
+        headers=admin_headers,
+    )
+    assert second.status_code == 201
+
+    diff = await client.get(
+        f"/api/mappings/{item_id}/{el_id}/diff?v1=1&v2=2",
+        headers=admin_headers,
+    )
+    assert diff.status_code == 200
+    changes = diff.json()["changes"]
+    assert any(change["field"] == "mapping_type" for change in changes)
 
 
 @pytest.mark.asyncio
@@ -113,7 +181,7 @@ async def test_cross_standard_query(client: AsyncClient, admin_headers: dict):
     )
 
     # Query cross-standard
-    resp = await client.get("/api/mappings/cross-standard")
+    resp = await client.get("/api/mappings/cross-standard", headers=admin_headers)
     assert resp.status_code == 200
     data = resp.json()
     assert len(data) == 1
@@ -139,9 +207,10 @@ async def test_list_mappings(client: AsyncClient, admin_headers: dict):
             headers=admin_headers,
         )
 
-    resp = await client.get("/api/mappings")
+    resp = await client.get("/api/mappings?page_size=500", headers=admin_headers)
     assert resp.status_code == 200
     assert resp.json()["total"] == 3
+    assert len(resp.json()["items"]) == 3
 
 
 @pytest.mark.asyncio

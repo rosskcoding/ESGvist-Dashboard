@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   ArrowRight,
@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useApiQuery, useApiMutation } from "@/lib/hooks/use-api";
 import { api } from "@/lib/api";
+import { useAIScreenContext } from "@/lib/ai-context";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface DataPointDetail {
   id: number;
+  reporting_project_id: number;
   status: string;
   element_code: string;
   element_name: string;
@@ -109,6 +111,12 @@ function StepIndicator({ current }: { current: number }) {
 export default function DataEntryWizardPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const { enrichScreenContext } = useAIScreenContext();
+
+  useEffect(() => {
+    if (id) enrichScreenContext({ dataPointId: Number(id) });
+  }, [id, enrichScreenContext]);
+  const searchParams = useSearchParams();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const unitSelectId = useId();
   const methodologySelectId = useId();
@@ -131,9 +139,11 @@ export default function DataEntryWizardPage() {
     Record<string, string>
   >({});
   const [gateResult, setGateResult] = useState<GateCheckResult | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPreparingPreview, setIsPreparingPreview] = useState(false);
   const [uploadedEvidenceIds, setUploadedEvidenceIds] = useState<number[]>([]);
 
   /* Fetch data point detail */
@@ -142,9 +152,12 @@ export default function DataEntryWizardPage() {
     `/data-points/${id}`
   );
 
+  const projectId = searchParams.get("projectId") || (dp ? String(dp.reporting_project_id) : "");
+  const collectionListUrl = projectId ? `/collection?projectId=${projectId}` : "/collection";
+
   const { data: me } = useApiQuery<{
     roles: Array<{ role: string }>;
-  }>(["auth-me", "collection-detail"], "/auth/me");
+  }>(["auth-me"], "/auth/me");
 
   /* Gate check mutation */
   const gateCheck = useApiMutation<GateCheckResult>(
@@ -156,6 +169,8 @@ export default function DataEntryWizardPage() {
   const updateField = useCallback(
     <K extends keyof FormData>(field: K, value: FormData[K]) => {
       setForm((prev) => ({ ...prev, [field]: value }));
+      setPreviewError(null);
+      setSubmitError(null);
       setValidationErrors((prev) => {
         const next = { ...prev };
         delete next[field];
@@ -186,6 +201,8 @@ export default function DataEntryWizardPage() {
       e.preventDefault();
       setDragOver(false);
       const droppedFiles = Array.from(e.dataTransfer.files);
+      setPreviewError(null);
+      setSubmitError(null);
       updateField("files", [...form.files, ...droppedFiles]);
     },
     [form.files, updateField]
@@ -195,6 +212,8 @@ export default function DataEntryWizardPage() {
     (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files) {
         const selected = Array.from(e.target.files);
+        setPreviewError(null);
+        setSubmitError(null);
         updateField("files", [...form.files, ...selected]);
       }
     },
@@ -218,16 +237,11 @@ export default function DataEntryWizardPage() {
     }
     const createdIds: number[] = [];
     for (const file of form.files) {
-      const evidence = await api.post<{ id: number }>("/evidences", {
-        type: "file",
-        title: file.name,
-        description: `Uploaded from collection wizard for ${dp.element_name}`,
-        source_type: "manual",
-        file_name: file.name,
-        file_uri: `file:///uploads/${encodeURIComponent(file.name)}`,
-        mime_type: file.type || "application/pdf",
-        file_size: file.size,
-      });
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("title", file.name);
+      formData.append("description", `Uploaded from collection wizard for ${dp.element_name}`);
+      const evidence = await api.upload<{ id: number }>("/evidences/upload", formData);
       await api.post(`/data-points/${id}/evidences`, {
         evidence_id: evidence.id,
       });
@@ -270,7 +284,7 @@ export default function DataEntryWizardPage() {
     if (dp?.element_type === "numeric" && isNaN(Number(form.value))) {
       errors.value = "Must be a valid number";
     }
-    if (!form.unit) {
+    if (dp?.element_type === "numeric" && !form.unit) {
       errors.unit = "Unit is required";
     }
     if (!form.methodology) {
@@ -292,6 +306,9 @@ export default function DataEntryWizardPage() {
 
     if (step === 2 && !gateResult) {
       // Run gate check
+      setPreviewError(null);
+      setSubmitError(null);
+      setIsPreparingPreview(true);
       try {
         await persistDraftFields();
         await uploadSelectedEvidence();
@@ -300,17 +317,24 @@ export default function DataEntryWizardPage() {
           data_point_id: Number(id),
         });
         setGateResult(result);
-      } catch {
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Gate check could not be completed";
+        setPreviewError(message);
         setGateResult({
           allowed: false,
           failedGates: [
             {
-              message: "Gate check could not be completed",
+              message,
               code: "GATE_CHECK_ERROR",
             },
           ],
           warnings: [],
         });
+      } finally {
+        setIsPreparingPreview(false);
       }
       return;
     }
@@ -322,15 +346,19 @@ export default function DataEntryWizardPage() {
 
   const goBack = () => {
     if (step > 0) {
-      if (step === 2) setGateResult(null);
+      if (step === 2) {
+        setGateResult(null);
+        setPreviewError(null);
+      }
       setStep(step - 1);
     }
   };
 
   const handleSubmit = useCallback(async () => {
-    if (!dp) return;
+    if (!dp || isSubmitting) return;
     try {
       setSubmitError(null);
+      setPreviewError(null);
       setIsSubmitting(true);
       await persistDraftFields();
       await uploadSelectedEvidence();
@@ -346,7 +374,7 @@ export default function DataEntryWizardPage() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [dp, id, persistDraftFields, uploadSelectedEvidence]);
+  }, [dp, id, isSubmitting, persistDraftFields, uploadSelectedEvidence]);
 
   /* ---------- Loading / Not found ---------- */
 
@@ -399,7 +427,7 @@ export default function DataEntryWizardPage() {
         <Button
           variant="outline"
           className="mt-4"
-          onClick={() => router.push("/collection")}
+          onClick={() => router.push(collectionListUrl)}
         >
           Back to Collection
         </Button>
@@ -413,7 +441,7 @@ export default function DataEntryWizardPage() {
     <div className="mx-auto max-w-3xl space-y-8">
       {/* Back link */}
       <button
-        onClick={() => router.push("/collection")}
+        onClick={() => router.push(collectionListUrl)}
         className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-900"
       >
         <ArrowLeft className="h-4 w-4" />
@@ -533,32 +561,34 @@ export default function DataEntryWizardPage() {
             />
 
             {/* Unit selector */}
-            <div className="grid gap-1.5">
-              <label htmlFor={unitSelectId} className="text-sm font-medium text-slate-700">
-                Unit
-              </label>
-              <select
-                id={unitSelectId}
-                value={form.unit}
-                onChange={(e) => updateField("unit", e.target.value)}
-                className={cn(
-                  "h-9 w-full rounded-md border bg-transparent px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-950",
-                  validationErrors.unit
-                    ? "border-red-500 focus:ring-red-500"
-                    : "border-slate-200"
+            {dp.element_type === "numeric" && (
+              <div className="grid gap-1.5">
+                <label htmlFor={unitSelectId} className="text-sm font-medium text-slate-700">
+                  Unit
+                </label>
+                <select
+                  id={unitSelectId}
+                  value={form.unit}
+                  onChange={(e) => updateField("unit", e.target.value)}
+                  className={cn(
+                    "h-9 w-full rounded-md border bg-transparent px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-950",
+                    validationErrors.unit
+                      ? "border-red-500 focus:ring-red-500"
+                      : "border-slate-200"
+                  )}
+                >
+                  <option value="">Select unit...</option>
+                  {(dp.unit_options ?? []).map((u) => (
+                    <option key={u} value={u}>
+                      {u}
+                    </option>
+                  ))}
+                </select>
+                {validationErrors.unit && (
+                  <p className="text-xs text-red-500">{validationErrors.unit}</p>
                 )}
-              >
-                <option value="">Select unit...</option>
-                {(dp.unit_options ?? []).map((u) => (
-                  <option key={u} value={u}>
-                    {u}
-                  </option>
-                ))}
-              </select>
-              {validationErrors.unit && (
-                <p className="text-xs text-red-500">{validationErrors.unit}</p>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Methodology */}
             <div className="grid gap-1.5">
@@ -765,7 +795,7 @@ export default function DataEntryWizardPage() {
                 <div>
                   <dt className="text-slate-400">Value</dt>
                   <dd className="font-medium text-slate-900">
-                    {form.value} {form.unit}
+                    {form.value}{dp.element_type === "numeric" && form.unit ? ` ${form.unit}` : ""}
                   </dd>
                 </div>
                 <div>
@@ -810,6 +840,20 @@ export default function DataEntryWizardPage() {
               <div className="flex items-center justify-center gap-2 py-8 text-slate-400">
                 <Loader2 className="h-5 w-5 animate-spin" />
                 Running gate checks...
+              </div>
+            )}
+
+            {isPreparingPreview && !gateCheck.isPending && (
+              <div className="flex items-center justify-center gap-2 py-8 text-slate-400">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                Preparing preview...
+              </div>
+            )}
+
+            {previewError && (
+              <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <div>{previewError}</div>
               </div>
             )}
 
@@ -878,7 +922,7 @@ export default function DataEntryWizardPage() {
                 <p className="text-sm text-slate-500">
                   Your data has been submitted for review.
                 </p>
-                <Button onClick={() => router.push("/collection")}>
+                <Button onClick={() => router.push(collectionListUrl)}>
                   Back to Collection
                 </Button>
               </div>
@@ -941,7 +985,7 @@ export default function DataEntryWizardPage() {
               onClick={goNext}
               disabled={
                 !isEditable ||
-                (step === 2 && gateCheck.isPending) ||
+                (step === 2 && (gateCheck.isPending || isPreparingPreview)) ||
                 (step === 2 &&
                   gateResult !== null &&
                   gateResult.failedGates.length > 0)

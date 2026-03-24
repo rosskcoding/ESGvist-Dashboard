@@ -19,11 +19,38 @@ class MappingRepository:
         return m
 
     async def get_by_item_and_element(
-        self, item_id: int, element_id: int
+        self, item_id: int, element_id: int, current_only: bool = True,
     ) -> RequirementItemSharedElement | None:
         q = select(RequirementItemSharedElement).where(
             RequirementItemSharedElement.requirement_item_id == item_id,
             RequirementItemSharedElement.shared_element_id == element_id,
+        )
+        if current_only:
+            q = q.where(RequirementItemSharedElement.is_current == True)  # noqa: E712
+        result = await self.session.execute(q)
+        return result.scalar_one_or_none()
+
+    async def list_versions(
+        self, item_id: int, element_id: int,
+    ) -> list[RequirementItemSharedElement]:
+        q = (
+            select(RequirementItemSharedElement)
+            .where(
+                RequirementItemSharedElement.requirement_item_id == item_id,
+                RequirementItemSharedElement.shared_element_id == element_id,
+            )
+            .order_by(RequirementItemSharedElement.version.desc())
+        )
+        result = await self.session.execute(q)
+        return list(result.scalars().all())
+
+    async def get_version(
+        self, item_id: int, element_id: int, version: int,
+    ) -> RequirementItemSharedElement | None:
+        q = select(RequirementItemSharedElement).where(
+            RequirementItemSharedElement.requirement_item_id == item_id,
+            RequirementItemSharedElement.shared_element_id == element_id,
+            RequirementItemSharedElement.version == version,
         )
         result = await self.session.execute(q)
         return result.scalar_one_or_none()

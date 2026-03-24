@@ -21,6 +21,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -50,6 +52,7 @@ type RequirementItem = {
   id: number;
   item_code: string | null;
   name: string;
+  description?: string | null;
   item_type: string;
   value_type: string;
   unit_code: string | null;
@@ -72,6 +75,7 @@ function AddRequirementItemDialog({
   const [form, setForm] = useState({
     item_code: "",
     name: "",
+    description: "",
     item_type: "metric",
     value_type: "number",
     unit_code: "",
@@ -79,13 +83,24 @@ function AddRequirementItemDialog({
     requires_evidence: false,
   });
 
-  const mutation = useApiMutation(`/disclosures/${disclosureId}/items`, "POST", {
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["requirement-items", disclosureId] });
+  const mutation = useApiMutation<RequirementItem, typeof form>(`/disclosures/${disclosureId}/items`, "POST", {
+    onSuccess: (item) => {
+      queryClient.setQueryData<RequirementItemListResponse>(
+        ["requirement-items", disclosureId],
+        (current) =>
+          current
+            ? {
+                ...current,
+                items: [...current.items, item],
+                total: current.total + 1,
+              }
+            : { items: [item], total: 1 }
+      );
       onOpenChange(false);
       setForm({
         item_code: "",
         name: "",
+        description: "",
         item_type: "metric",
         value_type: "number",
         unit_code: "",
@@ -121,6 +136,16 @@ function AddRequirementItemDialog({
               placeholder="Describe the requirement item"
             />
           </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="item-description">Description</Label>
+            <Textarea
+              id="item-description"
+              value={form.description}
+              onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
+              placeholder="Paste the requirement text or implementation guidance"
+              rows={6}
+            />
+          </div>
           <div className="grid gap-4 md:grid-cols-2">
             <Select
               label="Item Type"
@@ -154,6 +179,24 @@ function AddRequirementItemDialog({
               placeholder="e.g. tCO2e"
             />
           </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700">
+              <Checkbox
+                checked={form.is_required}
+                onCheckedChange={(checked) => setForm((current) => ({ ...current, is_required: checked }))}
+                aria-label="Required item"
+              />
+              Required item
+            </label>
+            <label className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700">
+              <Checkbox
+                checked={form.requires_evidence}
+                onCheckedChange={(checked) => setForm((current) => ({ ...current, requires_evidence: checked }))}
+                aria-label="Evidence required"
+              />
+              Evidence required
+            </label>
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -181,7 +224,7 @@ export default function RequirementItemsPage() {
 
   const { data: me, isLoading: meLoading } = useApiQuery<{
     roles: Array<{ role: string }>;
-  }>(["auth-me", "requirement-items"], "/auth/me");
+  }>(["auth-me"], "/auth/me");
 
   const role = me?.roles?.[0]?.role ?? "";
   const canAccess = role === "admin" || role === "platform_admin";
@@ -324,18 +367,35 @@ export default function RequirementItemsPage() {
                     <TableHead>Item Type</TableHead>
                     <TableHead>Value Type</TableHead>
                     <TableHead>Evidence</TableHead>
+                    <TableHead className="text-right">Mappings</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {items.map((item) => (
                     <TableRow key={item.id}>
                       <TableCell className="font-mono text-xs">{item.item_code ?? "-"}</TableCell>
-                      <TableCell>{item.name}</TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div>{item.name}</div>
+                          {item.description && (
+                            <p className="line-clamp-3 text-xs text-slate-500">{item.description}</p>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell>
                         <Badge variant="secondary">{item.item_type}</Badge>
                       </TableCell>
                       <TableCell>{item.value_type}</TableCell>
                       <TableCell>{item.requires_evidence ? "Required" : "Optional"}</TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="outline" size="sm" asChild>
+                          <Link
+                            href={`/settings/mappings?standardId=${standardId}&disclosureId=${selectedDisclosureId}&itemId=${item.id}`}
+                          >
+                            Mapping History
+                          </Link>
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

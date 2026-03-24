@@ -27,7 +27,8 @@ def _get_service(session: AsyncSession) -> SharedElementService:
 @router.get("", response_model=SharedElementListOut)
 async def list_elements(
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=100),
+    page_size: int = Query(50, ge=1, le=200),
+    ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
     return await _get_service(session).list_elements(page, page_size)
@@ -45,6 +46,7 @@ async def create_element(
 @router.get("/{element_id}", response_model=SharedElementOut)
 async def get_element(
     element_id: int,
+    ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
     return await _get_service(session).get_element(element_id)
@@ -53,6 +55,7 @@ async def get_element(
 @router.get("/{element_id}/dimensions", response_model=list[DimensionOut])
 async def list_dimensions(
     element_id: int,
+    ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
     return await _get_service(session).list_dimensions(element_id)

@@ -47,6 +47,37 @@ test.describe("Screen 11 - Project List", () => {
     await expect(projectRow.getByText("Draft", { exact: true })).toBeVisible();
   });
 
+  test("shows an inline error when project creation fails", async ({ page }) => {
+    await loginThroughUi(page, demoState.users.admin.email, demoState.password);
+    await page.route("**/api/projects", async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: {
+            code: "PROJECT_CREATE_FAILED",
+            message: "Project could not be created.",
+            details: [],
+            requestId: "pw-project-create-failure",
+          },
+        }),
+      });
+    });
+
+    await page.goto("/projects");
+    await page.getByRole("button", { name: "Create Project" }).click();
+    await page.getByLabel("Project Name").fill(`Broken Project ${Date.now()}`);
+    await page.getByRole("button", { name: "Create", exact: true }).click();
+
+    await expect(
+      page.getByText("Project could not be created.", { exact: true }).first()
+    ).toBeVisible();
+  });
+
   for (const user of deniedProjectUsers) {
     test(`hides projects nav and blocks direct access for ${user.role} (${user.email})`, async ({ page }) => {
       await loginThroughUi(page, user.email, demoState.password);

@@ -3,9 +3,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
-import { isAuthenticated, getMe, logout } from "@/lib/auth";
-import { api } from "@/lib/api";
+import { logout } from "@/lib/auth";
+import { api, isAppApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useApiQuery } from "@/lib/hooks/use-api";
 import { Providers } from "./providers";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +19,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { AICopilot } from "@/components/ai-copilot";
+import { AIActionHandlers } from "@/components/ai-action-handlers";
+import { AIContextProvider, useAIScreenContext } from "@/lib/ai-context";
+import {
+  readSupportMode,
+  stopSupportMode,
+  subscribeSupportMode,
+  type SupportModeState,
+} from "@/lib/support-mode";
 import {
   LayoutDashboard,
   ClipboardList,
@@ -98,7 +107,7 @@ const navGroups: NavGroup[] = [
         label: "Merge View",
         href: "/merge",
         icon: GitMerge,
-        requiredRoles: ["esg_manager", "admin", "auditor"],
+        requiredRoles: ["esg_manager", "admin", "auditor", "reviewer"],
       },
     ],
   },
@@ -154,6 +163,12 @@ const navGroups: NavGroup[] = [
         requiredRoles: ["admin", "esg_manager", "platform_admin"],
       },
       {
+        label: "Form Configs",
+        href: "/settings/form-configs",
+        icon: ClipboardList,
+        requiredRoles: ["admin", "esg_manager", "platform_admin"],
+      },
+      {
         label: "Standards",
         href: "/settings/standards",
         icon: BookOpen,
@@ -163,6 +178,12 @@ const navGroups: NavGroup[] = [
         label: "Shared Elements",
         href: "/settings/shared-elements",
         icon: Share2,
+        requiredRoles: ["admin", "platform_admin"],
+      },
+      {
+        label: "Mapping History",
+        href: "/settings/mappings",
+        icon: GitMerge,
         requiredRoles: ["admin", "platform_admin"],
       },
       {
@@ -195,16 +216,69 @@ const navGroups: NavGroup[] = [
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <Providers>
+      <AIContextProvider>
+        <AppShell>{children}</AppShell>
+      </AIContextProvider>
+    </Providers>
+  );
+}
+
+function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [user, setUser] = useState<UserInfo | null>(null);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const loginRedirect = useCallback(
+    (reason: "session-expired" | "auth-required") => {
+      const params = new URLSearchParams({ reason, next: pathname || "/dashboard" });
+      router.push(`/login?${params.toString()}`);
+    },
+    [pathname, router]
+  );
   const [copilotOpen, setCopilotOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [orgContextReady, setOrgContextReady] = useState(false);
+  const [supportMode, setSupportMode] = useState<SupportModeState>(() => readSupportMode());
+  const [supportEnding, setSupportEnding] = useState(false);
+  const [supportError, setSupportError] = useState("");
+  const { resetScreenContext } = useAIScreenContext();
+
+  // Reset AI context on every route change — wipes stale projectId/dataPointId/etc.
+  // Pages then enrich via enrichScreenContext() in their own useEffect.
+  useEffect(() => {
+    const screen = pathname.replace(/^\//, "") || "dashboard";
+    resetScreenContext(screen);
+  }, [pathname, resetScreenContext]);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    const syncSupportMode = () => setSupportMode(readSupportMode());
+    syncSupportMode();
+    return subscribeSupportMode(syncSupportMode);
+  }, []);
+
+  const {
+    data: user,
+    error: userError,
+  } = useApiQuery<UserInfo>(["auth-me"], "/auth/me", {
+    enabled: mounted,
+  });
 
   const userRoles = user?.roles?.map((role) => role.role) ?? [];
   const userRole = userRoles[0] ?? "";
   const organizationName = "Organization";
   const canAccessNotifications = userRoles.some((role) => role !== "auditor");
+  const unreadQueryEnabled = mounted && Boolean(user) && canAccessNotifications && orgContextReady;
+
+  const { data: unreadData } = useApiQuery<{ unread_count: number }>(
+    ["notifications-unread-count"],
+    "/notifications/unread-count",
+    { enabled: unreadQueryEnabled }
+  );
+  const unreadCount = canAccessNotifications ? unreadData?.unread_count ?? 0 : 0;
 
   const hasRequiredRole = useCallback(
     (requiredRoles?: string[]) => {
@@ -215,52 +289,93 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   );
 
   useEffect(() => {
-    if (!isAuthenticated()) {
-      router.push("/login");
+    if (!mounted || !user) {
+      setOrgContextReady(false);
       return;
     }
-    getMe()
-      .then((u) => {
-        setUser(u);
-        // Auto-set organization_id if not already set
-        if (!localStorage.getItem("organization_id")) {
-          const orgRole = u.roles?.find((r: { scope_type: string; scope_id: number | null }) => r.scope_type === "organization" && r.scope_id);
-          if (orgRole?.scope_id) {
-            localStorage.setItem("organization_id", String(orgRole.scope_id));
-          }
+    if (supportMode.active) {
+      setOrgContextReady(true);
+      return;
+    }
+
+    const orgRole = user.roles.find(
+      (role) => role.scope_type === "organization" && role.scope_id
+    );
+    if (!orgRole?.scope_id) {
+      setOrgContextReady(false);
+      return;
+    }
+
+    let cancelled = false;
+    setOrgContextReady(false);
+    void api
+      .post("/auth/context/organization", {
+        organization_id: orgRole.scope_id,
+      })
+      .then(() => {
+        if (!cancelled) {
+          setOrgContextReady(true);
         }
       })
-      .catch(() => router.push("/login"));
-  }, [router]);
+      .catch(() => {
+        if (!cancelled) {
+          setOrgContextReady(false);
+        }
+      });
 
-  const fetchUnread = useCallback(async () => {
-    if (!canAccessNotifications) {
-      setUnreadCount(0);
-      return;
-    }
-    try {
-      const data = await api.get<{ unread_count: number }>("/notifications/unread-count");
-      setUnreadCount(data.unread_count);
-    } catch {
-      // silently ignore
-    }
-  }, [canAccessNotifications]);
+    return () => {
+      cancelled = true;
+    };
+  }, [mounted, supportMode.active, user]);
 
   useEffect(() => {
-    if (!user) return;
-    fetchUnread();
-    const interval = setInterval(fetchUnread, 30_000);
-    return () => clearInterval(interval);
-  }, [user, fetchUnread]);
+    if (mounted && userError) {
+      if (isAppApiError(userError) && userError.status === 401) {
+        loginRedirect("auth-required");
+        return;
+      }
+      router.push("/login");
+    }
+  }, [loginRedirect, mounted, router, userError]);
 
   const handleLogout = async () => {
     await logout();
     router.push("/login");
   };
 
-  const isPlatformAdmin = user?.roles?.some((r) => r.role === "platform_admin") ?? false;
+  const handleEndSupportMode = async () => {
+    if (!supportMode.active || supportEnding) return;
 
-  if (!user) {
+    setSupportError("");
+    setSupportEnding(true);
+    try {
+      await api.delete("/platform/support-session/current");
+      stopSupportMode();
+      router.push("/platform/tenants");
+    } catch (error) {
+      setSupportError(
+        error instanceof Error
+          ? error.message
+          : "Unable to end support mode. Please try again."
+      );
+    } finally {
+      setSupportEnding(false);
+    }
+  };
+
+  const isPlatformAdmin = user?.roles?.some((r) => r.role === "platform_admin") ?? false;
+  const hasOrganizationRole =
+    user?.roles?.some((role) => role.scope_type === "organization" && role.scope_id) ?? false;
+  const supportModeActive = supportMode.active;
+
+  useEffect(() => {
+    if (!user || isPlatformAdmin || hasOrganizationRole) return;
+    if (pathname !== "/onboarding") {
+      router.push("/onboarding");
+    }
+  }, [hasOrganizationRole, isPlatformAdmin, pathname, router, user]);
+
+  if (!mounted || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="text-muted-foreground">Loading...</div>
@@ -269,7 +384,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <Providers>
     <div className="flex min-h-screen">
       {/* Sidebar */}
       <aside className="flex w-64 flex-col border-r border-gray-200 bg-white">
@@ -413,6 +527,31 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
+        {supportModeActive && (
+          <div className="border-b border-amber-200 bg-amber-50 px-6 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-amber-900">
+                  Support mode active
+                </p>
+                <p className="text-sm text-amber-700">
+                  Tenant context: {supportMode.tenantName ?? `Tenant #${supportMode.tenantId ?? "unknown"}`}
+                </p>
+                {supportError && (
+                  <p className="mt-1 text-xs text-red-700">{supportError}</p>
+                )}
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => void handleEndSupportMode()}
+                disabled={supportEnding}
+              >
+                {supportEnding ? "Ending..." : "Exit Support Mode"}
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Page content with optional copilot panel */}
         <div className="flex flex-1 overflow-hidden">
           <main className="flex-1 overflow-y-auto p-6">{children}</main>
@@ -421,11 +560,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <AICopilot
             open={copilotOpen}
             onClose={() => setCopilotOpen(false)}
-            screenContext={pathname}
           />
+          {/* AI action handlers (open_dialog / highlight event listeners) */}
+          <AIActionHandlers />
         </div>
       </div>
     </div>
-    </Providers>
   );
 }

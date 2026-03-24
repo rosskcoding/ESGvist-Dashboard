@@ -56,8 +56,8 @@ export default function RegisterPage() {
 
     try {
       await register(email, password, fullName);
-      await login(email, password);
-      router.push("/dashboard");
+      const session = await login(email, password);
+      router.push(session.next_route);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Registration failed");
     } finally {

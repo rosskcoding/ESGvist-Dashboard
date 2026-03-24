@@ -1,20 +1,25 @@
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Cookie, Depends, Query, Response, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth_cookies import (
+    SUPPORT_SESSION_COOKIE_NAME,
+    clear_current_organization_cookie,
+    clear_support_session_cookie,
+    set_current_organization_cookie,
+    set_support_session_cookie,
+)
 from app.core.config import settings
 from app.core.dependencies import RequestContext, get_current_context
 from app.core.exceptions import AppError
-from app.db.models.organization import Organization
-from app.db.models.role_binding import RoleBinding
-from app.db.models.user import User
 from app.db.session import get_session
 from app.repositories.audit_repo import AuditRepository
 from app.repositories.export_repo import ExportRepository
 from app.repositories.notification_repo import NotificationRepository
+from app.repositories.platform_repo import PlatformRepository
 from app.repositories.webhook_repo import WebhookRepository
 from app.services.export_service import ExportService
+from app.services.platform_service import PlatformService
 from app.services.sla_service import SLAService
 from app.services.webhook_service import WebhookService
 from app.workers.job_runner import JobRunner
@@ -22,38 +27,14 @@ from app.workers.job_runner import JobRunner
 router = APIRouter(prefix="/api/platform", tags=["Platform Admin"])
 
 
-def _require_platform(ctx: RequestContext) -> None:
-    if not ctx.is_platform_admin:
-        raise AppError("PLATFORM_ADMIN_REQUIRED", 403, "Platform admin access required")
-
-
-async def _get_tenant_or_raise(session: AsyncSession, tenant_id: int) -> Organization:
-    result = await session.execute(select(Organization).where(Organization.id == tenant_id))
-    tenant = result.scalar_one_or_none()
-    if not tenant:
-        raise AppError("NOT_FOUND", 404, f"Tenant {tenant_id} not found")
-    return tenant
-
-
-async def _audit_platform(
-    session: AsyncSession,
-    ctx: RequestContext,
-    *,
-    entity_type: str,
-    action: str,
-    entity_id: int | None = None,
-    organization_id: int | None = None,
-    changes: dict | None = None,
-) -> None:
-    await AuditRepository(session).log(
-        entity_type=entity_type,
-        entity_id=entity_id,
-        action=action,
-        user_id=ctx.user_id,
-        organization_id=organization_id,
-        changes=changes,
-        performed_by_platform_admin=True,
+def _get_service(session: AsyncSession) -> PlatformService:
+    return PlatformService(
+        repo=PlatformRepository(session),
+        audit_repo=AuditRepository(session),
     )
+
+
+# -- Tenants ------------------------------------------------------------------
 
 
 @router.get("/tenants")
@@ -63,40 +44,7 @@ async def list_tenants(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    _require_platform(ctx)
-
-    total = (await session.execute(select(func.count()).select_from(Organization))).scalar_one()
-    result = await session.execute(
-        select(Organization)
-        .order_by(Organization.id)
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-    )
-    organizations = result.scalars().all()
-
-    items = []
-    for org in organizations:
-        user_count = (
-            await session.execute(
-                select(func.count()).select_from(RoleBinding).where(
-                    RoleBinding.scope_type == "organization",
-                    RoleBinding.scope_id == org.id,
-                )
-            )
-        ).scalar_one()
-        items.append(
-            {
-                "id": org.id,
-                "name": org.name,
-                "country": org.country,
-                "industry": org.industry,
-                "status": org.status,
-                "setup_completed": org.setup_completed,
-                "user_count": user_count,
-            }
-        )
-
-    return {"items": items, "total": total}
+    return await _get_service(session).list_tenants(ctx, page=page, page_size=page_size)
 
 
 class TenantCreate(BaseModel):
@@ -111,25 +59,8 @@ async def create_tenant(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    _require_platform(ctx)
-
-    org = Organization(
-        name=payload.name,
-        country=payload.country,
-        industry=payload.industry,
-        setup_completed=False,
-        status="active",
-    )
-    session.add(org)
-    await session.flush()
-    await _audit_platform(
-        session,
-        ctx,
-        entity_type="Organization",
-        entity_id=org.id,
-        organization_id=org.id,
-        action="platform_tenant_created",
-        changes=payload.model_dump(),
+    org = await _get_service(session).create_tenant(
+        ctx, name=payload.name, country=payload.country, industry=payload.industry
     )
     return {"id": org.id, "name": org.name, "created": True}
 
@@ -140,8 +71,7 @@ async def get_tenant(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    _require_platform(ctx)
-    org = await _get_tenant_or_raise(session, tenant_id)
+    org = await _get_service(session).get_tenant(ctx, tenant_id)
     return {
         "id": org.id,
         "name": org.name,
@@ -167,20 +97,8 @@ async def update_tenant(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    _require_platform(ctx)
-    org = await _get_tenant_or_raise(session, tenant_id)
-    changes = payload.model_dump(exclude_unset=True)
-    for key, value in changes.items():
-        setattr(org, key, value)
-    await session.flush()
-    await _audit_platform(
-        session,
-        ctx,
-        entity_type="Organization",
-        entity_id=org.id,
-        organization_id=org.id,
-        action="platform_tenant_updated",
-        changes=changes,
+    org = await _get_service(session).update_tenant(
+        ctx, tenant_id, payload.model_dump(exclude_unset=True)
     )
     return {"id": org.id, "name": org.name, "updated": True}
 
@@ -191,18 +109,7 @@ async def suspend_tenant(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    _require_platform(ctx)
-    org = await _get_tenant_or_raise(session, tenant_id)
-    org.status = "suspended"
-    await session.flush()
-    await _audit_platform(
-        session,
-        ctx,
-        entity_type="Organization",
-        entity_id=org.id,
-        organization_id=org.id,
-        action="platform_tenant_suspended",
-    )
+    org = await _get_service(session).set_tenant_status(ctx, tenant_id, "suspended")
     return {"id": org.id, "status": "suspended"}
 
 
@@ -212,18 +119,7 @@ async def reactivate_tenant(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    _require_platform(ctx)
-    org = await _get_tenant_or_raise(session, tenant_id)
-    org.status = "active"
-    await session.flush()
-    await _audit_platform(
-        session,
-        ctx,
-        entity_type="Organization",
-        entity_id=org.id,
-        organization_id=org.id,
-        action="platform_tenant_reactivated",
-    )
+    org = await _get_service(session).set_tenant_status(ctx, tenant_id, "active")
     return {"id": org.id, "status": "active"}
 
 
@@ -233,27 +129,20 @@ async def archive_tenant(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    _require_platform(ctx)
-    org = await _get_tenant_or_raise(session, tenant_id)
-    org.status = "archived"
-    await session.flush()
-    await _audit_platform(
-        session,
-        ctx,
-        entity_type="Organization",
-        entity_id=org.id,
-        organization_id=org.id,
-        action="platform_tenant_archived",
-    )
+    org = await _get_service(session).set_tenant_status(ctx, tenant_id, "archived")
     return {"id": org.id, "status": "archived"}
+
+
+# -- Config -------------------------------------------------------------------
 
 
 @router.get("/config/self-registration")
 async def get_self_registration_config(
     ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
 ):
-    _require_platform(ctx)
-    return {"allow_self_registration": settings.allow_self_registration}
+    value = await _get_service(session).get_self_registration(ctx)
+    return {"allow_self_registration": value}
 
 
 class SelfRegistrationUpdate(BaseModel):
@@ -266,17 +155,13 @@ async def update_self_registration_config(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    _require_platform(ctx)
-    settings.allow_self_registration = payload.allow_self_registration
-    await _audit_platform(
-        session,
-        ctx,
-        entity_type="PlatformSettings",
-        entity_id=None,
-        action="platform_self_registration_updated",
-        changes={"allow_self_registration": payload.allow_self_registration},
+    value = await _get_service(session).set_self_registration(
+        ctx, payload.allow_self_registration
     )
-    return {"allow_self_registration": settings.allow_self_registration}
+    return {"allow_self_registration": value}
+
+
+# -- Users (platform-level) ---------------------------------------------------
 
 
 @router.get("/users")
@@ -284,15 +169,7 @@ async def list_platform_users(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    _require_platform(ctx)
-    result = await session.execute(select(User).order_by(User.id))
-    users = result.scalars().all()
-    return {
-        "items": [
-            {"id": user.id, "email": user.email, "full_name": user.full_name, "is_active": user.is_active}
-            for user in users
-        ]
-    }
+    return {"items": await _get_service(session).list_users(ctx)}
 
 
 class AssignAdminRequest(BaseModel):
@@ -306,42 +183,37 @@ async def assign_admin(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    _require_platform(ctx)
-    await _get_tenant_or_raise(session, tenant_id)
-
-    user_result = await session.execute(select(User).where(User.id == payload.user_id))
-    if not user_result.scalar_one_or_none():
-        raise AppError("NOT_FOUND", 404, f"User {payload.user_id} not found")
-
-    existing = await session.execute(
-        select(RoleBinding).where(
-            RoleBinding.user_id == payload.user_id,
-            RoleBinding.scope_type == "organization",
-            RoleBinding.scope_id == tenant_id,
-        )
-    )
-    if existing.scalar_one_or_none():
-        raise AppError("ROLE_BINDING_EXISTS", 409, "User already has a role in this organization")
-
-    binding = RoleBinding(
-        user_id=payload.user_id,
-        role="admin",
-        scope_type="organization",
-        scope_id=tenant_id,
-        created_by=ctx.user_id,
-    )
-    session.add(binding)
-    await session.flush()
-    await _audit_platform(
-        session,
-        ctx,
-        entity_type="RoleBinding",
-        entity_id=binding.id,
-        organization_id=tenant_id,
-        action="platform_tenant_admin_assigned",
-        changes={"user_id": payload.user_id, "role": "admin"},
+    binding = await _get_service(session).assign_tenant_admin(
+        ctx, tenant_id, payload.user_id
     )
     return {"user_id": payload.user_id, "tenant_id": tenant_id, "role": "admin"}
+
+
+# -- Metrics ------------------------------------------------------------------
+
+
+@router.get("/metrics")
+async def get_platform_metrics(
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _get_service(session).get_platform_metrics(ctx)
+
+
+# -- Cross-tenant user management ---------------------------------------------
+
+
+@router.get("/tenants/{tenant_id}/users")
+async def list_tenant_users(
+    tenant_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    users = await _get_service(session).list_tenant_users(ctx, tenant_id)
+    return {"items": users, "total": len(users)}
+
+
+# -- Jobs (background tasks) --------------------------------------------------
 
 
 @router.get("/jobs/status")
@@ -349,7 +221,7 @@ async def get_job_status(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    _require_platform(ctx)
+    _get_service(session)._require_platform(ctx)
     return await JobRunner().collect_status_from_session(session)
 
 
@@ -358,13 +230,11 @@ async def run_sla_check(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    _require_platform(ctx)
+    svc = _get_service(session)
+    svc._require_platform(ctx)
     result = await SLAService(session).check_sla_breaches()
-    await _audit_platform(
-        session,
-        ctx,
-        entity_type="ScheduledJob",
-        action="platform_sla_check_triggered",
+    await svc._audit(
+        ctx, entity_type="ScheduledJob", action="platform_sla_check_triggered",
         changes=result,
     )
     return result
@@ -375,13 +245,11 @@ async def run_project_deadline_check(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    _require_platform(ctx)
+    svc = _get_service(session)
+    svc._require_platform(ctx)
     result = await SLAService(session).check_project_deadlines()
-    await _audit_platform(
-        session,
-        ctx,
-        entity_type="ScheduledJob",
-        action="platform_project_deadline_check_triggered",
+    await svc._audit(
+        ctx, entity_type="ScheduledJob", action="platform_project_deadline_check_triggered",
         changes=result,
     )
     return result
@@ -393,16 +261,14 @@ async def run_webhook_retries(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    _require_platform(ctx)
+    svc = _get_service(session)
+    svc._require_platform(ctx)
     result = await WebhookService(
         repo=WebhookRepository(session),
         notification_repo=NotificationRepository(session),
     ).retry_due_deliveries(limit=limit)
-    await _audit_platform(
-        session,
-        ctx,
-        entity_type="ScheduledJob",
-        action="platform_webhook_retry_triggered",
+    await svc._audit(
+        ctx, entity_type="ScheduledJob", action="platform_webhook_retry_triggered",
         changes=result,
     )
     return result
@@ -414,17 +280,15 @@ async def run_export_jobs(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    _require_platform(ctx)
+    svc = _get_service(session)
+    svc._require_platform(ctx)
     result = await ExportService(
         session,
         repo=ExportRepository(session),
         audit_repo=AuditRepository(session),
     ).process_queued_jobs(limit=limit)
-    await _audit_platform(
-        session,
-        ctx,
-        entity_type="ScheduledJob",
-        action="platform_export_jobs_triggered",
+    await svc._audit(
+        ctx, entity_type="ScheduledJob", action="platform_export_jobs_triggered",
         changes=result,
     )
     return result
@@ -436,7 +300,8 @@ async def run_all_jobs(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    _require_platform(ctx)
+    svc = _get_service(session)
+    svc._require_platform(ctx)
     sla_result = await SLAService(session).check_sla_breaches()
     project_deadlines = await SLAService(session).check_project_deadlines()
     webhook_retries = await WebhookService(
@@ -454,11 +319,68 @@ async def run_all_jobs(
         "webhook_retries": webhook_retries,
         "export_jobs": export_jobs,
     }
-    await _audit_platform(
-        session,
-        ctx,
-        entity_type="ScheduledJob",
-        action="platform_all_jobs_triggered",
+    await svc._audit(
+        ctx, entity_type="ScheduledJob", action="platform_all_jobs_triggered",
         changes=result,
     )
     return result
+
+
+# -- Support Mode --------------------------------------------------------------
+
+
+class SupportSessionRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=1000)
+
+
+@router.post("/tenants/{tenant_id}/support-session")
+async def start_support_session(
+    tenant_id: int,
+    payload: SupportSessionRequest,
+    response: Response,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    ss = await _get_service(session).start_support_session(
+        ctx, tenant_id, payload.reason
+    )
+    set_support_session_cookie(response, ss.id)
+    set_current_organization_cookie(response, tenant_id)
+    return {
+        "session_id": ss.id,
+        "tenant_id": tenant_id,
+        "started_at": ss.started_at.isoformat() if ss.started_at else None,
+    }
+
+
+@router.delete("/support-session/current")
+async def end_current_support_session(
+    response: Response,
+    support_session_cookie: str | None = Cookie(default=None, alias=SUPPORT_SESSION_COOKIE_NAME),
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    if not support_session_cookie:
+        raise AppError("NOT_FOUND", 404, "Support session not found")
+    try:
+        session_id = int(support_session_cookie)
+    except ValueError as exc:
+        raise AppError("INVALID_SUPPORT_SESSION", 400, "Support session cookie is invalid") from exc
+
+    ss = await _get_service(session).end_support_session(ctx, session_id)
+    clear_support_session_cookie(response)
+    clear_current_organization_cookie(response)
+    return {"session_id": ss.id, "ended_at": ss.ended_at.isoformat()}
+
+
+@router.delete("/support-session/{session_id}")
+async def end_support_session(
+    session_id: int,
+    response: Response,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    ss = await _get_service(session).end_support_session(ctx, session_id)
+    clear_support_session_cookie(response)
+    clear_current_organization_cookie(response)
+    return {"session_id": ss.id, "ended_at": ss.ended_at.isoformat()}

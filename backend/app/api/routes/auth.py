@@ -1,9 +1,31 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Cookie, Depends, Request, Response, status
+from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth_cookies import (
+    REFRESH_TOKEN_COOKIE_NAME,
+    clear_current_organization_cookie,
+    clear_support_session_cookie,
+    clear_access_token_cookie,
+    clear_csrf_token_cookie,
+    clear_refresh_token_cookie,
+    set_current_organization_cookie,
+    generate_csrf_token,
+    set_access_token_cookie,
+    set_csrf_token_cookie,
+    set_refresh_token_cookie,
+)
 from app.core.config import settings
-from app.core.dependencies import CurrentUser, RequestContext, get_current_context, get_current_user
+from app.core.dependencies import (
+    CurrentUser,
+    RequestContext,
+    get_current_context,
+    get_current_user,
+)
 from app.core.exceptions import AppError
+from app.db.models.organization import Organization
+from app.db.models.role_binding import RoleBinding
 from app.db.session import get_session
 from app.policies.auth_policy import AuthPolicy
 from app.repositories.audit_repo import AuditRepository
@@ -11,13 +33,16 @@ from app.repositories.refresh_token_repo import RefreshTokenRepository
 from app.repositories.role_binding_repo import RoleBindingRepository
 from app.repositories.user_repo import UserRepository
 from app.schemas.auth import (
+    AuthSessionListOut,
+    AuthSessionRevokeOut,
     ChangePasswordRequest,
     InvitationCreateRequest,
     LoginRequest,
-    OrganizationSettingsOut,
-    OrganizationSettingsUpdate,
+    LogoutAllOut,
     OrganizationAuthSettingsOut,
     OrganizationAuthSettingsUpdate,
+    OrganizationSettingsOut,
+    OrganizationSettingsUpdate,
     OrganizationUsersOut,
     RefreshRequest,
     RegisterRequest,
@@ -27,15 +52,36 @@ from app.schemas.auth import (
     TwoFactorSetupOut,
     TwoFactorStatusOut,
     UserProfileUpdateRequest,
+    UserResponse,
     UserRoleUpdateRequest,
     UserStatusUpdateRequest,
-    UserResponse,
 )
 from app.services.auth_service import AuthService
 from app.services.invitation_service import InvitationService
 from app.services.organization_user_service import OrganizationUserService
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
+
+
+class OrganizationContextUpdateRequest(BaseModel):
+    organization_id: int | None = None
+
+
+def _resolve_client_ip(request: Request) -> str | None:
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip() or None
+    if request.client:
+        return request.client.host
+    return None
+
+
+def _resolve_user_agent(request: Request) -> str | None:
+    user_agent = request.headers.get("User-Agent")
+    if not user_agent:
+        return None
+    normalized = user_agent.strip()
+    return normalized[:512] if normalized else None
 
 
 def _get_auth_service(session: AsyncSession) -> AuthService:
@@ -59,21 +105,34 @@ def _get_organization_user_service(session: AsyncSession) -> OrganizationUserSer
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register(payload: RegisterRequest, session: AsyncSession = Depends(get_session)):
-    if not settings.allow_self_registration:
+    if not settings.self_registration_enabled:
         raise AppError("REGISTRATION_DISABLED", 403, "Self-registration is currently disabled")
     service = _get_auth_service(session)
     return await service.register(payload.email, payload.password, payload.full_name)
 
 
-@router.post("/login", response_model=TokenResponse)
-async def login(payload: LoginRequest, session: AsyncSession = Depends(get_session)):
+@router.post("/login", response_model=TokenResponse, response_model_exclude_none=True)
+async def login(
+    payload: LoginRequest,
+    request: Request,
+    response: Response,
+    session: AsyncSession = Depends(get_session),
+):
     service = _get_auth_service(session)
-    return await service.login(
+    tokens = await service.login(
         payload.email,
         payload.password,
         totp_code=payload.totp_code,
         backup_code=payload.backup_code,
+        request_id=getattr(request.state, "request_id", None),
+        client_ip=_resolve_client_ip(request),
+        user_agent=_resolve_user_agent(request),
     )
+    set_access_token_cookie(response, tokens.access_token)
+    set_csrf_token_cookie(response, generate_csrf_token())
+    if tokens.refresh_token:
+        set_refresh_token_cookie(response, tokens.refresh_token)
+    return TokenResponse(access_token=tokens.access_token, token_type=tokens.token_type)
 
 
 @router.get("/login-options", response_model=OrganizationAuthSettingsOut)
@@ -81,10 +140,29 @@ async def get_login_options(organization_id: int, session: AsyncSession = Depend
     return await _get_auth_service(session).get_login_options(organization_id)
 
 
-@router.post("/refresh", response_model=TokenResponse)
-async def refresh(payload: RefreshRequest, session: AsyncSession = Depends(get_session)):
+@router.post("/refresh", response_model=TokenResponse, response_model_exclude_none=True)
+async def refresh(
+    request: Request,
+    response: Response,
+    payload: RefreshRequest | None = None,
+    refresh_token_cookie: str | None = Cookie(default=None, alias=REFRESH_TOKEN_COOKIE_NAME),
+    session: AsyncSession = Depends(get_session),
+):
     service = _get_auth_service(session)
-    return await service.refresh(payload.refresh_token)
+    refresh_token = refresh_token_cookie or (payload.refresh_token if payload else None)
+    if not refresh_token:
+        raise AppError("UNAUTHORIZED", 401, "Refresh token is required")
+    tokens = await service.refresh(
+        refresh_token,
+        request_id=getattr(request.state, "request_id", None),
+        client_ip=_resolve_client_ip(request),
+        user_agent=_resolve_user_agent(request),
+    )
+    set_access_token_cookie(response, tokens.access_token)
+    set_csrf_token_cookie(response, generate_csrf_token())
+    if tokens.refresh_token:
+        set_refresh_token_cookie(response, tokens.refresh_token)
+    return TokenResponse(access_token=tokens.access_token, token_type=tokens.token_type)
 
 
 @router.get("/me", response_model=UserResponse)
@@ -110,24 +188,139 @@ async def update_me(
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(
+    request: Request,
+    response: Response,
     user: CurrentUser = Depends(get_current_user),
+    refresh_token_cookie: str | None = Cookie(default=None, alias=REFRESH_TOKEN_COOKIE_NAME),
     session: AsyncSession = Depends(get_session),
 ):
     service = _get_auth_service(session)
-    await service.logout(user.id)
+    await service.logout(
+        user.id,
+        current_refresh_token=refresh_token_cookie,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    clear_current_organization_cookie(response)
+    clear_support_session_cookie(response)
+    clear_access_token_cookie(response)
+    clear_csrf_token_cookie(response)
+    clear_refresh_token_cookie(response)
+
+
+@router.post("/logout-all", response_model=LogoutAllOut)
+async def logout_all(
+    request: Request,
+    response: Response,
+    user: CurrentUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    result = await _get_auth_service(session).logout_all(
+        user.id,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    clear_current_organization_cookie(response)
+    clear_support_session_cookie(response)
+    clear_access_token_cookie(response)
+    clear_csrf_token_cookie(response)
+    clear_refresh_token_cookie(response)
+    return result
+
+
+@router.post("/context/organization")
+async def set_organization_context(
+    payload: OrganizationContextUpdateRequest,
+    response: Response,
+    user: CurrentUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    if payload.organization_id is None:
+        clear_current_organization_cookie(response)
+        return {"organization_id": None, "cleared": True}
+
+    org_result = await session.execute(
+        select(Organization.id).where(Organization.id == payload.organization_id)
+    )
+    organization_id = org_result.scalar_one_or_none()
+    if organization_id is None:
+        raise AppError("NOT_FOUND", 404, f"Organization {payload.organization_id} not found")
+
+    platform_binding = await session.execute(
+        select(RoleBinding.id).where(
+            RoleBinding.user_id == user.id,
+            RoleBinding.scope_type == "platform",
+            RoleBinding.role == "platform_admin",
+        )
+    )
+    if platform_binding.scalar_one_or_none() is None:
+        binding_result = await session.execute(
+            select(RoleBinding.id).where(
+                RoleBinding.user_id == user.id,
+                RoleBinding.scope_type == "organization",
+                RoleBinding.scope_id == payload.organization_id,
+            )
+        )
+        if binding_result.scalar_one_or_none() is None:
+            raise AppError("FORBIDDEN", 403, "No access to this organization")
+
+    set_current_organization_cookie(response, payload.organization_id)
+    return {"organization_id": payload.organization_id, "cleared": False}
 
 
 @router.post("/change-password")
 async def change_password(
+    request: Request,
+    response: Response,
     payload: ChangePasswordRequest,
     user: CurrentUser = Depends(get_current_user),
+    refresh_token_cookie: str | None = Cookie(default=None, alias=REFRESH_TOKEN_COOKIE_NAME),
     session: AsyncSession = Depends(get_session),
 ):
-    return await _get_auth_service(session).change_password(
+    result = await _get_auth_service(session).change_password(
         user.id,
         current_password=payload.current_password,
         new_password=payload.new_password,
+        current_refresh_token=refresh_token_cookie,
+        request_id=getattr(request.state, "request_id", None),
     )
+    if not result.get("current_session_preserved", False):
+        clear_access_token_cookie(response)
+        clear_csrf_token_cookie(response)
+        clear_refresh_token_cookie(response)
+    return result
+
+
+@router.get("/sessions", response_model=AuthSessionListOut)
+async def list_sessions(
+    user: CurrentUser = Depends(get_current_user),
+    refresh_token_cookie: str | None = Cookie(default=None, alias=REFRESH_TOKEN_COOKIE_NAME),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _get_auth_service(session).list_sessions(
+        user.id,
+        current_refresh_token=refresh_token_cookie,
+    )
+
+
+@router.delete("/sessions/{session_id}", response_model=AuthSessionRevokeOut)
+async def revoke_session(
+    session_id: int,
+    request: Request,
+    response: Response,
+    user: CurrentUser = Depends(get_current_user),
+    refresh_token_cookie: str | None = Cookie(default=None, alias=REFRESH_TOKEN_COOKIE_NAME),
+    session: AsyncSession = Depends(get_session),
+):
+    result = await _get_auth_service(session).revoke_session(
+        user.id,
+        session_id,
+        current_refresh_token=refresh_token_cookie,
+        request_id=getattr(request.state, "request_id", None),
+    )
+    if result.is_current:
+        clear_access_token_cookie(response)
+        clear_csrf_token_cookie(response)
+        clear_refresh_token_cookie(response)
+    return result
 
 
 @router.get("/me/organization", response_model=OrganizationSettingsOut)
@@ -266,7 +459,11 @@ async def update_organization_user_role(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    return await _get_organization_user_service(session).update_user_role(user_id, payload.role, ctx)
+    return await _get_organization_user_service(session).update_user_role(
+        user_id,
+        payload.role,
+        ctx,
+    )
 
 
 @router.patch("/users/{user_id}/status")
@@ -276,7 +473,11 @@ async def update_organization_user_status(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    return await _get_organization_user_service(session).update_user_status(user_id, payload.status, ctx)
+    return await _get_organization_user_service(session).update_user_status(
+        user_id,
+        payload.status,
+        ctx,
+    )
 
 
 @router.delete("/users/{user_id}")

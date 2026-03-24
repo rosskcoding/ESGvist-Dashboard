@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect, useId } from "react";
+import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useApiQuery, useApiMutation } from "@/lib/hooks/use-api";
 import { useQueryClient } from "@tanstack/react-query";
@@ -142,17 +143,21 @@ function InlineSelectCell({
   value,
   options,
   onSave,
+  disabled = false,
 }: {
   value: string;
   options: { value: string; label: string }[];
   onSave: (value: string) => void;
+  disabled?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
 
   if (!editing) {
     return (
       <button
+        type="button"
         onClick={() => setEditing(true)}
+        disabled={disabled}
         className="text-left text-sm hover:bg-slate-50 rounded px-1 py-0.5 -mx-1 w-full transition-colors"
       >
         {options.find((o) => o.value === value)?.label || value || (
@@ -170,6 +175,7 @@ function InlineSelectCell({
         onSave(v);
         setEditing(false);
       }}
+      disabled={disabled}
       className="h-7 text-xs w-full"
       placeholder="Select..."
     />
@@ -179,16 +185,20 @@ function InlineSelectCell({
 function InlineDateCell({
   value,
   onSave,
+  disabled = false,
 }: {
   value: string | null;
   onSave: (value: string) => void;
+  disabled?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
 
   if (!editing) {
     return (
       <button
+        type="button"
         onClick={() => setEditing(true)}
+        disabled={disabled}
         className="text-left text-sm hover:bg-slate-50 rounded px-1 py-0.5 -mx-1 w-full transition-colors"
       >
         {value ? new Date(value).toLocaleDateString() : (
@@ -202,6 +212,7 @@ function InlineDateCell({
     <Input
       type="date"
       defaultValue={value ? value.split("T")[0] : ""}
+      disabled={disabled}
       className="h-7 text-xs w-full"
       onBlur={(e) => {
         if (e.target.value) onSave(e.target.value);
@@ -255,8 +266,54 @@ function AddAssignmentDialog({
     `/projects/${projectId}/assignments`,
     "POST",
     {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["assignments"] });
+      onSuccess: (assignment) => {
+        queryClient.setQueryData<AssignmentsResponse>(
+          ["assignments", projectId],
+          (current) =>
+            current
+              ? {
+                  ...current,
+                  assignments: current.assignments.filter((item) => item.id !== assignment.id),
+                }
+              : current
+        );
+        const entity = entities.find((item) => String(item.id) === form.entity_id);
+        const collector = users.find((item) => String(item.id) === form.collector_id);
+        const reviewer = users.find((item) => String(item.id) === form.reviewer_id);
+        const matrixRow: Assignment = {
+          ...assignment,
+          shared_element_code: form.shared_element_code,
+          shared_element_name: form.shared_element_name,
+          entity_id: entity?.id ?? assignment.entity_id ?? 0,
+          entity_name: entity?.name ?? "",
+          facility_id: null,
+          facility_name: null,
+          boundary_included: true,
+          consolidation_method: form.consolidation_method,
+          collector_id: collector?.id ?? assignment.collector_id ?? null,
+          collector_name: collector?.name ?? null,
+          reviewer_id: reviewer?.id ?? assignment.reviewer_id ?? null,
+          reviewer_name: reviewer?.name ?? null,
+          deadline: assignment.deadline ?? form.deadline ?? null,
+          created_at: new Date().toISOString(),
+        };
+        queryClient.setQueryData<AssignmentsResponse>(
+          ["assignments", projectId],
+          (current) =>
+            current
+              ? {
+                  ...current,
+                  assignments: [
+                    matrixRow,
+                    ...current.assignments.filter((item) => item.id !== assignment.id),
+                  ],
+                }
+              : current
+        );
+        void queryClient.invalidateQueries({
+          queryKey: ["dashboard", "progress", projectId],
+        });
+        void queryClient.invalidateQueries({ queryKey: ["projects"] });
         onOpenChange(false);
         setForm({
           shared_element_code: "",
@@ -267,6 +324,9 @@ function AddAssignmentDialog({
           reviewer_id: "",
           deadline: "",
         });
+      },
+      onError: () => {
+        queryClient.invalidateQueries({ queryKey: ["assignments", projectId] });
       },
     }
   );
@@ -480,7 +540,12 @@ function BulkActionDialog({
 
 export default function AssignmentsPage() {
   const queryClient = useQueryClient();
-  const [projectId] = useState(1);
+  const searchParams = useSearchParams();
+  const projectId = useMemo(() => {
+    const raw = searchParams.get("projectId");
+    const parsed = Number(raw ?? "1");
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+  }, [searchParams]);
   const [searchTerm, setSearchTerm] = useState("");
   const [collectorFilter, setCollectorFilter] = useState("");
   const [reviewerFilter, setReviewerFilter] = useState("");
@@ -491,9 +556,10 @@ export default function AssignmentsPage() {
   const [bulkAction, setBulkAction] = useState<
     "collector" | "reviewer" | "deadline" | null
   >(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const { data: me, isLoading: meLoading } = useApiQuery<{
     roles: Array<{ role: string }>;
-  }>(["auth-me", "assignments"], "/auth/me");
+  }>(["auth-me"], "/auth/me");
   const roles = me?.roles?.map((binding) => binding.role) ?? [];
   const canAccess = roles.some((role) =>
     ["admin", "esg_manager", "platform_admin"].includes(role)
@@ -505,28 +571,96 @@ export default function AssignmentsPage() {
     { enabled: canAccess }
   );
 
+  const assignments = data?.assignments ?? [];
+  const users = data?.users ?? [];
+  const entities = data?.entities ?? [];
+
+  const patchAssignments = useCallback(
+    (updater: (assignment: Assignment) => Assignment) => {
+      queryClient.setQueryData<AssignmentsResponse>(
+        ["assignments", projectId],
+        (current) =>
+          current
+            ? {
+                ...current,
+                assignments: current.assignments.map(updater),
+              }
+            : current
+      );
+    },
+    [projectId, queryClient]
+  );
+
+  const resolveUserName = useCallback(
+    (userId: string) => {
+      const match = users.find((user) => String(user.id) === userId);
+      return match?.name ?? null;
+    },
+    [users]
+  );
+
   const updateMutation = useApiMutation<
     Assignment,
     { id: number; field: string; value: string }
   >(`/projects/${projectId}/assignments/inline-update`, "PATCH", {
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["assignments"] });
+    onSuccess: (updated) => {
+      setActionError(null);
+      patchAssignments((assignment) =>
+        assignment.id === updated.id ? { ...assignment, ...updated } : assignment
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ["dashboard", "progress", projectId],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["projects"] });
+    },
+    onError: (error) => {
+      setActionError(error.message);
     },
   });
 
   const bulkMutation = useApiMutation<
-    void,
+    { updated_count: number; assignment_ids: number[] },
     { ids: number[]; field: string; value: string }
   >(`/projects/${projectId}/assignments/bulk-update`, "PATCH", {
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["assignments"] });
+    onSuccess: (_result, variables) => {
+      setActionError(null);
+      const affectedIds = new Set(variables.ids);
+      patchAssignments((assignment) => {
+        if (!affectedIds.has(assignment.id)) {
+          return assignment;
+        }
+        if (variables.field === "collector_id") {
+          return {
+            ...assignment,
+            collector_id: variables.value ? Number(variables.value) : null,
+            collector_name: variables.value ? resolveUserName(variables.value) : null,
+          };
+        }
+        if (variables.field === "reviewer_id") {
+          return {
+            ...assignment,
+            reviewer_id: variables.value ? Number(variables.value) : null,
+            reviewer_name: variables.value ? resolveUserName(variables.value) : null,
+          };
+        }
+        if (variables.field === "deadline") {
+          return {
+            ...assignment,
+            deadline: variables.value || null,
+          };
+        }
+        return assignment;
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["dashboard", "progress", projectId],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["projects"] });
       setSelectedIds(new Set());
     },
+    onError: (error) => {
+      setActionError(error.message);
+    },
   });
-
-  const assignments = data?.assignments ?? [];
-  const users = data?.users ?? [];
-  const entities = data?.entities ?? [];
 
   const userOptions = useMemo(
     () => [
@@ -717,6 +851,12 @@ export default function AssignmentsPage() {
         </p>
       </div>
 
+      {actionError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {actionError}
+        </div>
+      )}
+
       {/* Top bar: search, filters, actions */}
       <div className="flex flex-wrap items-end gap-3">
         <div className="relative flex-1 min-w-[200px] max-w-[300px]">
@@ -880,6 +1020,7 @@ export default function AssignmentsPage() {
                               : ""
                           }
                           options={collectorUserOptions}
+                          disabled={updateMutation.isPending || bulkMutation.isPending}
                           onSave={(v) =>
                             handleInlineUpdate(
                               assignment.id,
@@ -902,6 +1043,7 @@ export default function AssignmentsPage() {
                               : ""
                           }
                           options={collectorUserOptions}
+                          disabled={updateMutation.isPending || bulkMutation.isPending}
                           onSave={(v) =>
                             handleInlineUpdate(
                               assignment.id,
@@ -918,6 +1060,7 @@ export default function AssignmentsPage() {
                     <TableCell className="min-w-[130px]">
                       <InlineDateCell
                         value={assignment.deadline}
+                        disabled={updateMutation.isPending || bulkMutation.isPending}
                         onSave={(v) =>
                           handleInlineUpdate(assignment.id, "deadline", v)
                         }

@@ -1,4 +1,4 @@
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError
@@ -28,7 +28,12 @@ class StandardRepository:
         count_q = select(func.count()).select_from(Standard)
         total = (await self.session.execute(count_q)).scalar_one()
 
-        q = select(Standard).order_by(Standard.id).offset((page - 1) * page_size).limit(page_size)
+        q = (
+            select(Standard)
+            .order_by(desc(Standard.id))
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
         result = await self.session.execute(q)
         return list(result.scalars().all()), total
 

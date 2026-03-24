@@ -1,4 +1,4 @@
-from sqlalchemy import ForeignKey, Integer, JSON, Numeric, String, Text
+from sqlalchemy import Boolean, ForeignKey, Integer, JSON, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.models.base import Base, TimestampMixin
@@ -30,6 +30,8 @@ class DataPoint(Base, TimestampMixin):
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     review_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_derived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    calculation_rule_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class DataPointDimension(Base, TimestampMixin):

@@ -25,6 +25,17 @@ async function createProjectAndOpenSettings(page: Page, projectName: string) {
   await expect(page.getByRole("heading", { name: projectName })).toBeVisible();
 }
 
+async function selectFirstAvailableStandard(page: Page) {
+  const standardSelect = page.getByLabel("Standard");
+  await expect(standardSelect).toBeVisible();
+  const value = await standardSelect
+    .locator("option:not([disabled])")
+    .first()
+    .getAttribute("value");
+  expect(value).toBeTruthy();
+  await standardSelect.selectOption(value!);
+}
+
 test.describe("Screen 12 - Project Settings", () => {
   test("configures a new project end-to-end as platform_admin", async ({ page }) => {
     const projectName = `Project Settings Flow ${Date.now()}`;
@@ -39,9 +50,9 @@ test.describe("Screen 12 - Project Settings", () => {
 
     await page.getByRole("tab", { name: "Standards" }).click();
     await page.getByRole("button", { name: "Add Standard" }).click();
-    await page.getByLabel("Standard").selectOption(String(demoState.standards.gri.id));
+    await selectFirstAvailableStandard(page);
     await page.getByRole("button", { name: "Add", exact: true }).click();
-    await expect(page.getByText("GRI")).toBeVisible();
+    await expect(page.getByText("No standards attached yet. Add a standard to begin.")).toHaveCount(0);
 
     await page.getByRole("tab", { name: "Boundary" }).click();
     await page.getByLabel("Boundary").selectOption(String(demoState.boundaries.sustainability.id));
@@ -64,6 +75,40 @@ test.describe("Screen 12 - Project Settings", () => {
     await expect(page.getByRole("tab", { name: "Standards" })).toBeVisible();
     await expect(page.getByRole("tab", { name: "Boundary" })).toBeVisible();
     await expect(page.getByRole("tab", { name: "Team" })).toBeVisible();
+  });
+
+  test("shows an inline error when attaching a standard fails", async ({ page }) => {
+    const projectName = `Project Settings Error ${Date.now()}`;
+
+    await loginThroughUi(page, demoState.users.admin.email, demoState.password);
+    await createProjectAndOpenSettings(page, projectName);
+    await page.route("**/api/projects/*/standards", async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: {
+            code: "PROJECT_STANDARD_ATTACH_FAILED",
+            message: "Standard could not be attached to the project.",
+            details: [],
+            requestId: "pw-project-standard-failure",
+          },
+        }),
+      });
+    });
+
+    await page.getByRole("tab", { name: "Standards" }).click();
+    await page.getByRole("button", { name: "Add Standard" }).click();
+    await selectFirstAvailableStandard(page);
+    await page.getByRole("button", { name: "Add", exact: true }).click();
+
+    await expect(
+      page.getByText("Standard could not be attached to the project.", { exact: true }).first()
+    ).toBeVisible();
   });
 
   for (const user of deniedSettingsUsers) {
