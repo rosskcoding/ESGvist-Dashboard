@@ -16,7 +16,7 @@ from app.db.models.requirement_item_evidence import RequirementItemEvidence
 from app.db.models.shared_element import SharedElement
 from app.db.models.standard import DisclosureRequirement, Standard
 from app.db.models.user import User
-from app.events.bus import EvidenceCreated, get_event_bus
+from app.events.bus import EvidenceCreated, EvidenceLinked, EvidenceUnlinked, get_event_bus
 from app.infrastructure.storage import BaseStorage, generate_storage_key, get_storage
 from app.policies.evidence_policy import EvidencePolicy
 from app.repositories.audit_repo import AuditRepository
@@ -41,7 +41,13 @@ class EvidenceService:
         self.audit_repo = audit_repo
         self.storage = storage or get_storage()
 
-    async def _audit(self, action: str, entity_id: int, ctx: RequestContext, changes: dict | None = None):
+    async def _audit(
+        self,
+        action: str,
+        entity_id: int,
+        ctx: RequestContext,
+        changes: dict | None = None,
+    ):
         if self.audit_repo:
             await self.audit_repo.log(
                 entity_type="Evidence",
@@ -135,7 +141,12 @@ class EvidenceService:
             file_size=result.size,
         )
 
-        await self._audit("evidence_uploaded", ev.id, ctx, {"file_name": file_name, "size": result.size})
+        await self._audit(
+            "evidence_uploaded",
+            ev.id,
+            ctx,
+            {"file_name": file_name, "size": result.size},
+        )
         await get_event_bus().publish(
             EvidenceCreated(
                 evidence_id=ev.id,
@@ -174,8 +185,34 @@ class EvidenceService:
             raise AppError("NOT_FOUND", 404, "No file associated with this evidence")
         return await self.storage.get_url(file_uri)
 
+    async def get_evidence(self, evidence_id: int, ctx: RequestContext) -> EvidenceOut:
+        ev = await self.repo.get_or_raise(evidence_id)
+        if ev.organization_id != ctx.organization_id and not ctx.is_platform_admin:
+            raise AppError("FORBIDDEN", 403, "Evidence belongs to another organization")
+        context = await self._load_context([ev])
+        return self._serialize(ev, context)
+
+    async def update_evidence(
+        self,
+        evidence_id: int,
+        changes: dict,
+        ctx: RequestContext,
+    ) -> EvidenceOut:
+        EvidencePolicy().can_create(ctx)
+        ev = await self.repo.get_or_raise(evidence_id)
+        if ev.organization_id != ctx.organization_id and not ctx.is_platform_admin:
+            raise AppError("FORBIDDEN", 403, "Evidence belongs to another organization")
+        for key, value in changes.items():
+            if hasattr(ev, key):
+                setattr(ev, key, value)
+        await self.repo.session.flush()
+        await self._audit("evidence_updated", ev.id, ctx, changes)
+        context = await self._load_context([ev])
+        return self._serialize(ev, context)
+
     async def list_evidences(
-        self, ctx: RequestContext, page: int = 1, page_size: int = 50
+        self, ctx: RequestContext, page: int = 1, page_size: int = 50,
+        unlinked: bool | None = None,
     ) -> EvidenceListOut:
         if not ctx.organization_id:
             raise AppError("ORG_HEADER_REQUIRED", 400, "Organization context required")
@@ -187,10 +224,63 @@ class EvidenceService:
             created_by=created_by,
         )
         context = await self._load_context(items)
-        return EvidenceListOut(
-            items=[self._serialize(item, context) for item in items],
-            total=total,
+        serialized = [self._serialize(item, context) for item in items]
+
+        if unlinked is not None:
+            if unlinked:
+                serialized = [s for s in serialized if s.binding_status == "unbound"]
+            else:
+                serialized = [s for s in serialized if s.binding_status == "bound"]
+            total = len(serialized)
+
+        return EvidenceListOut(items=serialized, total=total)
+
+    async def unlink_from_data_point(
+        self,
+        dp_id: int,
+        evidence_id: int,
+        ctx: RequestContext,
+    ) -> dict:
+        EvidencePolicy().can_create(ctx)
+        await get_data_point_for_ctx(self.repo.session, dp_id, ctx)
+        result = await self.repo.session.execute(
+            select(DataPointEvidence).where(
+                DataPointEvidence.data_point_id == dp_id,
+                DataPointEvidence.evidence_id == evidence_id,
+            )
         )
+        link = result.scalar_one_or_none()
+        if not link:
+            raise AppError("NOT_FOUND", 404, "Evidence link not found")
+        await self.repo.session.delete(link)
+        await self.repo.session.flush()
+        await self._audit("evidence_unlinked", evidence_id, ctx, {"data_point_id": dp_id})
+        await get_event_bus().publish(
+            EvidenceUnlinked(
+                evidence_id=evidence_id,
+                data_point_id=dp_id,
+                unlinked_by=ctx.user_id,
+            )
+        )
+        return {"data_point_id": dp_id, "evidence_id": evidence_id, "unlinked": True}
+
+    async def list_for_data_point(self, dp_id: int, ctx: RequestContext) -> list[dict]:
+        await get_data_point_for_ctx(self.repo.session, dp_id, ctx)
+        result = await self.repo.session.execute(
+            select(DataPointEvidence.evidence_id).where(
+                DataPointEvidence.data_point_id == dp_id
+            )
+        )
+        evidence_ids = [row[0] for row in result.all()]
+        if not evidence_ids:
+            return []
+        from app.db.models.evidence import Evidence
+        result = await self.repo.session.execute(
+            select(Evidence).where(Evidence.id.in_(evidence_ids))
+        )
+        items = list(result.scalars().all())
+        context = await self._load_context(items)
+        return [self._serialize(ev, context).model_dump() for ev in items]
 
     async def link_to_data_point(
         self, dp_id: int, evidence_id: int, ctx: RequestContext
@@ -200,22 +290,50 @@ class EvidenceService:
         if evidence.organization_id != ctx.organization_id and not ctx.is_platform_admin:
             raise AppError("FORBIDDEN", 403, "Evidence belongs to another organization")
 
-        data_point, _project, _assignment = await get_data_point_for_ctx(self.repo.session, dp_id, ctx)
+        data_point, _project, _assignment = await get_data_point_for_ctx(
+            self.repo.session,
+            dp_id,
+            ctx,
+        )
         await self.repo.link_to_data_point(dp_id, evidence_id, ctx.user_id)
         await self._audit("evidence_linked", evidence_id, ctx, {"data_point_id": dp_id})
         await invalidate_dashboard_project(data_point.reporting_project_id)
+        await get_event_bus().publish(
+            EvidenceLinked(
+                evidence_id=evidence_id,
+                data_point_id=dp_id,
+                linked_by=ctx.user_id,
+            )
+        )
         return {"data_point_id": dp_id, "evidence_id": evidence_id, "linked": True}
 
     async def _require_bindable_requirement_item(
         self,
         requirement_item_id: int,
         ctx: RequestContext,
+        *,
+        evidence_id: int | None = None,
     ) -> RequirementItem:
         if not ctx.organization_id:
             raise AppError("ORG_HEADER_REQUIRED", 400, "Organization context required")
 
-        result = await self.repo.session.execute(
-            select(RequirementItem)
+        requirement_item_result = await self.repo.session.execute(
+            select(RequirementItem).where(
+                RequirementItem.id == requirement_item_id,
+                RequirementItem.is_current == True,  # noqa: E712
+            )
+        )
+        requirement_item = requirement_item_result.scalar_one_or_none()
+        if not requirement_item:
+            raise AppError(
+                "INVALID_REQUIREMENT_ITEM_CONTEXT",
+                422,
+                "Requirement item is not active in the current organization reporting context",
+            )
+
+        item_project_result = await self.repo.session.execute(
+            select(ReportingProject.id)
+            .select_from(RequirementItem)
             .join(
                 DisclosureRequirement,
                 DisclosureRequirement.id == RequirementItem.disclosure_requirement_id,
@@ -231,18 +349,37 @@ class EvidenceService:
             )
             .where(
                 RequirementItem.id == requirement_item_id,
-                RequirementItem.is_current == True,  # noqa: E712
                 Standard.is_active == True,  # noqa: E712
                 ReportingProject.organization_id == ctx.organization_id,
             )
         )
-        requirement_item = result.scalar_one_or_none()
-        if not requirement_item:
+        item_project_ids = {project_id for project_id in item_project_result.scalars().all()}
+        if not item_project_ids:
             raise AppError(
                 "INVALID_REQUIREMENT_ITEM_CONTEXT",
                 422,
                 "Requirement item is not active in the current organization reporting context",
             )
+
+        if evidence_id is not None:
+            evidence_project_result = await self.repo.session.execute(
+                select(DataPoint.reporting_project_id)
+                .join(
+                    DataPointEvidence,
+                    DataPointEvidence.data_point_id == DataPoint.id,
+                )
+                .where(DataPointEvidence.evidence_id == evidence_id)
+            )
+            evidence_project_ids = {
+                project_id for project_id in evidence_project_result.scalars().all()
+            }
+            if evidence_project_ids and not evidence_project_ids.issubset(item_project_ids):
+                raise AppError(
+                    "INVALID_REQUIREMENT_ITEM_CONTEXT",
+                    422,
+                    "Requirement item is not active for all projects linked to this evidence",
+                )
+
         return requirement_item
 
     async def bind_to_requirement(
@@ -256,7 +393,11 @@ class EvidenceService:
         if evidence.organization_id != ctx.organization_id and not ctx.is_platform_admin:
             raise AppError("FORBIDDEN", 403, "Evidence belongs to another organization")
 
-        requirement_item = await self._require_bindable_requirement_item(requirement_item_id, ctx)
+        requirement_item = await self._require_bindable_requirement_item(
+            requirement_item_id,
+            ctx,
+            evidence_id=evidence_id,
+        )
         existing = await self.repo.session.execute(
             select(RequirementItemEvidence).where(
                 RequirementItemEvidence.requirement_item_id == requirement_item.id,
@@ -264,7 +405,11 @@ class EvidenceService:
             )
         )
         if existing.scalar_one_or_none():
-            raise AppError("ALREADY_LINKED", 409, "Evidence already linked to this requirement item")
+            raise AppError(
+                "ALREADY_LINKED",
+                409,
+                "Evidence already linked to this requirement item",
+            )
 
         binding = RequirementItemEvidence(
             requirement_item_id=requirement_item.id,
@@ -283,6 +428,76 @@ class EvidenceService:
             "evidence_id": evidence_id,
             "requirement_item_id": requirement_item.id,
             "linked": True,
+        }
+
+    async def get_suggestions(self, evidence_id: int, ctx: RequestContext) -> dict:
+        """Return rule-based suggestions for an evidence item.
+
+        Phase 3: will integrate OCR/scanning. Currently uses file metadata
+        to suggest improvements.
+        """
+        ev = await self.repo.get_or_raise(evidence_id)
+        if ev.organization_id != ctx.organization_id and not ctx.is_platform_admin:
+            raise AppError("FORBIDDEN", 403, "Evidence belongs to another organization")
+
+        suggestions: list[dict] = []
+
+        # File-based suggestions
+        file_row = await self.repo.session.execute(
+            select(EvidenceFile).where(EvidenceFile.evidence_id == evidence_id)
+        )
+        file_meta = file_row.scalar_one_or_none()
+
+        if ev.type == "file" and file_meta:
+            if file_meta.mime_type == "application/pdf":
+                suggestions.append({
+                    "type": "quality",
+                    "message": "PDF detected. Ensure the document is text-searchable (not a scanned image).",
+                    "severity": "info",
+                })
+            if file_meta.file_size and file_meta.file_size < 1024:
+                suggestions.append({
+                    "type": "quality",
+                    "message": "File is very small (<1KB). Verify it contains the expected content.",
+                    "severity": "warning",
+                })
+            if file_meta.file_name and not any(
+                kw in file_meta.file_name.lower()
+                for kw in ("report", "certificate", "audit", "calculation", "data", "evidence")
+            ):
+                suggestions.append({
+                    "type": "naming",
+                    "message": "Consider using a descriptive file name that reflects the evidence content.",
+                    "severity": "info",
+                })
+
+        if ev.type == "link":
+            link_row = await self.repo.session.execute(
+                select(EvidenceLink).where(EvidenceLink.evidence_id == evidence_id)
+            )
+            link_meta = link_row.scalar_one_or_none()
+            if link_meta and not link_meta.access_note:
+                suggestions.append({
+                    "type": "access",
+                    "message": "Consider adding an access note explaining how auditors can reach this URL.",
+                    "severity": "info",
+                })
+
+        # Binding suggestions
+        context = await self._load_context([ev])
+        linked_dps = context["linked_data_points"].get(ev.id, [])
+        linked_ris = context["linked_requirements"].get(ev.id, [])
+        if not linked_dps and not linked_ris:
+            suggestions.append({
+                "type": "binding",
+                "message": "This evidence is not linked to any data point or requirement. Consider linking it.",
+                "severity": "warning",
+            })
+
+        return {
+            "evidence_id": evidence_id,
+            "suggestions": suggestions,
+            "suggestion_count": len(suggestions),
         }
 
     async def _load_context(self, items: list) -> dict:
@@ -410,7 +625,9 @@ class EvidenceService:
                 "file_name": file_meta.get("file_name"),
                 "file_size": file_meta.get("file_size"),
                 "mime_type": file_meta.get("mime_type"),
-                "binding_status": "bound" if linked_data_points or linked_requirements else "unbound",
+                "binding_status": (
+                    "bound" if linked_data_points or linked_requirements else "unbound"
+                ),
                 "linked_data_points": linked_data_points,
                 "linked_requirement_items": linked_requirements,
             }

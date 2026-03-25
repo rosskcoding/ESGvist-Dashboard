@@ -134,7 +134,10 @@ async def test_list_data_points(client: AsyncClient, ctx: dict):
             headers=ctx["headers"],
         )
 
-    resp = await client.get(f"/api/projects/{ctx['project_id']}/data-points", headers=ctx["headers"])
+    resp = await client.get(
+        f"/api/projects/{ctx['project_id']}/data-points",
+        headers=ctx["headers"],
+    )
     assert resp.status_code == 200
     assert resp.json()["total"] == 3
 
@@ -309,3 +312,58 @@ async def test_bind_requirement_allows_item_active_in_org_project_context(
     assert resp.status_code == 200
     assert resp.json()["linked"] is True
     assert resp.json()["requirement_item_id"] == requirement_item_id
+
+
+@pytest.mark.asyncio
+async def test_bind_requirement_rejects_item_active_only_in_other_project_context(
+    client: AsyncClient,
+    ctx: dict,
+):
+    second_project = await client.post(
+        "/api/projects",
+        json={"name": "Report 2026"},
+        headers=ctx["headers"],
+    )
+    assert second_project.status_code == 201
+
+    dp = await client.post(
+        f"/api/projects/{ctx['project_id']}/data-points",
+        json={"shared_element_id": ctx["element_id"], "numeric_value": 100},
+        headers=ctx["headers"],
+    )
+    assert dp.status_code == 201
+
+    evidence = await client.post(
+        "/api/evidences",
+        json={
+            "type": "file",
+            "title": "Proof",
+            "file_name": "proof.pdf",
+            "file_uri": "s3://proof",
+        },
+        headers=ctx["headers"],
+    )
+    assert evidence.status_code == 201
+
+    linked = await client.post(
+        f"/api/data-points/{dp.json()['id']}/evidences",
+        json={"evidence_id": evidence.json()["id"]},
+        headers=ctx["headers"],
+    )
+    assert linked.status_code == 200
+
+    requirement_item_id = await _create_requirement_item(
+        client,
+        headers=ctx["headers"],
+        project_id=second_project.json()["id"],
+        attach_to_project=True,
+    )
+
+    resp = await client.post(
+        f"/api/evidence/{evidence.json()['id']}/bind-requirement",
+        json={"requirement_item_id": requirement_item_id},
+        headers=ctx["headers"],
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "INVALID_REQUIREMENT_ITEM_CONTEXT"
+    assert "linked to this evidence" in resp.json()["error"]["message"]

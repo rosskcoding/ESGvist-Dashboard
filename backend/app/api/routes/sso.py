@@ -47,6 +47,22 @@ def _resolve_user_agent(request: Request) -> str | None:
     return normalized[:512] if normalized else None
 
 
+def _is_browser_auth_request(request: Request) -> bool:
+    if request.headers.get("Origin") or request.headers.get("Referer"):
+        return True
+    return bool(request.headers.get("Sec-Fetch-Mode") or request.headers.get("Sec-Fetch-Site"))
+
+
+def _serialize_auth_response(request: Request, tokens: TokenResponse) -> TokenResponse:
+    if _is_browser_auth_request(request):
+        return TokenResponse(token_type=tokens.token_type, session_mode="cookie")
+    return TokenResponse(
+        access_token=tokens.access_token,
+        token_type=tokens.token_type,
+        session_mode="token",
+    )
+
+
 def _get_service(session: AsyncSession) -> SSOService:
     return SSOService(
         sso_repo=SSORepository(session),
@@ -123,4 +139,4 @@ async def callback(
     set_csrf_token_cookie(response, generate_csrf_token())
     if tokens.refresh_token:
         set_refresh_token_cookie(response, tokens.refresh_token)
-    return TokenResponse(access_token=tokens.access_token, token_type=tokens.token_type)
+    return _serialize_auth_response(request, tokens)

@@ -34,7 +34,30 @@ class RefreshTokenRepository:
     def _token_candidates(token: str) -> list[str]:
         if is_hashed_refresh_token(token):
             return [token]
+        # TODO(remove-legacy-refresh-token-support): delete raw-token lookup once
+        # all migrated environments have rotated legacy refresh sessions.
         return [hash_refresh_token(token), token]
+
+    async def _upgrade_legacy_session(
+        self,
+        refresh_session: RefreshToken | None,
+        *,
+        token: str,
+        token_jti: str | None,
+    ) -> RefreshToken | None:
+        if refresh_session is None:
+            return None
+
+        updated = False
+        if not is_hashed_refresh_token(refresh_session.token):
+            refresh_session.token = hash_refresh_token(token)
+            updated = True
+        if token_jti and not refresh_session.token_jti:
+            refresh_session.token_jti = token_jti
+            updated = True
+        if updated:
+            await self.session.flush()
+        return refresh_session
 
     async def create(
         self,
@@ -91,8 +114,16 @@ class RefreshTokenRepository:
         token_jti = self._token_jti(token)
         session = await self._get_by_identity(token_jti=token_jti)
         if session:
-            return session
-        return await self._get_by_identity(token=token)
+            return await self._upgrade_legacy_session(
+                session,
+                token=token,
+                token_jti=token_jti,
+            )
+        return await self._upgrade_legacy_session(
+            await self._get_by_identity(token=token),
+            token=token,
+            token_jti=token_jti,
+        )
 
     async def get_any_by_token(self, token: str) -> RefreshToken | None:
         token_jti = self._token_jti(token)
@@ -102,11 +133,19 @@ class RefreshTokenRepository:
             include_expired=True,
         )
         if session:
-            return session
-        return await self._get_by_identity(
+            return await self._upgrade_legacy_session(
+                session,
+                token=token,
+                token_jti=token_jti,
+            )
+        return await self._upgrade_legacy_session(
+            await self._get_by_identity(
+                token=token,
+                include_revoked=True,
+                include_expired=True,
+            ),
             token=token,
-            include_revoked=True,
-            include_expired=True,
+            token_jti=token_jti,
         )
 
     async def get_by_id_for_user(self, session_id: int, user_id: int) -> RefreshToken | None:

@@ -49,6 +49,13 @@ async def create_data_point_version(
     """
     from sqlalchemy import func as sa_func
 
+    # Lock the data point row to serialize concurrent version creation.
+    # On PostgreSQL this prevents two concurrent updates from computing
+    # the same next_version.  On SQLite (tests) FOR UPDATE is a no-op.
+    await session.execute(
+        select(DataPoint.id).where(DataPoint.id == dp.id).with_for_update()
+    )
+
     max_version_result = await session.execute(
         select(sa_func.coalesce(sa_func.max(DataPointVersion.version), 0)).where(
             DataPointVersion.data_point_id == dp.id

@@ -164,6 +164,41 @@ async def test_sso_start_and_callback_auto_provision_user(client: AsyncClient, s
 
 
 @pytest.mark.asyncio
+async def test_browser_sso_callback_uses_cookie_only_response(client: AsyncClient, sso_ctx: dict):
+    provider_id = await _create_provider(client, sso_ctx["tenant_headers"], name="Browser SSO")
+
+    started = await client.post(
+        f"/api/auth/sso/providers/{provider_id}/start",
+        json={"organization_id": sso_ctx["org_id"]},
+    )
+    assert started.status_code == 200
+
+    callback = await client.post(
+        f"/api/auth/sso/providers/{provider_id}/callback",
+        json={
+            "state": started.json()["state"],
+            "email": "browser-sso@test.com",
+            "full_name": "Browser SSO",
+            "external_subject": "oauth|browser-sso",
+        },
+        headers={
+            "Origin": "http://test",
+            "Sec-Fetch-Site": "same-origin",
+            "Sec-Fetch-Mode": "cors",
+        },
+    )
+    assert callback.status_code == 200
+    assert callback.json()["session_mode"] == "cookie"
+    assert "access_token" not in callback.json()
+    assert callback.cookies.get("access_token")
+    assert callback.cookies.get("refresh_token")
+
+    me = await client.get("/api/auth/me")
+    assert me.status_code == 200
+    assert me.json()["email"] == "browser-sso@test.com"
+
+
+@pytest.mark.asyncio
 async def test_sso_state_is_single_use(client: AsyncClient, sso_ctx: dict):
     created = await client.post(
         "/api/auth/sso/providers",

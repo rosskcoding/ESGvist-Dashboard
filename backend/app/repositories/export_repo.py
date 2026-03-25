@@ -55,8 +55,13 @@ class ExportRepository:
         return list(result.scalars().all()), total
 
     async def list_due_jobs(self, limit: int = 25) -> list[ExportJob]:
+        """Atomically claim queued export jobs.
+
+        Uses FOR UPDATE SKIP LOCKED on PostgreSQL to prevent two workers
+        from claiming the same job. Falls back to plain SELECT on SQLite.
+        """
         now = datetime.now(timezone.utc)
-        result = await self.session.execute(
+        q = (
             select(ExportJob)
             .where(
                 or_(
@@ -71,7 +76,18 @@ class ExportRepository:
             .order_by(ExportJob.next_retry_at, ExportJob.id)
             .limit(limit)
         )
-        return list(result.scalars().all())
+        dialect = self.session.bind.dialect.name if self.session.bind else ""
+        if "postgres" in dialect:
+            q = q.with_for_update(skip_locked=True)
+        result = await self.session.execute(q)
+        jobs = list(result.scalars().all())
+
+        # Immediately transition to "running" so other workers skip them
+        for job in jobs:
+            job.status = "running"
+        if jobs:
+            await self.session.flush()
+        return jobs
 
     async def count_active_jobs(self, project_id: int) -> int:
         result = await self.session.execute(

@@ -129,7 +129,7 @@ export function useAICopilot(options: UseAICopilotOptions = {}) {
       const trimmed = question.trim();
       setMessages((prev) => [
         ...prev,
-        { id: `user-${Date.now()}`, role: "user", content: trimmed },
+        { id: `user-${crypto.randomUUID()}`, role: "user", content: trimmed },
       ]);
       setIsLoading(true);
       try {
@@ -141,7 +141,7 @@ export function useAICopilot(options: UseAICopilotOptions = {}) {
         setMessages((prev) => [
           ...prev,
           {
-            id: `assistant-${Date.now()}`,
+            id: `assistant-${crypto.randomUUID()}`,
             role: "assistant",
             content: answer.text,
             metadata: {
@@ -171,12 +171,12 @@ export function useAICopilot(options: UseAICopilotOptions = {}) {
       const trimmed = question.trim();
       setMessages((prev) => [
         ...prev,
-        { id: `user-${Date.now()}`, role: "user", content: trimmed },
+        { id: `user-${crypto.randomUUID()}`, role: "user", content: trimmed },
       ]);
       setIsStreaming(true);
       setIsLoading(true);
 
-      const assistantId = `assistant-${Date.now()}`;
+      const assistantId = `assistant-${crypto.randomUUID()}`;
       setMessages((prev) => [
         ...prev,
         { id: assistantId, role: "assistant", content: "" },

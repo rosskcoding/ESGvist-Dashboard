@@ -1,9 +1,5 @@
-import { api } from "./api";
+import { api, clearLegacyAuthStorage } from "./api";
 import { clearSupportModeForLogout } from "./support-mode";
-
-const LEGACY_ACCESS_TOKEN_KEY = "access_token";
-const LEGACY_REFRESH_TOKEN_KEY = "refresh_token";
-const ORGANIZATION_ID_KEY = "organization_id";
 
 interface TokenResponse {
   token_type: string;
@@ -25,9 +21,7 @@ export interface UserResponse {
 export function clearClientAuthState(): void {
   if (typeof window === "undefined") return;
   clearSupportModeForLogout();
-  localStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
-  localStorage.removeItem(LEGACY_REFRESH_TOKEN_KEY);
-  localStorage.removeItem(ORGANIZATION_ID_KEY);
+  clearLegacyAuthStorage();
 }
 
 function resolvePostLoginRoute(me: UserResponse) {
@@ -49,8 +43,7 @@ export async function login(
     email,
     password,
   });
-  localStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
-  localStorage.removeItem(LEGACY_REFRESH_TOKEN_KEY);
+  clearLegacyAuthStorage();
 
   // Auto-set organization_id from user's first org role
   let nextRoute = "/dashboard";
@@ -65,7 +58,6 @@ export async function login(
       await api.post("/auth/context/organization", {
         organization_id: null,
       });
-      localStorage.removeItem(ORGANIZATION_ID_KEY);
     }
     nextRoute = resolvePostLoginRoute(me);
   } catch {

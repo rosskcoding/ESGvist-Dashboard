@@ -8,27 +8,29 @@ from decimal import Decimal
 from io import BytesIO, StringIO
 from xml.sax.saxutils import escape
 
+import structlog
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.access import get_project_for_ctx
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError, GateBlockedError
+from app.core.metrics import record_non_blocking_failure
 from app.db.models.boundary import BoundaryDefinition, BoundaryMembership
 from app.db.models.boundary_snapshot import BoundarySnapshot
 from app.db.models.company_entity import CompanyEntity
-from app.db.models.completeness import DisclosureRequirementStatus, RequirementItemStatus
+from app.db.models.completeness import RequirementItemStatus
 from app.db.models.data_point import DataPoint
 from app.db.models.export_job import ExportJob
 from app.db.models.mapping import RequirementItemSharedElement
 from app.db.models.project import ReportingProject
 from app.db.models.requirement_item import RequirementItem
+from app.db.models.shared_element import SharedElement
+from app.db.models.standard import DisclosureRequirement, Standard
 from app.repositories.audit_repo import AuditRepository
 from app.repositories.export_repo import ExportRepository
 from app.repositories.idempotency_repo import IdempotencyRepository
 from app.repositories.notification_repo import NotificationRepository
-from app.db.models.shared_element import SharedElement
-from app.db.models.standard import DisclosureRequirement, Standard
 from app.schemas.export import ExportArtifactOut, ExportJobCreate, ExportJobListOut, ExportJobOut
 from app.services.notification_service import NotificationService
 from app.workflows.gates.base import GateEngine
@@ -38,6 +40,7 @@ from app.workflows.gates.review_gate import ReviewNotCompletedGate
 from app.workflows.gates.workflow_gate import ExportInProgressGate
 
 EXPORT_RETRY_DELAYS_SECONDS = [1, 2, 4]
+logger = structlog.get_logger("app.exports")
 
 
 class ExportService:
@@ -71,6 +74,16 @@ class ExportService:
     def _require_export_reader(ctx: RequestContext) -> None:
         if ctx.role not in ("admin", "esg_manager", "platform_admin", "auditor"):
             raise AppError("FORBIDDEN", 403, "You don't have permission to access export jobs")
+
+    @staticmethod
+    def _classify_job_failure(exc: Exception) -> tuple[str, str]:
+        if isinstance(exc, GateBlockedError):
+            return "job_gate_blocked", getattr(exc, "code", "GATE_BLOCKED")
+        if isinstance(exc, AppError):
+            return "job_app_error", getattr(exc, "code", "APP_ERROR")
+        if isinstance(exc, (ValueError, TypeError, UnicodeError, zipfile.BadZipFile)):
+            return "artifact_generation_failed", type(exc).__name__
+        return "job_unexpected_error", type(exc).__name__
 
     @staticmethod
     def _serialize_job(job: ExportJob) -> ExportJobOut:
@@ -871,7 +884,28 @@ class ExportService:
                 )
                 result["completed"] += 1
             except Exception as exc:
+                failure_operation, failure_reason = self._classify_job_failure(exc)
+                record_non_blocking_failure("export_service", failure_operation)
                 job.error_message = str(exc)
+                next_status = (
+                    "retry_scheduled"
+                    if job.attempt < job.max_attempts
+                    else "dead_letter"
+                )
+                logger.warning(
+                    "export_job_processing_failed",
+                    export_job_id=job.id,
+                    organization_id=job.organization_id,
+                    reporting_project_id=job.reporting_project_id,
+                    export_format=job.export_format,
+                    report_type=job.report_type,
+                    attempt=job.attempt,
+                    max_attempts=job.max_attempts,
+                    next_status=next_status,
+                    failure_reason=failure_reason,
+                    exception_type=type(exc).__name__,
+                    exc_info=True,
+                )
                 if job.attempt < job.max_attempts:
                     delay_seconds = EXPORT_RETRY_DELAYS_SECONDS[job.attempt - 1]
                     job.status = "retry_scheduled"

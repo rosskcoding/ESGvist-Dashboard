@@ -22,9 +22,10 @@ class RefreshRequest(BaseModel):
 
 
 class TokenResponse(BaseModel):
-    access_token: str
+    access_token: str | None = None
     refresh_token: str | None = None
     token_type: str = "bearer"
+    session_mode: Literal["cookie", "token"] = "token"
 
 
 class AuthSessionOut(BaseModel):

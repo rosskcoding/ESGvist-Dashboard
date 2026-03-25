@@ -79,7 +79,12 @@ class WebhookRepository:
         now: datetime,
         limit: int = 100,
     ) -> list[WebhookDelivery]:
-        result = await self.session.execute(
+        """Atomically claim due webhook retries.
+
+        Uses FOR UPDATE SKIP LOCKED on PostgreSQL. Transitions claimed
+        deliveries to 'retrying' so other workers skip them.
+        """
+        q = (
             select(WebhookDelivery)
             .where(
                 WebhookDelivery.status == "failed",
@@ -89,7 +94,17 @@ class WebhookRepository:
             .order_by(WebhookDelivery.next_retry_at, WebhookDelivery.id)
             .limit(limit)
         )
-        return list(result.scalars().all())
+        dialect = self.session.bind.dialect.name if self.session.bind else ""
+        if "postgres" in dialect:
+            q = q.with_for_update(skip_locked=True)
+        result = await self.session.execute(q)
+        deliveries = list(result.scalars().all())
+
+        for d in deliveries:
+            d.status = "retrying"
+        if deliveries:
+            await self.session.flush()
+        return deliveries
 
     async def count_delivery_statuses(self) -> dict[str, int]:
         rows = (

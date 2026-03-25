@@ -117,6 +117,22 @@ class EvidenceUnlinked(DomainEvent):
 
 
 @dataclass
+class EvidenceLinkedToDP(DomainEvent):
+    evidence_id: int = 0
+    data_point_id: int = 0
+    organization_id: int = 0
+    created_by: int = 0
+
+
+@dataclass
+class EvidenceUnlinkedFromDP(DomainEvent):
+    evidence_id: int = 0
+    data_point_id: int = 0
+    organization_id: int = 0
+    created_by: int = 0
+
+
+@dataclass
 class EntityCreated(DomainEvent):
     entity_id: int = 0
     organization_id: int = 0
@@ -238,14 +254,22 @@ class CompletenessUpdated(DomainEvent):
     triggered_by: int | None = None
 
 
+@dataclass(frozen=True)
+class EventSubscription:
+    handler: Callable
+    required: bool = False
+
+
 class EventBus:
     """In-process async event bus."""
 
     def __init__(self):
-        self._handlers: dict[type, list[Callable]] = defaultdict(list)
+        self._handlers: dict[type, list[EventSubscription]] = defaultdict(list)
 
-    def subscribe(self, event_type, handler: Callable):
-        self._handlers[event_type].append(handler)
+    def subscribe(self, event_type, handler: Callable, *, required: bool = False):
+        self._handlers[event_type].append(
+            EventSubscription(handler=handler, required=required)
+        )
 
     def reset(self):
         self._handlers.clear()
@@ -254,15 +278,26 @@ class EventBus:
         handlers = list(self._handlers.get(type(event), []))
         # Also invoke wildcard subscribers
         handlers.extend(self._handlers.get("*", []))
-        for handler in handlers:
+        for subscription in handlers:
+            handler = subscription.handler
             try:
                 await handler(event)
             except Exception:
+                if subscription.required:
+                    logger.error(
+                        "event_required_handler_failed",
+                        event_type=type(event).__name__,
+                        handler=getattr(handler, "__name__", repr(handler)),
+                        delivery="required",
+                        exc_info=True,
+                    )
+                    raise
                 record_non_blocking_failure("event_bus", "handler")
                 logger.error(
                     "event_handler_failed",
                     event_type=type(event).__name__,
                     handler=getattr(handler, "__name__", repr(handler)),
+                    delivery="non_blocking",
                     exc_info=True,
                 )
 

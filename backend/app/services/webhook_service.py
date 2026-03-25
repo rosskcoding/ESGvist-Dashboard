@@ -6,7 +6,7 @@ import json
 import secrets
 import socket
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
 
 import httpx
@@ -67,11 +67,14 @@ class WebhookService:
         repo: WebhookRepository,
         audit_repo: AuditRepository | None = None,
         notification_repo: NotificationRepository | None = None,
-        sender: Callable[[str, dict, dict[str, str], int], Awaitable[tuple[int, str]]] | None = None,
+        sender: Callable[[str, dict, dict[str, str], int], Awaitable[tuple[int, str]]]
+        | None = None,
     ):
         self.repo = repo
         self.audit_repo = audit_repo
-        self.notification_service = NotificationService(notification_repo) if notification_repo else None
+        self.notification_service = (
+            NotificationService(notification_repo) if notification_repo else None
+        )
         self.sender = sender or send_webhook_request
 
     @staticmethod
@@ -160,6 +163,18 @@ class WebhookService:
         return url
 
     @staticmethod
+    def _classify_delivery_exception(exc: Exception) -> tuple[str, str]:
+        if isinstance(exc, AppError):
+            return "delivery_policy_rejected", getattr(exc, "code", "APP_ERROR")
+        if isinstance(exc, httpx.TimeoutException):
+            return "delivery_timeout", type(exc).__name__
+        if isinstance(exc, httpx.NetworkError):
+            return "delivery_network_error", type(exc).__name__
+        if isinstance(exc, httpx.HTTPError):
+            return "delivery_http_client_error", type(exc).__name__
+        return "delivery_unexpected_error", type(exc).__name__
+
+    @staticmethod
     def _require_admin(ctx: RequestContext) -> int:
         if ctx.role not in ("admin", "platform_admin"):
             raise AppError("FORBIDDEN", 403, "Only admin can manage webhook endpoints")
@@ -182,7 +197,9 @@ class WebhookService:
         return normalized
 
     @staticmethod
-    def _serialize_endpoint(endpoint: WebhookEndpoint, *, include_secret: bool = False) -> WebhookEndpointOut | WebhookEndpointCreateOut:
+    def _serialize_endpoint(
+        endpoint: WebhookEndpoint, *, include_secret: bool = False
+    ) -> WebhookEndpointOut | WebhookEndpointCreateOut:
         base = {
             "id": endpoint.id,
             "url": endpoint.url,
@@ -243,11 +260,15 @@ class WebhookService:
     async def list_endpoints(self, ctx: RequestContext) -> WebhookListOut:
         org_id = self._require_admin(ctx)
         items = await self.repo.list_endpoints(org_id)
-        return WebhookListOut(items=[self._serialize_endpoint(item) for item in items], total=len(items))
+        return WebhookListOut(
+            items=[self._serialize_endpoint(item) for item in items], total=len(items)
+        )
 
-    async def create_endpoint(self, payload: WebhookEndpointCreate, ctx: RequestContext) -> WebhookEndpointCreateOut:
+    async def create_endpoint(
+        self, payload: WebhookEndpointCreate, ctx: RequestContext
+    ) -> WebhookEndpointCreateOut:
         org_id = self._require_admin(ctx)
-        url = await self._validate_outbound_url(str(payload.url), resolve_hostname=False)
+        url = await self._validate_outbound_url(str(payload.url), resolve_hostname=True)
         endpoint = await self.repo.create_endpoint(
             organization_id=org_id,
             url=url,
@@ -261,7 +282,11 @@ class WebhookService:
             action="webhook_endpoint_created",
             entity_id=endpoint.id,
             organization_id=org_id,
-            changes={"url": endpoint.url, "events": endpoint.events, "is_active": endpoint.is_active},
+            changes={
+                "url": endpoint.url,
+                "events": endpoint.events,
+                "is_active": endpoint.is_active,
+            },
         )
         return self._serialize_endpoint(endpoint, include_secret=True)
 
@@ -276,7 +301,7 @@ class WebhookService:
         if "url" in changes:
             endpoint.url = await self._validate_outbound_url(
                 str(payload.url),
-                resolve_hostname=False,
+                resolve_hostname=True,
             )
             changes["url"] = endpoint.url
         if "events" in changes and payload.events is not None:
@@ -328,10 +353,14 @@ class WebhookService:
     @staticmethod
     def _build_signature(secret: str, timestamp: str, payload: dict) -> str:
         body = json.dumps(payload, separators=(",", ":"), sort_keys=True)
-        digest = hmac.new(secret.encode("utf-8"), f"{timestamp}.{body}".encode("utf-8"), hashlib.sha256)
+        digest = hmac.new(
+            secret.encode("utf-8"), f"{timestamp}.{body}".encode(), hashlib.sha256
+        )
         return digest.hexdigest()
 
-    async def _notify_dead_letter(self, endpoint: WebhookEndpoint, delivery: WebhookDelivery) -> None:
+    async def _notify_dead_letter(
+        self, endpoint: WebhookEndpoint, delivery: WebhookDelivery
+    ) -> None:
         if not self.notification_service:
             return
         result = await self.repo.session.execute(
@@ -364,16 +393,20 @@ class WebhookService:
         delivery: WebhookDelivery,
     ) -> WebhookDelivery:
         attempt_index = delivery.attempt + 1
-        timestamp = datetime.now(timezone.utc).isoformat()
+        timestamp = datetime.now(UTC).isoformat()
         headers = {
             "Content-Type": "application/json",
             "User-Agent": "ESGvist-Webhooks/1.0",
             "X-Webhook-Timestamp": timestamp,
-            "X-Webhook-Signature": self._build_signature(endpoint.secret, timestamp, delivery.payload),
+            "X-Webhook-Signature": self._build_signature(
+                endpoint.secret, timestamp, delivery.payload
+            ),
         }
         try:
             await self._validate_outbound_url(endpoint.url, resolve_hostname=True)
-            http_status, response_body = await self.sender(endpoint.url, delivery.payload, headers, 10)
+            http_status, response_body = await self.sender(
+                endpoint.url, delivery.payload, headers, 10
+            )
             response_preview = response_body[:2000] if response_body else None
             if 200 <= http_status < 300:
                 delivery.status = "success"
@@ -381,18 +414,21 @@ class WebhookService:
                 delivery.response_body = response_preview
                 delivery.attempt = attempt_index
                 delivery.next_retry_at = None
-                delivery.delivered_at = datetime.now(timezone.utc)
+                delivery.delivered_at = datetime.now(UTC)
                 await self.repo.session.flush()
                 return delivery
         except Exception as exc:
-            record_non_blocking_failure("webhook_service", "delivery_attempt")
+            failure_operation, failure_reason = self._classify_delivery_exception(exc)
+            record_non_blocking_failure("webhook_service", failure_operation)
             logger.warning(
-                "webhook_delivery_attempt_failed",
+                f"webhook_{failure_operation}",
                 webhook_endpoint_id=endpoint.id,
                 organization_id=endpoint.organization_id,
                 delivery_id=delivery.id,
                 event_type=delivery.event_type,
                 attempt=attempt_index,
+                failure_reason=failure_reason,
+                exception_type=type(exc).__name__,
                 exc_info=True,
             )
             http_status = None
@@ -409,7 +445,7 @@ class WebhookService:
             return delivery
 
         delivery.status = "failed"
-        delivery.next_retry_at = datetime.now(timezone.utc) + timedelta(
+        delivery.next_retry_at = datetime.now(UTC) + timedelta(
             seconds=RETRY_DELAYS_SECONDS[attempt_index - 1]
         )
         await self.repo.session.flush()
@@ -440,7 +476,7 @@ class WebhookService:
         endpoint = await self._get_endpoint_for_ctx(endpoint_id, ctx)
         payload = {
             "event": "webhook.test",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "data": {
                 "organizationId": endpoint.organization_id,
                 "triggeredBy": ctx.user_id,
@@ -462,7 +498,9 @@ class WebhookService:
         )
         return WebhookTestOut(delivery=self._serialize_delivery(delivery))
 
-    async def deliver_event(self, organization_id: int, event_type: str, payload: dict) -> list[WebhookDeliveryOut]:
+    async def deliver_event(
+        self, organization_id: int, event_type: str, payload: dict
+    ) -> list[WebhookDeliveryOut]:
         endpoints = [
             endpoint
             for endpoint in await self.repo.list_endpoints(organization_id)
@@ -480,7 +518,7 @@ class WebhookService:
         return deliveries
 
     async def retry_due_deliveries(self, limit: int = 100) -> dict:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         deliveries = await self.repo.list_due_retry_deliveries(now, limit)
         retried = 0
         succeeded = 0

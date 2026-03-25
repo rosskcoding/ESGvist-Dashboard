@@ -5,15 +5,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth_cookies import (
     REFRESH_TOKEN_COOKIE_NAME,
-    clear_current_organization_cookie,
-    clear_support_session_cookie,
     clear_access_token_cookie,
     clear_csrf_token_cookie,
+    clear_current_organization_cookie,
     clear_refresh_token_cookie,
-    set_current_organization_cookie,
+    clear_support_session_cookie,
     generate_csrf_token,
     set_access_token_cookie,
     set_csrf_token_cookie,
+    set_current_organization_cookie,
     set_refresh_token_cookie,
 )
 from app.core.config import settings
@@ -65,6 +65,22 @@ router = APIRouter(prefix="/api/auth", tags=["Auth"])
 
 class OrganizationContextUpdateRequest(BaseModel):
     organization_id: int | None = None
+
+
+def _is_browser_auth_request(request: Request) -> bool:
+    if request.headers.get("Origin") or request.headers.get("Referer"):
+        return True
+    return bool(request.headers.get("Sec-Fetch-Mode") or request.headers.get("Sec-Fetch-Site"))
+
+
+def _serialize_auth_response(request: Request, tokens: TokenResponse) -> TokenResponse:
+    if _is_browser_auth_request(request):
+        return TokenResponse(token_type=tokens.token_type, session_mode="cookie")
+    return TokenResponse(
+        access_token=tokens.access_token,
+        token_type=tokens.token_type,
+        session_mode="token",
+    )
 
 
 def _resolve_client_ip(request: Request) -> str | None:
@@ -132,7 +148,7 @@ async def login(
     set_csrf_token_cookie(response, generate_csrf_token())
     if tokens.refresh_token:
         set_refresh_token_cookie(response, tokens.refresh_token)
-    return TokenResponse(access_token=tokens.access_token, token_type=tokens.token_type)
+    return _serialize_auth_response(request, tokens)
 
 
 @router.get("/login-options", response_model=OrganizationAuthSettingsOut)
@@ -162,7 +178,7 @@ async def refresh(
     set_csrf_token_cookie(response, generate_csrf_token())
     if tokens.refresh_token:
         set_refresh_token_cookie(response, tokens.refresh_token)
-    return TokenResponse(access_token=tokens.access_token, token_type=tokens.token_type)
+    return _serialize_auth_response(request, tokens)
 
 
 @router.get("/me", response_model=UserResponse)

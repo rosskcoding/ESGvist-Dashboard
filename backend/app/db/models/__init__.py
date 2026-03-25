@@ -34,6 +34,7 @@ from app.db.models.unit_reference import BoundaryApproach, Methodology, UnitRefe
 from app.db.models.comment import Comment
 from app.db.models.webhook import WebhookDelivery, WebhookEndpoint
 from app.db.models.worker_lease import WorkerLease
+from app.db.models.platform_settings import PlatformSettings
 from app.db.models.user import User
 
 __all__ = [

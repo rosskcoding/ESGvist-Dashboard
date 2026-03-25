@@ -1,10 +1,15 @@
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
+from app.core.csrf import EXEMPT_PATHS, _is_exempt_path
+from app.core.security import create_refresh_token, generate_totp_code, hash_password
 from app.db.models.refresh_token import RefreshToken
-from app.core.security import generate_totp_code
+from app.db.models.user import User
 from app.main import app
+from app.repositories.refresh_token_repo import RefreshTokenRepository
 from tests.conftest import TestSessionLocal
 
 TRUSTED_TEST_ORIGIN = "http://test"
@@ -35,6 +40,17 @@ def _trusted_cookie_headers(csrf_token: str) -> dict[str, str]:
         "Origin": TRUSTED_TEST_ORIGIN,
         "X-CSRF-Token": csrf_token,
     }
+
+
+def _browser_auth_headers(csrf_token: str | None = None) -> dict[str, str]:
+    headers = {
+        "Origin": TRUSTED_TEST_ORIGIN,
+        "Sec-Fetch-Site": "same-origin",
+        "Sec-Fetch-Mode": "cors",
+    }
+    if csrf_token:
+        headers["X-CSRF-Token"] = csrf_token
+    return headers
 
 
 @pytest.mark.asyncio
@@ -99,6 +115,45 @@ async def test_login_returns_tokens(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_browser_login_uses_cookie_only_response(client: AsyncClient):
+    await client.post(
+        "/api/auth/register",
+        json={
+            "email": "browser-login@example.com",
+            "password": "password123",
+            "full_name": "Browser Login",
+        },
+    )
+
+    resp = await client.post(
+        "/api/auth/login",
+        json={"email": "browser-login@example.com", "password": "password123"},
+        headers=_browser_auth_headers(),
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["token_type"] == "bearer"
+    assert resp.json()["session_mode"] == "cookie"
+    assert "access_token" not in resp.json()
+    assert resp.cookies.get("access_token")
+    assert resp.cookies.get("refresh_token")
+
+
+def test_csrf_exempt_paths_allowlist_snapshot():
+    assert EXEMPT_PATHS == {
+        "/api/auth/login",
+        "/api/auth/register",
+    }
+    assert _is_exempt_path("/api/auth/login") is True
+    assert _is_exempt_path("/api/auth/register") is True
+    assert _is_exempt_path("/api/auth/sso/providers/google/start") is True
+    assert _is_exempt_path("/api/auth/sso/providers/google/callback") is True
+    assert _is_exempt_path("/api/auth/refresh") is False
+    assert _is_exempt_path("/api/auth/logout") is False
+    assert _is_exempt_path("/api/auth/change-password") is False
+
+
+@pytest.mark.asyncio
 async def test_refresh_token_is_hashed_at_rest(client: AsyncClient):
     await client.post(
         "/api/auth/register",
@@ -123,6 +178,47 @@ async def test_refresh_token_is_hashed_at_rest(client: AsyncClient):
     assert stored.token != refresh_cookie
     assert len(stored.token) == 64
     assert all(char in "0123456789abcdef" for char in stored.token)
+
+
+@pytest.mark.asyncio
+async def test_refresh_lookup_auto_migrates_legacy_raw_token_row():
+    legacy_refresh = create_refresh_token(1, "legacy-refresh@example.com")
+
+    async with TestSessionLocal() as session:
+        user = User(
+            id=1,
+            email="legacy-refresh@example.com",
+            password_hash=hash_password("password123"),
+            full_name="Legacy Refresh",
+            is_active=True,
+        )
+        session.add(user)
+        session.add(
+            RefreshToken(
+                user_id=1,
+                token=legacy_refresh,
+                token_jti=None,
+                expires_at=datetime.now(UTC) + timedelta(days=7),
+            )
+        )
+        await session.commit()
+
+    async with TestSessionLocal() as session:
+        repo = RefreshTokenRepository(session)
+        refresh_session = await repo.get_active_by_token(legacy_refresh)
+        assert refresh_session is not None
+        assert refresh_session.token != legacy_refresh
+        assert len(refresh_session.token) == 64
+        assert refresh_session.token_jti is not None
+        await session.commit()
+
+    async with TestSessionLocal() as session:
+        stored = (
+            await session.execute(select(RefreshToken).where(RefreshToken.user_id == 1))
+        ).scalar_one()
+    assert stored.token != legacy_refresh
+    assert len(stored.token) == 64
+    assert stored.token_jti is not None
 
 
 @pytest.mark.asyncio
@@ -299,11 +395,12 @@ async def test_refresh_token_rotation(client: AsyncClient):
 
     resp = await client.post(
         "/api/auth/refresh",
-        headers=_trusted_cookie_headers(csrf_token),
+        headers=_browser_auth_headers(csrf_token),
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert "access_token" in data
+    assert data["session_mode"] == "cookie"
+    assert "access_token" not in data
     assert "refresh_token" not in data
     assert resp.cookies.get("access_token")
     rotated_refresh_cookie = resp.cookies.get("refresh_token")
@@ -334,12 +431,13 @@ async def test_refresh_token_accepts_body_fallback(client: AsyncClient):
     resp = await client.post(
         "/api/auth/refresh",
         json={"refresh_token": refresh_token},
-        headers=_trusted_cookie_headers(csrf_token),
+        headers=_browser_auth_headers(csrf_token),
     )
 
     assert resp.status_code == 200
     data = resp.json()
-    assert "access_token" in data
+    assert data["session_mode"] == "cookie"
+    assert "access_token" not in data
     assert "refresh_token" not in data
     assert resp.cookies.get("access_token")
     assert resp.cookies.get("refresh_token")
@@ -437,9 +535,11 @@ async def test_logout_only_revokes_current_session(client: AsyncClient):
             headers=_trusted_cookie_headers(second_csrf),
         )
         assert second_refresh.status_code == 200
+        rotated_second_access_token = second_client.cookies.get("access_token")
+        assert rotated_second_access_token
         rotated_second_me = await second_client.get(
             "/api/auth/me",
-            headers={"Authorization": f"Bearer {second_refresh.json()['access_token']}"},
+            headers={"Authorization": f"Bearer {rotated_second_access_token}"},
         )
         stale_second_me = await second_client.get(
             "/api/auth/me",

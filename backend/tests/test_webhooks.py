@@ -23,7 +23,11 @@ def stub_public_webhook_dns(monkeypatch):
 async def _setup_org_admin(client: AsyncClient) -> dict:
     await client.post(
         "/api/auth/register",
-        json={"email": "admin+webhooks@org.com", "password": "password123", "full_name": "Webhook Admin"},
+        json={
+            "email": "admin+webhooks@org.com",
+            "password": "password123",
+            "full_name": "Webhook Admin",
+        },
     )
     login = await client.post(
         "/api/auth/login",
@@ -153,7 +157,9 @@ async def test_webhook_failed_delivery_becomes_dead_letter_and_notifies_admin(
     monkeypatch,
     client: AsyncClient,
 ):
-    async def failing_sender(url: str, payload: dict, headers: dict[str, str], timeout_seconds: int):
+    async def failing_sender(
+        url: str, payload: dict, headers: dict[str, str], timeout_seconds: int
+    ):
         return 500, "upstream error"
 
     monkeypatch.setattr("app.services.webhook_service.send_webhook_request", failing_sender)
@@ -200,12 +206,6 @@ async def test_webhook_rejects_localhost_targets(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_webhook_blocks_private_dns_resolution(monkeypatch, client: AsyncClient):
-    captured: list[str] = []
-
-    async def fake_sender(url: str, payload: dict, headers: dict[str, str], timeout_seconds: int):
-        captured.append(url)
-        return 200, "ok"
-
     def fake_getaddrinfo(host: str, port: int, type: int = 0):
         return [
             (
@@ -217,7 +217,6 @@ async def test_webhook_blocks_private_dns_resolution(monkeypatch, client: AsyncC
             )
         ]
 
-    monkeypatch.setattr("app.services.webhook_service.send_webhook_request", fake_sender)
     monkeypatch.setattr("app.services.webhook_service.socket.getaddrinfo", fake_getaddrinfo)
 
     org = await _setup_org_admin(client)
@@ -226,16 +225,44 @@ async def test_webhook_blocks_private_dns_resolution(monkeypatch, client: AsyncC
         json={"url": "https://ssrf-check.example/hooks/events", "events": ["project.published"]},
         headers=org["headers"],
     )
-    assert created.status_code == 201
+    assert created.status_code == 422
+    assert created.json()["error"]["code"] == "WEBHOOK_URL_FORBIDDEN"
 
-    tested = await client.post(
-        f"/api/webhooks/{created.json()['id']}/test",
+    listed = await client.get("/api/webhooks", headers=org["headers"])
+    assert listed.status_code == 200
+    assert listed.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_webhook_update_rejects_private_dns_resolution(monkeypatch, client: AsyncClient):
+    org = await _setup_org_admin(client)
+    created = await client.post(
+        "/api/webhooks",
+        json={"url": "https://example.com/hooks/update", "events": ["project.published"]},
         headers=org["headers"],
     )
-    assert tested.status_code == 200
-    assert tested.json()["delivery"]["status"] == "dead_letter"
-    assert tested.json()["delivery"]["attempt"] == 5
-    assert captured == []
+    assert created.status_code == 201
+
+    def fake_getaddrinfo(host: str, port: int, type: int = 0):
+        return [
+            (
+                socket.AF_INET,
+                socket.SOCK_STREAM,
+                socket.IPPROTO_TCP,
+                "",
+                ("10.0.0.5", port),
+            )
+        ]
+
+    monkeypatch.setattr("app.services.webhook_service.socket.getaddrinfo", fake_getaddrinfo)
+
+    updated = await client.patch(
+        f"/api/webhooks/{created.json()['id']}",
+        json={"url": "https://private-only.example/hooks/update"},
+        headers=org["headers"],
+    )
+    assert updated.status_code == 422
+    assert updated.json()["error"]["code"] == "WEBHOOK_URL_FORBIDDEN"
 
 
 @pytest.mark.asyncio
@@ -277,7 +304,9 @@ async def test_domain_events_trigger_webhook_deliveries(monkeypatch, client: Asy
     assert endpoint.status_code == 201
     endpoint_id = endpoint.json()["id"]
 
-    project = await client.post("/api/projects", json={"name": "Webhook Project"}, headers=org["headers"])
+    project = await client.post(
+        "/api/projects", json={"name": "Webhook Project"}, headers=org["headers"]
+    )
     assert project.status_code == 201
 
     shared_element = await client.post(

@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { MarkdownRenderer, MarkdownTextarea } from "@/components/markdown-text";
 
 /* ---------- Types ---------- */
 
@@ -625,12 +626,12 @@ export default function DataEntryWizardPage() {
               <label className="text-sm font-medium text-slate-700">
                 Narrative / Notes
               </label>
-              <textarea
-                rows={3}
+              <MarkdownTextarea
                 value={form.narrative}
-                onChange={(e) => updateField("narrative", e.target.value)}
-                placeholder="Add any notes or explanations..."
-                className="w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-950"
+                onChange={(v) => updateField("narrative", v)}
+                placeholder="Supports **bold**, *italic*, - lists, [links](url)..."
+                rows={3}
+                preview={form.narrative.length > 0}
               />
             </div>
 
@@ -811,7 +812,9 @@ export default function DataEntryWizardPage() {
                 {form.narrative && (
                   <div className="col-span-2">
                     <dt className="text-slate-400">Narrative</dt>
-                    <dd className="text-slate-700">{form.narrative}</dd>
+                    <dd className="text-slate-700">
+                      <MarkdownRenderer content={form.narrative} />
+                    </dd>
                   </div>
                 )}
                 {form.scope && (

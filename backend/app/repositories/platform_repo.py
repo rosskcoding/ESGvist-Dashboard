@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.organization import Organization
+from app.db.models.platform_settings import PlatformSettings
 from app.db.models.role_binding import RoleBinding
 from app.db.models.support_session import SupportSession
 from app.db.models.user import User
@@ -148,6 +149,27 @@ class PlatformRepository:
         ).scalar_one()
 
     # -- Cross-tenant user management ------------------------------------------
+
+    # -- Platform settings -----------------------------------------------------
+
+    async def get_platform_settings(self) -> PlatformSettings:
+        result = await self.session.execute(
+            select(PlatformSettings).where(PlatformSettings.id == 1)
+        )
+        settings_row = result.scalar_one_or_none()
+        if not settings_row:
+            settings_row = PlatformSettings(id=1, allow_self_registration=False)
+            self.session.add(settings_row)
+            await self.session.flush()
+        return settings_row
+
+    async def update_platform_settings(self, **kwargs) -> PlatformSettings:
+        settings_row = await self.get_platform_settings()
+        for key, value in kwargs.items():
+            if hasattr(settings_row, key):
+                setattr(settings_row, key, value)
+        await self.session.flush()
+        return settings_row
 
     async def list_users_in_tenant(self, tenant_id: int) -> list[dict]:
         result = await self.session.execute(

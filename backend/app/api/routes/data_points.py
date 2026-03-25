@@ -206,11 +206,38 @@ async def download_evidence(
 async def list_evidences(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
+    unlinked: bool | None = None,
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
     AuthPolicy.require_role(ctx, ["admin", "platform_admin", "esg_manager", "collector", "auditor"])
-    return await _ev_service(session).list_evidences(ctx, page, page_size)
+    return await _ev_service(session).list_evidences(ctx, page, page_size, unlinked=unlinked)
+
+
+@router.get("/api/evidences/{evidence_id}", response_model=EvidenceOut)
+async def get_evidence(
+    evidence_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _ev_service(session).get_evidence(evidence_id, ctx)
+
+
+class EvidenceUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+
+
+@router.put("/api/evidences/{evidence_id}", response_model=EvidenceOut)
+async def update_evidence(
+    evidence_id: int,
+    payload: EvidenceUpdate,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _ev_service(session).update_evidence(
+        evidence_id, payload.model_dump(exclude_unset=True), ctx
+    )
 
 
 @router.post("/api/data-points/{dp_id}/evidences")
@@ -221,6 +248,25 @@ async def link_evidence_to_dp(
     session: AsyncSession = Depends(get_session),
 ):
     return await _ev_service(session).link_to_data_point(dp_id, payload.evidence_id, ctx)
+
+
+@router.delete("/api/data-points/{dp_id}/evidences/{evidence_id}")
+async def unlink_evidence_from_dp(
+    dp_id: int,
+    evidence_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _ev_service(session).unlink_from_data_point(dp_id, evidence_id, ctx)
+
+
+@router.get("/api/data-points/{dp_id}/evidences")
+async def list_evidence_for_dp(
+    dp_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _ev_service(session).list_for_data_point(dp_id, ctx)
 
 
 # --- Evidence: bind to requirement item ---
@@ -240,6 +286,20 @@ async def bind_evidence_to_requirement(
         payload.requirement_item_id,
         ctx,
     )
+
+
+# --- Evidence: scanning suggestions ---
+@router.get("/api/evidences/{evidence_id}/suggestions")
+async def get_evidence_suggestions(
+    evidence_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    """Return AI-powered suggestions for the evidence (file type, quality, linking).
+
+    Phase 3 feature — currently returns rule-based suggestions.
+    """
+    return await _ev_service(session).get_suggestions(evidence_id, ctx)
 
 
 # --- Evidence: delete with protection ---

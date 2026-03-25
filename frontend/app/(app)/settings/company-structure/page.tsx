@@ -9,6 +9,7 @@ import {
   type Node,
   type Edge,
   type NodeProps,
+  type Connection,
   Handle,
   Position,
   useNodesState,
@@ -1342,6 +1343,7 @@ function EntityDetailPanel({
 // ---------------------------------------------------------------------------
 
 export default function CompanyStructurePage() {
+  const queryClient = useQueryClient();
   const [selectedEntityId, setSelectedEntityId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
@@ -1350,6 +1352,12 @@ export default function CompanyStructurePage() {
   const [addEntityOpen, setAddEntityOpen] = useState(false);
   const [ownershipLinkOpen, setOwnershipLinkOpen] = useState(false);
   const [controlLinkOpen, setControlLinkOpen] = useState(false);
+
+  // Role check for drag-and-drop
+  const { data: currentUser } = useApiQuery<{ roles: Array<{ role: string }> }>(["auth-me"], "/auth/me");
+  const canManage = ["admin", "esg_manager", "platform_admin"].includes(
+    currentUser?.roles?.[0]?.role ?? ""
+  );
 
   // Fetch data
   const {
@@ -1446,6 +1454,32 @@ export default function CompanyStructurePage() {
       setSelectedEntityId(Number(node.id));
     },
     []
+  );
+
+  const createOwnershipMutation = useApiMutation<
+    { id: number },
+    { parent_entity_id: number; child_entity_id: number; ownership_percent: number }
+  >("/ownership-links", "POST", {
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["entity-tree"] });
+      queryClient.invalidateQueries({ queryKey: ["entities"] });
+    },
+  });
+
+  const onConnect = useCallback(
+    (connection: Connection) => {
+      if (!connection.source || !connection.target) return;
+      if (!canManage) return;
+      const parentId = Number(connection.source);
+      const childId = Number(connection.target);
+      if (parentId === childId) return;
+      createOwnershipMutation.mutate({
+        parent_entity_id: parentId,
+        child_entity_id: childId,
+        ownership_percent: 100,
+      });
+    },
+    [canManage, createOwnershipMutation]
   );
 
   const selectedEntity = useMemo(
@@ -1638,6 +1672,7 @@ export default function CompanyStructurePage() {
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onNodeClick={onNodeClick}
+              onConnect={canManage ? onConnect : undefined}
               nodeTypes={nodeTypes}
               fitView
               fitViewOptions={{ padding: 0.2 }}

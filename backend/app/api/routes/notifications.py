@@ -73,6 +73,16 @@ async def mark_all_read(
     return await _get_service(session).mark_all_read(ctx.user_id, org_id)
 
 
+@router.get("/digest")
+async def get_digest(
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    """Return pending digest notifications for the current user."""
+    org_id = _require_notification_access(ctx)
+    return await _get_service(session).get_digest(ctx.user_id, org_id)
+
+
 @router.get("/preferences", response_model=NotificationPreferencesOut)
 async def get_preferences(
     ctx: RequestContext = Depends(get_current_context),

@@ -91,10 +91,74 @@ type SessionListResponse = {
   total: number;
 };
 
+type BrowserAuthHeaderOptions = {
+  includeCsrf?: boolean;
+  includeOrigin?: boolean;
+  includeRefresh?: boolean;
+};
+
 async function assertApiOk(response: APIResponse) {
   const text = await response.text();
   expect(response.ok(), text).toBeTruthy();
   return text ? JSON.parse(text) : null;
+}
+
+async function getRequiredBrowserCookie(page: Page, name: string) {
+  const cookies = await page.context().cookies();
+  const cookie = cookies.find((entry) => entry.name === name);
+  expect(cookie, `${name} cookie must exist`).toBeTruthy();
+  return cookie!;
+}
+
+export async function browserCookieAuthHeaders(
+  page: Page,
+  options: BrowserAuthHeaderOptions = {},
+) {
+  const {
+    includeCsrf = true,
+    includeOrigin = false,
+    includeRefresh = false,
+  } = options;
+  const accessCookie = await getRequiredBrowserCookie(page, "access_token");
+  const cookieParts = [`${accessCookie.name}=${accessCookie.value}`];
+
+  if (includeRefresh) {
+    const refreshCookie = await getRequiredBrowserCookie(page, "refresh_token");
+    cookieParts.push(`${refreshCookie.name}=${refreshCookie.value}`);
+  }
+
+  if (includeCsrf) {
+    const csrfCookie = await getRequiredBrowserCookie(page, "csrf_token");
+    cookieParts.push(`${csrfCookie.name}=${csrfCookie.value}`);
+  }
+
+  const headers: Record<string, string> = {
+    Cookie: cookieParts.join("; "),
+  };
+
+  if (includeCsrf) {
+    const csrfCookie = await getRequiredBrowserCookie(page, "csrf_token");
+    headers["X-CSRF-Token"] = csrfCookie.value;
+  }
+
+  if (includeOrigin) {
+    headers.Origin = new URL(page.url()).origin;
+  }
+
+  return headers;
+}
+
+export async function listBrowserSessions(
+  page: Page,
+  request: APIRequestContext,
+) {
+  const state = loadDemoState();
+  const apiUrl = state.api_url!.replace("localhost", "127.0.0.1");
+  return (await assertApiOk(
+    await request.get(`${apiUrl}/auth/sessions`, {
+      headers: await browserCookieAuthHeaders(page, { includeRefresh: true }),
+    }),
+  )) as SessionListResponse;
 }
 
 export async function loginByApi(
@@ -139,40 +203,17 @@ export async function revokeCurrentBrowserSession(
 ) {
   const state = loadDemoState();
   const apiUrl = state.api_url!.replace("localhost", "127.0.0.1");
-  const cookies = await page.context().cookies();
-  const accessCookie = cookies.find((cookie) => cookie.name === "access_token");
-  const refreshCookie = cookies.find((cookie) => cookie.name === "refresh_token");
-  const csrfCookie = cookies.find((cookie) => cookie.name === "csrf_token");
-
-  expect(accessCookie, "access cookie must exist").toBeTruthy();
-  expect(refreshCookie, "refresh cookie must exist").toBeTruthy();
-  expect(csrfCookie, "csrf cookie must exist").toBeTruthy();
-
-  const cookieHeader = [
-    `${accessCookie!.name}=${accessCookie!.value}`,
-    `${refreshCookie!.name}=${refreshCookie!.value}`,
-    `${csrfCookie!.name}=${csrfCookie!.value}`,
-  ].join("; ");
-
-  const sessions = (await assertApiOk(
-    await request.get(`${apiUrl}/auth/sessions`, {
-      headers: {
-        Cookie: cookieHeader,
-      },
-    }),
-  )) as SessionListResponse;
+  const sessions = await listBrowserSessions(page, request);
 
   const currentSession = sessions.items.find((item) => item.is_current);
   expect(currentSession, "current auth session must be listed").toBeTruthy();
-
-  const origin = new URL(page.url()).origin;
   await assertApiOk(
     await request.delete(`${apiUrl}/auth/sessions/${currentSession!.id}`, {
-      headers: {
-        Cookie: cookieHeader,
-        Origin: origin,
-        "X-CSRF-Token": csrfCookie!.value,
-      },
+      headers: await browserCookieAuthHeaders(page, {
+        includeCsrf: true,
+        includeOrigin: true,
+        includeRefresh: true,
+      }),
     }),
   );
 }

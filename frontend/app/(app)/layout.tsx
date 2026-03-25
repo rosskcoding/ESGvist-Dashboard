@@ -24,6 +24,7 @@ import { AIContextProvider, useAIScreenContext } from "@/lib/ai-context";
 import {
   readSupportMode,
   stopSupportMode,
+  syncSupportModeState,
   subscribeSupportMode,
   type SupportModeState,
 } from "@/lib/support-mode";
@@ -65,6 +66,14 @@ interface UserInfo {
     scope_type: string;
     scope_id: number | null;
   }>;
+}
+
+interface SupportSessionCurrent {
+  active: boolean;
+  session_id: number | null;
+  tenant_id: number | null;
+  tenant_name: string | null;
+  started_at: string | null;
 }
 
 interface NavItem {
@@ -239,6 +248,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
   const [orgContextReady, setOrgContextReady] = useState(false);
   const [supportMode, setSupportMode] = useState<SupportModeState>(() => readSupportMode());
+  const [supportModeReady, setSupportModeReady] = useState(false);
   const [supportEnding, setSupportEnding] = useState(false);
   const [supportError, setSupportError] = useState("");
   const { resetScreenContext } = useAIScreenContext();
@@ -269,9 +279,21 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
   const userRoles = user?.roles?.map((role) => role.role) ?? [];
   const userRole = userRoles[0] ?? "";
+  const isPlatformAdmin = user?.roles?.some((r) => r.role === "platform_admin") ?? false;
   const organizationName = "Organization";
   const canAccessNotifications = userRoles.some((role) => role !== "auditor");
   const unreadQueryEnabled = mounted && Boolean(user) && canAccessNotifications && orgContextReady;
+
+  const { data: currentSupportSession } = useApiQuery<SupportSessionCurrent>(
+    ["platform-support-current"],
+    "/platform/support-session/current",
+    {
+      enabled: mounted && Boolean(user) && isPlatformAdmin,
+      retry: false,
+      staleTime: 0,
+      refetchOnMount: "always",
+    }
+  );
 
   const { data: unreadData } = useApiQuery<{ unread_count: number }>(
     ["notifications-unread-count"],
@@ -290,6 +312,10 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!mounted || !user) {
+      setOrgContextReady(false);
+      return;
+    }
+    if (isPlatformAdmin && !supportModeReady) {
       setOrgContextReady(false);
       return;
     }
@@ -326,7 +352,30 @@ function AppShell({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [mounted, supportMode.active, user]);
+  }, [isPlatformAdmin, mounted, supportMode.active, supportModeReady, user]);
+
+  useEffect(() => {
+    if (!mounted || !user) {
+      setSupportModeReady(false);
+      return;
+    }
+    if (!isPlatformAdmin) {
+      syncSupportModeState({ active: false });
+      setSupportMode(readSupportMode());
+      setSupportModeReady(true);
+      return;
+    }
+    if (!currentSupportSession) {
+      return;
+    }
+    syncSupportModeState({
+      active: currentSupportSession.active,
+      tenantId: currentSupportSession.tenant_id,
+      tenantName: currentSupportSession.tenant_name,
+    });
+    setSupportMode(readSupportMode());
+    setSupportModeReady(true);
+  }, [currentSupportSession, isPlatformAdmin, mounted, user]);
 
   useEffect(() => {
     if (mounted && userError) {
@@ -363,10 +412,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const isPlatformAdmin = user?.roles?.some((r) => r.role === "platform_admin") ?? false;
   const hasOrganizationRole =
     user?.roles?.some((role) => role.scope_type === "organization" && role.scope_id) ?? false;
-  const supportModeActive = supportMode.active;
+  const supportModeActive = supportModeReady && supportMode.active;
 
   useEffect(() => {
     if (!user || isPlatformAdmin || hasOrganizationRole) return;

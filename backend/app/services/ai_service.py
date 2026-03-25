@@ -10,21 +10,18 @@ Responsibilities:
 import json
 from time import perf_counter
 
-from sqlalchemy import func, select
+import structlog
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.access import get_data_point_for_ctx, get_project_for_ctx
 from app.core.config import settings
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError
+from app.core.metrics import record_non_blocking_failure
 from app.db.models.ai_interaction import AIInteraction
-from app.db.models.boundary import BoundaryMembership
-from app.db.models.completeness import RequirementItemDataPoint, RequirementItemStatus
-from app.db.models.data_point import DataPoint
-from app.db.models.evidence import DataPointEvidence
+from app.db.models.completeness import RequirementItemDataPoint
 from app.db.models.requirement_item import RequirementItem
-from app.db.models.shared_element import SharedElement
-from app.db.models.standard import DisclosureRequirement, Standard
 from app.policies.ai_gate import (
     AIActionGate,
     AIContextGate,
@@ -48,6 +45,8 @@ from app.services.ai_tools import (
     execute_tool,
     get_scoped_completeness,
 )
+
+logger = structlog.get_logger("app.ai")
 
 
 # ---------------------------------------------------------------------------
@@ -419,6 +418,21 @@ class AIAssistantService:
         self.fallback_provider = StaticAIProvider(model_name="static-fallback")
 
     @staticmethod
+    def _classify_ai_exception(exc: Exception, *, prefix: str) -> tuple[str, str]:
+        if isinstance(exc, AppError):
+            return f"{prefix}_app_error", getattr(exc, "code", "APP_ERROR")
+
+        exception_type = type(exc).__name__
+        lowered = exception_type.lower()
+        if isinstance(exc, TimeoutError) or "timeout" in lowered:
+            return f"{prefix}_timeout", exception_type
+        if isinstance(exc, ConnectionError) or any(
+            marker in lowered for marker in ("network", "connect", "connection")
+        ):
+            return f"{prefix}_transport_error", exception_type
+        return f"{prefix}_unexpected_error", exception_type
+
+    @staticmethod
     def _build_provider(provider_name: str, model_name: str) -> BaseAIProvider:
         normalized = (provider_name or "static").lower()
         if not getattr(settings, "ai_enabled", False):
@@ -434,14 +448,33 @@ class AIAssistantService:
         try:
             result = await getattr(provider, method_name)(*args)
             return result, provider.model_name, False
-        except Exception:
+        except Exception as exc:
             if provider.model_name == self.fallback_provider.model_name:
                 raise
             fallback_result = await getattr(self.fallback_provider, method_name)(*args)
             if isinstance(fallback_result, AIResponse):
+                fallback_result.provider = self.fallback_provider.provider_name
                 fallback_result.reasons = list(fallback_result.reasons or []) + ["Fallback provider was used"]
             elif isinstance(fallback_result, ReviewAssistResponse):
+                fallback_result.provider = self.fallback_provider.provider_name
                 fallback_result.anomalies = list(fallback_result.anomalies or []) + ["Fallback provider was used"]
+            failure_operation, failure_reason = self._classify_ai_exception(
+                exc,
+                prefix="provider",
+            )
+            try:
+                record_non_blocking_failure("ai_service", failure_operation)
+                logger.warning(
+                    "ai_provider_call_failed",
+                    method_name=method_name,
+                    provider=provider.provider_name,
+                    model=provider.model_name,
+                    failure_reason=failure_reason,
+                    exception_type=type(exc).__name__,
+                    exc_info=True,
+                )
+            except Exception:
+                pass
             return fallback_result, self.fallback_provider.model_name, True
 
     def get_status(self) -> AIStatusOut:
@@ -585,6 +618,24 @@ class AIAssistantService:
                 )
                 raise
 
+            failure_operation, failure_reason = self._classify_ai_exception(
+                exc,
+                prefix="action",
+            )
+            try:
+                record_non_blocking_failure("ai_service", failure_operation)
+                logger.warning(
+                    "ai_action_fallback_served",
+                    action=action,
+                    screen=screen,
+                    user_id=ctx.user_id,
+                    organization_id=ctx.organization_id,
+                    failure_reason=failure_reason,
+                    exception_type=type(exc).__name__,
+                    exc_info=True,
+                )
+            except Exception:
+                pass
             fallback = self.output_gate.fallback("AI backend failed to produce a verified response.")
             await self._log(
                 ctx=ctx,
@@ -849,6 +900,24 @@ class AIAssistantService:
                     self.rate_gate.ban_user(ctx.user_id)
                 raise
         except Exception as exc:
+            if not hasattr(exc, "code"):
+                failure_operation, failure_reason = self._classify_ai_exception(
+                    exc,
+                    prefix="prepare",
+                )
+                try:
+                    record_non_blocking_failure("ai_service", failure_operation)
+                    logger.error(
+                        "ai_stream_prepare_failed",
+                        screen=payload.screen,
+                        user_id=ctx.user_id,
+                        organization_id=ctx.organization_id,
+                        failure_reason=failure_reason,
+                        exception_type=type(exc).__name__,
+                        exc_info=True,
+                    )
+                except Exception:
+                    pass
             # Log the blocked request for audit
             await self._log(
                 ctx=ctx,
@@ -911,8 +980,26 @@ class AIAssistantService:
                 response = llm_client.parse_ai_response(full_text)
                 response.provider = self.primary_provider.provider_name
                 model_name = llm_client.model
-            except Exception:
+            except Exception as exc:
                 # Primary LLM failed mid-stream → fall back
+                failure_operation, failure_reason = self._classify_ai_exception(
+                    exc,
+                    prefix="stream",
+                )
+                try:
+                    record_non_blocking_failure("ai_service", failure_operation)
+                    logger.warning(
+                        "ai_stream_provider_failed",
+                        screen=payload.screen,
+                        user_id=ctx.user_id,
+                        organization_id=ctx.organization_id,
+                        model=getattr(llm_client, "model", None),
+                        failure_reason=failure_reason,
+                        exception_type=type(exc).__name__,
+                        exc_info=True,
+                    )
+                except Exception:
+                    pass
                 used_fallback = True
                 response, model_name, _ = await self._invoke_provider(
                     "ask", clean_question, safe_context

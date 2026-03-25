@@ -48,7 +48,10 @@ test.afterEach(async ({ page, request }) => {
   const uiOrigin = new URL(page.url()).origin;
   await request.delete(`${apiUrl}/platform/support-session/current`, {
     headers: {
-      Cookie: `${accessCookie.name}=${accessCookie.value}`,
+      Cookie: [
+        `${accessCookie.name}=${accessCookie.value}`,
+        `${csrfCookie.name}=${csrfCookie.value}`,
+      ].join("; "),
       Origin: uiOrigin,
       "X-CSRF-Token": csrfCookie.value,
     },

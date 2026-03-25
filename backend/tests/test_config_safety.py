@@ -1,7 +1,7 @@
 import pytest
 from httpx import AsyncClient
 
-from app.core.config import build_settings, settings
+from app.core.config import LocalSettings, Settings, build_settings, settings
 from app.main import create_app
 
 
@@ -134,3 +134,26 @@ def test_build_settings_uses_environment_profiles(monkeypatch):
     assert production_settings.debug is False
     assert production_settings.self_registration_enabled is False
     assert production_settings.email_fail_silently is False
+
+
+def test_base_settings_default_to_safe_values():
+    base_settings = Settings(_env_file=None)
+
+    assert base_settings.debug is False
+    assert base_settings.jwt_secret == ""
+    assert base_settings.email_fail_silently is False
+    assert base_settings.email_from == "no-reply@esgvist.example.com"
+    assert base_settings.minio_access_key == ""
+    assert base_settings.minio_secret_key == ""
+
+
+def test_local_settings_keep_relaxed_local_defaults():
+    local_settings = LocalSettings(_env_file=None)
+
+    assert local_settings.debug is True
+    assert local_settings.jwt_secret == "local-dev-insecure-jwt-secret"
+    assert local_settings.self_registration_enabled is True
+    assert local_settings.email_fail_silently is True
+    assert local_settings.email_from == "no-reply@esgvist.local"
+    assert local_settings.minio_access_key == "minioadmin"
+    assert local_settings.minio_secret_key == "minioadmin"

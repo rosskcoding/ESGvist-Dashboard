@@ -9,8 +9,11 @@ from app.core.auth_cookies import (
     set_current_organization_cookie,
     set_support_session_cookie,
 )
-from app.core.config import settings
-from app.core.dependencies import RequestContext, get_current_context
+from app.core.dependencies import (
+    RequestContext,
+    get_current_context,
+    get_current_onboarding_context,
+)
 from app.core.exceptions import AppError
 from app.db.session import get_session
 from app.repositories.audit_repo import AuditRepository
@@ -155,9 +158,7 @@ async def update_self_registration_config(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    value = await _get_service(session).set_self_registration(
-        ctx, payload.allow_self_registration
-    )
+    value = await _get_service(session).set_self_registration(ctx, payload.allow_self_registration)
     return {"allow_self_registration": value}
 
 
@@ -183,9 +184,7 @@ async def assign_admin(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    binding = await _get_service(session).assign_tenant_admin(
-        ctx, tenant_id, payload.user_id
-    )
+    await _get_service(session).assign_tenant_admin(ctx, tenant_id, payload.user_id)
     return {"user_id": payload.user_id, "tenant_id": tenant_id, "role": "admin"}
 
 
@@ -234,7 +233,9 @@ async def run_sla_check(
     svc._require_platform(ctx)
     result = await SLAService(session).check_sla_breaches()
     await svc._audit(
-        ctx, entity_type="ScheduledJob", action="platform_sla_check_triggered",
+        ctx,
+        entity_type="ScheduledJob",
+        action="platform_sla_check_triggered",
         changes=result,
     )
     return result
@@ -249,7 +250,9 @@ async def run_project_deadline_check(
     svc._require_platform(ctx)
     result = await SLAService(session).check_project_deadlines()
     await svc._audit(
-        ctx, entity_type="ScheduledJob", action="platform_project_deadline_check_triggered",
+        ctx,
+        entity_type="ScheduledJob",
+        action="platform_project_deadline_check_triggered",
         changes=result,
     )
     return result
@@ -268,7 +271,9 @@ async def run_webhook_retries(
         notification_repo=NotificationRepository(session),
     ).retry_due_deliveries(limit=limit)
     await svc._audit(
-        ctx, entity_type="ScheduledJob", action="platform_webhook_retry_triggered",
+        ctx,
+        entity_type="ScheduledJob",
+        action="platform_webhook_retry_triggered",
         changes=result,
     )
     return result
@@ -288,7 +293,9 @@ async def run_export_jobs(
         audit_repo=AuditRepository(session),
     ).process_queued_jobs(limit=limit)
     await svc._audit(
-        ctx, entity_type="ScheduledJob", action="platform_export_jobs_triggered",
+        ctx,
+        entity_type="ScheduledJob",
+        action="platform_export_jobs_triggered",
         changes=result,
     )
     return result
@@ -320,7 +327,9 @@ async def run_all_jobs(
         "export_jobs": export_jobs,
     }
     await svc._audit(
-        ctx, entity_type="ScheduledJob", action="platform_all_jobs_triggered",
+        ctx,
+        entity_type="ScheduledJob",
+        action="platform_all_jobs_triggered",
         changes=result,
     )
     return result
@@ -333,6 +342,14 @@ class SupportSessionRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=1000)
 
 
+class SupportSessionCurrentOut(BaseModel):
+    active: bool
+    session_id: int | None = None
+    tenant_id: int | None = None
+    tenant_name: str | None = None
+    started_at: str | None = None
+
+
 @router.post("/tenants/{tenant_id}/support-session")
 async def start_support_session(
     tenant_id: int,
@@ -341,9 +358,7 @@ async def start_support_session(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    ss = await _get_service(session).start_support_session(
-        ctx, tenant_id, payload.reason
-    )
+    ss = await _get_service(session).start_support_session(ctx, tenant_id, payload.reason)
     set_support_session_cookie(response, ss.id)
     set_current_organization_cookie(response, tenant_id)
     return {
@@ -351,6 +366,34 @@ async def start_support_session(
         "tenant_id": tenant_id,
         "started_at": ss.started_at.isoformat() if ss.started_at else None,
     }
+
+
+@router.get("/support-session/current", response_model=SupportSessionCurrentOut)
+async def get_current_support_session(
+    response: Response,
+    support_session_cookie: str | None = Cookie(default=None, alias=SUPPORT_SESSION_COOKIE_NAME),
+    ctx: RequestContext = Depends(get_current_onboarding_context),
+    session: AsyncSession = Depends(get_session),
+):
+    svc = _get_service(session)
+    svc._require_platform(ctx)
+    if not support_session_cookie:
+        return SupportSessionCurrentOut(active=False)
+
+    try:
+        session_id = int(support_session_cookie)
+    except ValueError:
+        clear_support_session_cookie(response)
+        clear_current_organization_cookie(response)
+        return SupportSessionCurrentOut(active=False)
+
+    current = await svc.get_current_support_session(ctx, session_id)
+    if not current:
+        clear_support_session_cookie(response)
+        clear_current_organization_cookie(response)
+        return SupportSessionCurrentOut(active=False)
+
+    return SupportSessionCurrentOut(active=True, **current)
 
 
 @router.delete("/support-session/current")

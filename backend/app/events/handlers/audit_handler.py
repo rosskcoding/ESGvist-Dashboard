@@ -15,7 +15,9 @@ from app.events.bus import (
     EntityUpdated,
     EvidenceCreated,
     EvidenceLinked,
+    EvidenceLinkedToDP,
     EvidenceUnlinked,
+    EvidenceUnlinkedFromDP,
     GateChecked,
     ManualBoundaryOverride,
     OrganizationCreated,
@@ -45,7 +47,9 @@ class AuditEventHandler:
         AssignmentUpdated: "on_assignment_updated",
         EvidenceCreated: "on_evidence_created",
         EvidenceLinked: "on_evidence_linked",
+        EvidenceLinkedToDP: "on_evidence_linked",
         EvidenceUnlinked: "on_evidence_unlinked",
+        EvidenceUnlinkedFromDP: "on_evidence_unlinked",
         GateChecked: "on_gate_checked",
         OrganizationCreated: "on_organization_created",
     }
@@ -218,21 +222,24 @@ class AuditEventHandler:
             changes={"type": event.type},
         )
 
-    async def on_evidence_linked(self, event: EvidenceLinked):
+    async def on_evidence_linked(self, event: EvidenceLinked | EvidenceLinkedToDP):
         await self.audit_repo.log(
             entity_type="Evidence",
             entity_id=event.evidence_id,
             action="evidence_linked",
-            user_id=event.linked_by,
+            user_id=getattr(event, "linked_by", getattr(event, "created_by", None)),
             changes={"data_point_id": event.data_point_id},
         )
 
-    async def on_evidence_unlinked(self, event: EvidenceUnlinked):
+    async def on_evidence_unlinked(
+        self,
+        event: EvidenceUnlinked | EvidenceUnlinkedFromDP,
+    ):
         await self.audit_repo.log(
             entity_type="Evidence",
             entity_id=event.evidence_id,
             action="evidence_unlinked",
-            user_id=event.unlinked_by,
+            user_id=getattr(event, "unlinked_by", getattr(event, "created_by", None)),
             changes={"data_point_id": event.data_point_id},
         )
 

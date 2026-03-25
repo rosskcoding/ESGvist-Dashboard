@@ -51,5 +51,5 @@ def register_event_handlers() -> None:
         BoundaryAppliedToProject,
         SnapshotSaved,
     ):
-        bus.subscribe(event_type, notification_handler)
-        bus.subscribe(event_type, webhook_handler)
+        bus.subscribe(event_type, notification_handler, required=False)
+        bus.subscribe(event_type, webhook_handler, required=False)

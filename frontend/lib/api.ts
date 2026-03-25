@@ -1,11 +1,9 @@
+import { clearSupportModeForLogout } from "./support-mode";
+
 const API_BASE = "/api";
 const CSRF_COOKIE_KEY = "csrf_token";
 const CSRF_HEADER_NAME = "X-CSRF-Token";
-const LEGACY_ACCESS_TOKEN_KEY = "access_token";
-const LEGACY_REFRESH_TOKEN_KEY = "refresh_token";
-const ORGANIZATION_ID_KEY = "organization_id";
-const SUPPORT_TENANT_ID_KEY = "support_tenant_id";
-const SUPPORT_TENANT_NAME_KEY = "support_tenant_name";
+const LEGACY_AUTH_STORAGE_KEYS = ["access_token", "refresh_token"] as const;
 export const API_ERROR_EVENT = "app-api-error";
 export const AUTH_EXPIRED_EVENT = "app-auth-expired";
 
@@ -94,6 +92,12 @@ function removeStorageValue(key: string): void {
   window.localStorage.removeItem(key);
 }
 
+export function clearLegacyAuthStorage(): void {
+  for (const key of LEGACY_AUTH_STORAGE_KEYS) {
+    removeStorageValue(key);
+  }
+}
+
 function emitWindowEvent(name: string, detail?: Record<string, unknown>) {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(name, { detail }));
@@ -122,11 +126,8 @@ function resolveLoginRedirectUrl(reason: "session-expired" | "auth-required"): s
 }
 
 function clearStoredSession(reason: "session-expired" | "auth-required" = "session-expired") {
-  removeStorageValue(LEGACY_ACCESS_TOKEN_KEY);
-  removeStorageValue(LEGACY_REFRESH_TOKEN_KEY);
-  removeStorageValue(ORGANIZATION_ID_KEY);
-  removeStorageValue(SUPPORT_TENANT_ID_KEY);
-  removeStorageValue(SUPPORT_TENANT_NAME_KEY);
+  clearLegacyAuthStorage();
+  clearSupportModeForLogout();
   emitWindowEvent(AUTH_EXPIRED_EVENT, {
     reason,
     redirectTo: resolveLoginRedirectUrl(reason),
@@ -386,8 +387,7 @@ class ApiClient {
         return false;
       }
 
-      removeStorageValue(LEGACY_ACCESS_TOKEN_KEY);
-      removeStorageValue(LEGACY_REFRESH_TOKEN_KEY);
+      clearLegacyAuthStorage();
       return true;
     } catch {
       return false;

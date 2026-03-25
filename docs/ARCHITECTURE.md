@@ -865,13 +865,34 @@ Reviewer opens /validation
 ```
 MVP:
   email + password → bcrypt hash → JWT (access + refresh)
-  access_token: 15 min TTL
-  refresh_token: 7 days TTL
+  browser auth:
+    access_token + refresh_token → HttpOnly cookies
+    csrf_token → readable cookie mirrored into X-CSRF-Token
+    Origin / Referer / Sec-Fetch-Site enforced for unsafe cookie-auth requests
+    access_token: 15 min TTL
+    refresh_token: 7 days TTL
+    refresh sessions persisted server-side with immediate revoke via session binding
+  API / integration auth:
+    Authorization: Bearer remains supported for tests, API clients and non-browser callers
+    bearer requests do not require CSRF
+    browser routes should prefer cookie-first auth
 
 Phase 3:
   + SSO (SAML 2.0 / OAuth 2.0)
   + 2FA (TOTP)
 ```
+
+**Supported auth modes:**
+
+- `Browser session mode` is the default for the Next.js UI. Tokens stay in cookies, refresh rotation is server-side, and unsafe requests must pass CSRF plus trusted-origin checks.
+- `Bearer mode` is intentionally still supported for automated clients, selected backend tests and non-browser integrations. This is an explicit dual-mode model, not an accident.
+- New unsafe browser-facing endpoints must be designed for cookie-auth first and must not be added to the CSRF exempt allowlist unless they are true auth bootstrap paths (`login`, `register`, SSO start/callback).
+
+**Support mode rules:**
+
+- `support_session_id` is a server-issued cookie; the UI treats `/api/platform/support-session/current` as the source of truth.
+- Client-side support-mode cache is best-effort UI state only and is cleared when the backend no longer confirms the session.
+- While support mode is active, tenant-scoped platform routes such as `/api/platform/tenants/{tenant_id}/...` must stay pinned to the support tenant. Crossing tenants requires ending the support session first.
 
 ### 7.2. Authorization (RBAC)
 

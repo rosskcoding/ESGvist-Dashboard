@@ -2,7 +2,9 @@ import { expect, test, type Page } from "@playwright/test";
 
 import {
   apiPost,
+  browserCookieAuthHeaders,
   createJourneyAssignment,
+  listBrowserSessions,
   loadDemoState,
   loginByApi,
   loginThroughUi,
@@ -39,6 +41,15 @@ async function startSupportMode(page: Page, reason: string) {
   await expect(page.getByText(`Tenant context: ${demoState.organization.name}`)).toBeVisible();
 }
 
+async function loginThroughUiAtOrigin(page: Page, origin: string, email: string, password: string) {
+  await page.goto(`${origin}/login`);
+  await expect(page.getByRole("button", { name: "Sign in" })).toBeEnabled();
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill(password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/dashboard/, { timeout: 15_000 });
+}
+
 test.afterEach(async ({ page, request }) => {
   const cookies = await page.context().cookies();
   const accessCookie = cookies.find((cookie) => cookie.name === "access_token");
@@ -51,7 +62,10 @@ test.afterEach(async ({ page, request }) => {
   const uiOrigin = new URL(page.url()).origin;
   await request.delete(`${apiUrl}/platform/support-session/current`, {
     headers: {
-      Cookie: `${accessCookie.name}=${accessCookie.value}`,
+      Cookie: [
+        `${accessCookie.name}=${accessCookie.value}`,
+        `${csrfCookie.name}=${csrfCookie.value}`,
+      ].join("; "),
       Origin: uiOrigin,
       "X-CSRF-Token": csrfCookie.value,
     },
@@ -102,7 +116,89 @@ test.describe("Platform and setup regressions", () => {
     await expect(page.getByText("Support mode active")).toHaveCount(0);
   });
 
-  test("expired session redirects to login and returns user to the original page", async ({
+  test("current-device sign out leaves another browser session active", async ({
+    browser,
+    page,
+    request,
+  }) => {
+    await loginThroughUi(page, demoState.users.esg_manager.email, demoState.password);
+    const uiOrigin = new URL(page.url()).origin;
+    const secondaryContext = await browser.newContext();
+    const secondaryPage = await secondaryContext.newPage();
+    const initialSessionCount = (await listBrowserSessions(page, request)).total;
+
+    try {
+      await loginThroughUiAtOrigin(
+        secondaryPage,
+        uiOrigin,
+        demoState.users.esg_manager.email,
+        demoState.password,
+      );
+      await expect
+        .poll(async () => (await listBrowserSessions(page, request)).total, {
+          timeout: 15_000,
+        })
+        .toBe(initialSessionCount + 1);
+
+      await page.goto("/settings/profile");
+      await expect(page.getByRole("heading", { name: "Profile" })).toBeVisible();
+      await page.getByRole("button", { name: "Sign Out This Device" }).click();
+
+      await expect(page).toHaveURL(/\/login$/, { timeout: 15_000 });
+
+      await secondaryPage.goto(`${uiOrigin}/projects`);
+      await expect(secondaryPage.getByRole("heading", { name: "Projects" })).toBeVisible();
+      await secondaryPage.goto(`${uiOrigin}/settings/profile`);
+      await secondaryPage.getByRole("button", { name: "Sign Out This Device" }).click();
+      await expect(secondaryPage).toHaveURL(/\/login$/, { timeout: 15_000 });
+    } finally {
+      await secondaryContext.close();
+    }
+  });
+
+  test("sign out all revokes other active browser sessions", async ({
+    browser,
+    page,
+    request,
+  }) => {
+    await loginThroughUi(page, demoState.users.esg_manager.email, demoState.password);
+    const uiOrigin = new URL(page.url()).origin;
+    const secondaryContext = await browser.newContext();
+    const secondaryPage = await secondaryContext.newPage();
+    const initialSessionCount = (await listBrowserSessions(page, request)).total;
+
+    try {
+      await loginThroughUiAtOrigin(
+        secondaryPage,
+        uiOrigin,
+        demoState.users.esg_manager.email,
+        demoState.password,
+      );
+      await expect
+        .poll(async () => (await listBrowserSessions(page, request)).total, {
+          timeout: 15_000,
+        })
+        .toBe(initialSessionCount + 1);
+
+      await page.goto("/settings/profile");
+      await expect(page.getByRole("heading", { name: "Profile" })).toBeVisible();
+      await page.getByRole("button", { name: "Sign Out All Sessions" }).click();
+
+      await expect(page).toHaveURL(/\/login$/, { timeout: 15_000 });
+
+      await secondaryPage.goto(`${uiOrigin}/projects`);
+      await expect(secondaryPage).toHaveURL(
+        /\/login\?reason=(auth-required|session-expired).*next=%2Fprojects/,
+        {
+          timeout: 15_000,
+        }
+      );
+    } finally {
+      await secondaryContext.close();
+    }
+  });
+
+  test("cookie-auth enforces CSRF and revoked session redirects to login before returning", async ({
     page,
     request,
   }) => {
@@ -110,7 +206,33 @@ test.describe("Platform and setup regressions", () => {
     await page.goto("/projects");
     await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
 
+    const staleCookieHeaders = await browserCookieAuthHeaders(page, { includeCsrf: false });
+    const blockedWrite = await request.patch(`${apiUrl}/auth/me`, {
+      headers: await browserCookieAuthHeaders(page, {
+        includeCsrf: false,
+        includeOrigin: true,
+      }),
+      data: { full_name: "Blocked Without CSRF" },
+    });
+    expect(blockedWrite.status()).toBe(403);
+    expect(await blockedWrite.json()).toMatchObject({
+      error: { code: "CSRF_VALIDATION_FAILED" },
+    });
+
+    const allowedWrite = await request.patch(`${apiUrl}/auth/me`, {
+      headers: await browserCookieAuthHeaders(page, {
+        includeCsrf: true,
+        includeOrigin: true,
+      }),
+      data: { full_name: "Cookie Auth Updated" },
+    });
+    expect(allowedWrite.status()).toBe(200);
+
     await revokeCurrentBrowserSession(page, request);
+    const staleSessionReuse = await request.get(`${apiUrl}/auth/me`, {
+      headers: staleCookieHeaders,
+    });
+    expect(staleSessionReuse.status()).toBe(401);
     await page.reload();
 
     await expect(page).toHaveURL(/\/login\?reason=session-expired.*next=%2Fprojects/, {

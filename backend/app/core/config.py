@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
 
     # JWT
-    jwt_secret: str = "change-me-in-production"
+    jwt_secret: str = ""
     jwt_algorithm: str = "HS256"
     jwt_access_ttl_minutes: int = 15
     jwt_refresh_ttl_days: int = 7
@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000"]
 
     # App
-    debug: bool = True
+    debug: bool = False
     app_name: str = "ESGvist API"
     app_version: str = "0.1.0"
     slow_request_warning_ms: int = 1000
@@ -43,8 +43,8 @@ class Settings(BaseSettings):
     # Email
     email_enabled: bool = True
     email_provider: str = "console"
-    email_from: str = "no-reply@esgvist.local"
-    email_fail_silently: bool = True
+    email_from: str = "no-reply@esgvist.example.com"
+    email_fail_silently: bool = False
 
     # AI
     ai_enabled: bool = False
@@ -58,8 +58,8 @@ class Settings(BaseSettings):
     # Storage
     storage_backend: str = "local"
     minio_endpoint: str = "localhost:9000"
-    minio_access_key: str = "minioadmin"
-    minio_secret_key: str = "minioadmin"
+    minio_access_key: str = ""
+    minio_secret_key: str = ""
     minio_bucket: str = "esg-evidence"
     minio_secure: bool = False
 
@@ -155,15 +155,19 @@ class Settings(BaseSettings):
         issues: list[str] = []
         if self.debug:
             issues.append("DEBUG must be false when APP_ENV is staging or production")
-        if self.jwt_secret == "change-me-in-production":
-            issues.append("JWT_SECRET must be overridden outside local")
+        if not self.jwt_secret or self.jwt_secret == "change-me-in-production":
+            issues.append("JWT_SECRET must be set to a non-default value outside local")
         if self.email_fail_silently:
             issues.append("EMAIL_FAIL_SILENTLY must be false outside local")
         if self.storage_backend in {"minio", "s3"} and (
-            self.minio_access_key == "minioadmin" or self.minio_secret_key == "minioadmin"
+            not self.minio_access_key
+            or not self.minio_secret_key
+            or self.minio_access_key == "minioadmin"
+            or self.minio_secret_key == "minioadmin"
         ):
             issues.append(
-                "MINIO_ACCESS_KEY and MINIO_SECRET_KEY must not use default minioadmin credentials"
+                "MINIO_ACCESS_KEY and MINIO_SECRET_KEY must be set and must not use "
+                "default minioadmin credentials"
             )
 
         if issues:
@@ -177,8 +181,12 @@ class Settings(BaseSettings):
 class LocalSettings(Settings):
     app_env: Literal["local"] = "local"
     debug: bool = True
+    jwt_secret: str = "local-dev-insecure-jwt-secret"
     allow_self_registration: bool | None = True
+    email_from: str = "no-reply@esgvist.local"
     email_fail_silently: bool = True
+    minio_access_key: str = "minioadmin"
+    minio_secret_key: str = "minioadmin"
 
 
 class StagingSettings(Settings):

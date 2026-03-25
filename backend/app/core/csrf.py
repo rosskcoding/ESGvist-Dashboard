@@ -22,6 +22,8 @@ EXEMPT_PATHS = {
     "/api/auth/login",
     "/api/auth/register",
 }
+# Keep this allowlist deliberately tiny. Any new cookie-auth unsafe endpoint
+# must pass CSRF checks instead of being added here by default.
 
 
 def _is_exempt_path(path: str) -> bool:

@@ -4,6 +4,7 @@ import structlog
 from sqlalchemy import select
 
 from app.core.config import settings
+from app.core.exceptions import AppError
 from app.core.metrics import record_non_blocking_failure
 from app.db.models.notification import Notification
 from app.db.models.role_binding import RoleBinding
@@ -142,6 +143,21 @@ class NotificationService:
         result = await self.repo.session.execute(select(User).where(User.id == user_id))
         return result.scalar_one_or_none()
 
+    @staticmethod
+    def _classify_email_exception(exc: Exception) -> str:
+        if isinstance(exc, AppError):
+            return getattr(exc, "code", "APP_ERROR")
+
+        exception_type = type(exc).__name__
+        lowered = exception_type.lower()
+        if isinstance(exc, TimeoutError) or "timeout" in lowered:
+            return "timeout"
+        if isinstance(exc, ConnectionError) or any(
+            marker in lowered for marker in ("network", "connect", "connection")
+        ):
+            return "transport_error"
+        return exception_type
+
     async def _deliver_email(
         self,
         *,
@@ -162,13 +178,20 @@ class NotificationService:
                 body=message,
             )
             return delivery.sent, delivery.sent_at
-        except Exception:
+        except Exception as exc:
             record_non_blocking_failure("notification_service", "email_delivery")
             logger.warning(
                 "notification_email_delivery_failed",
                 user_id=user.id if user else None,
                 organization_id=getattr(user, "organization_id", None),
                 channel=channel,
+                provider=getattr(
+                    self.email_sender,
+                    "provider_name",
+                    type(self.email_sender).__name__,
+                ),
+                failure_reason=self._classify_email_exception(exc),
+                exception_type=type(exc).__name__,
                 fail_silently=settings.email_fail_silently,
                 exc_info=True,
             )
@@ -197,19 +220,21 @@ class NotificationService:
         if not user:
             return None
 
-        # Deduplication: don't create duplicate notification for same user+type+entity
-        existing = await self.repo.session.execute(
-            select(Notification).where(
-                Notification.organization_id == org_id,
-                Notification.user_id == user_id,
-                Notification.type == type,
-                Notification.entity_type == entity_type,
-                Notification.entity_id == entity_id,
-                Notification.is_read.is_(False),
+        # Deduplication: skip for info/warning but allow repeats for critical/important
+        # so operational issues always surface even if previous notification is unread
+        if severity not in ("critical", "important"):
+            existing = await self.repo.session.execute(
+                select(Notification).where(
+                    Notification.organization_id == org_id,
+                    Notification.user_id == user_id,
+                    Notification.type == type,
+                    Notification.entity_type == entity_type,
+                    Notification.entity_id == entity_id,
+                    Notification.is_read.is_(False),
+                )
             )
-        )
-        if existing.scalar_one_or_none():
-            return None  # Already notified, skip
+            if existing.scalar_one_or_none():
+                return None  # Already notified, skip
 
         resolved_channel = self._resolve_channel(type, severity, channel)
         resolved_channel = self._apply_preferences(user, resolved_channel, severity)
@@ -318,6 +343,34 @@ class NotificationService:
     async def unread_count(self, user_id: int, org_id: int) -> dict:
         count = await self.repo.unread_count(user_id, org_id)
         return {"unread_count": count}
+
+    async def get_digest(self, user_id: int, org_id: int) -> dict:
+        """Return pending (unsent) digest notifications for the user."""
+        all_pending = await self.repo.list_pending_digest()
+        user_notifications = all_pending.get(user_id, [])
+        # Filter to current org
+        org_notifications = [
+            n for n in user_notifications
+            if n.organization_id == org_id
+        ]
+        return {
+            "user_id": user_id,
+            "organization_id": org_id,
+            "count": len(org_notifications),
+            "items": [
+                {
+                    "id": n.id,
+                    "type": n.type,
+                    "title": n.title,
+                    "message": n.message,
+                    "severity": n.severity,
+                    "entity_type": n.entity_type,
+                    "entity_id": n.entity_id,
+                    "created_at": n.created_at.isoformat() if n.created_at else None,
+                }
+                for n in org_notifications[:100]
+            ],
+        }
 
     async def notify_event(
         self,

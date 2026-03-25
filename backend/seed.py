@@ -1,6 +1,7 @@
 """
-Database seed script for ESGvist.
+Demo-only database seed script for ESGvist.
 Uses the running API at http://localhost:8001 via httpx sync client.
+Do not treat this flow or its permissive platform toggles as production runtime defaults.
 """
 
 import sys
@@ -76,9 +77,9 @@ def patch(url: str, json: dict, hdrs: dict | None = None) -> dict | None:
     return r.json()
 
 
-# ── 0. Ensure self-registration is enabled ────────────────────
-def ensure_self_registration():
-    step("0. Ensure self-registration is enabled")
+# ── 0. Enable demo self-registration ───────────────────────────
+def ensure_demo_self_registration():
+    step("0. Enable demo self-registration")
     # Login as admin first
     r = post("/api/auth/login", {"email": "admin@esgvist.com", "password": PASSWORD})
     if not r:
@@ -92,14 +93,14 @@ def ensure_self_registration():
         state["users"]["admin@esgvist.com"]["id"] = me["id"]
         print(f"  Admin user id: {me['id']}")
 
-    # Enable self-registration via platform config
+    # Demo bootstrap intentionally enables self-registration for local seeding only.
     res = patch(
         "/api/platform/config/self-registration",
         {"allow_self_registration": True},
         admin_headers(),
     )
     if res:
-        print(f"  Self-registration: {res}")
+        print(f"  Demo self-registration: {res}")
     else:
         print("  WARNING: Could not enable self-registration (may already be enabled)")
 
@@ -677,7 +678,7 @@ def main():
     print(f"Target: {BASE}")
     print()
 
-    ensure_self_registration()
+    ensure_demo_self_registration()
     register_users()
     setup_organization()
     create_entities()

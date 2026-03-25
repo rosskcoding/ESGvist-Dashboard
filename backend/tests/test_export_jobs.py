@@ -7,18 +7,19 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
+from app.core.metrics import NON_BLOCKING_FAILURES
 from app.db.models.audit_log import AuditLog
 from app.db.models.boundary import BoundaryDefinition
 from app.db.models.boundary_snapshot import BoundarySnapshot
 from app.db.models.completeness import RequirementItemStatus
 from app.db.models.data_point import DataPoint
 from app.db.models.export_job import ExportJob
-from app.db.models.requirement_item import RequirementItem
 from app.db.models.mapping import RequirementItemSharedElement
+from app.db.models.project import ReportingProject
+from app.db.models.requirement_item import RequirementItem
 from app.db.models.shared_element import SharedElement
 from app.db.models.standard import DisclosureRequirement, Standard
 from app.services.export_service import ExportService
-from app.db.models.project import ReportingProject
 from app.workers.job_runner import JobRunner
 from tests.conftest import TestSessionLocal
 
@@ -566,3 +567,57 @@ async def test_export_job_dead_letter_notifies_requester(client: AsyncClient, mo
     notifications = await client.get("/api/notifications", headers=ctx["tenant_headers"])
     assert notifications.status_code == 200
     assert any(item["type"] == "export_dead_letter" for item in notifications.json()["items"])
+
+
+@pytest.mark.asyncio
+async def test_export_job_failure_logs_and_counts_classified_reason(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services import export_service as export_module
+
+    class _FakeLogger:
+        def __init__(self):
+            self.calls: list[tuple[str, str, dict]] = []
+
+        def warning(self, event: str, **kwargs):
+            self.calls.append(("warning", event, kwargs))
+
+    fake_logger = _FakeLogger()
+    before = NON_BLOCKING_FAILURES.labels(
+        component="export_service",
+        operation="artifact_generation_failed",
+    )._value.get()
+    monkeypatch.setattr(export_module, "logger", fake_logger)
+
+    ctx = await _setup_project(
+        client,
+        email="export-observability@test.com",
+        org_name="Export Observability Org",
+        project_name="Observability Export Project",
+    )
+
+    queued = await client.post(
+        f"/api/projects/{ctx['project_id']}/exports",
+        json={"export_format": "json", "report_type": "project_report"},
+        headers=ctx["tenant_headers"],
+    )
+    assert queued.status_code == 201
+
+    async def invalid_payload(self, project_id: int, report_type: str):
+        raise ValueError("invalid export payload")
+
+    monkeypatch.setattr(ExportService, "_build_export_payload", invalid_payload)
+
+    result = await JobRunner(session_factory=TestSessionLocal).run_export_jobs()
+
+    after = NON_BLOCKING_FAILURES.labels(
+        component="export_service",
+        operation="artifact_generation_failed",
+    )._value.get()
+    assert result["retried"] == 1
+    assert result["failed"] == 1
+    assert after == before + 1
+    assert fake_logger.calls[0][1] == "export_job_processing_failed"
+    assert fake_logger.calls[0][2]["failure_reason"] == "ValueError"
+    assert fake_logger.calls[0][2]["next_status"] == "retry_scheduled"
