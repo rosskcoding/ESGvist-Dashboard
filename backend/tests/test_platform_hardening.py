@@ -4,8 +4,13 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
+from app.core.dependencies import RequestContext
+from app.core.exceptions import AppError
 from app.db.models.audit_log import AuditLog
 from app.db.models.project import ReportingProject
+from app.repositories.audit_repo import AuditRepository
+from app.repositories.platform_repo import PlatformRepository
+from app.services.platform_service import PlatformService
 from tests.conftest import TestSessionLocal
 
 
@@ -114,6 +119,57 @@ async def test_suspended_tenant_blocks_member_access_but_not_platform_support(
 
 
 @pytest.mark.asyncio
+async def test_platform_tenant_user_metrics_and_list_are_user_based(
+    client: AsyncClient,
+    platform_ctx: dict,
+):
+    await _invite_and_accept(
+        client,
+        admin_headers=platform_ctx["tenant_headers"],
+        org_id=platform_ctx["org_id"],
+        email="tenant-user-1@test.com",
+        role="collector",
+        full_name="Tenant User One",
+    )
+    await _invite_and_accept(
+        client,
+        admin_headers=platform_ctx["tenant_headers"],
+        org_id=platform_ctx["org_id"],
+        email="tenant-user-2@test.com",
+        role="reviewer",
+        full_name="Tenant User Two",
+    )
+
+    tenants = await client.get("/api/platform/tenants", headers=platform_ctx["platform_headers"])
+    assert tenants.status_code == 200
+    tenant_row = next(
+        item for item in tenants.json()["items"] if item["id"] == platform_ctx["org_id"]
+    )
+    assert tenant_row["user_count"] == 3
+
+    listed = await client.get(
+        f"/api/platform/tenants/{platform_ctx['org_id']}/users",
+        headers=platform_ctx["platform_headers"],
+    )
+    assert listed.status_code == 200
+    assert listed.json()["total"] == 3
+    assert len({item["email"] for item in listed.json()["items"]}) == 3
+
+
+@pytest.mark.asyncio
+async def test_platform_settings_repo_rejects_non_editable_fields():
+    async with TestSessionLocal() as session:
+        repo = PlatformRepository(session)
+        settings_row = await repo.get_platform_settings()
+        assert settings_row.allow_self_registration is False
+
+        with pytest.raises(AppError) as exc_info:
+            await repo.update_platform_settings(extra={"unsafe": True})
+
+    assert exc_info.value.code == "PLATFORM_SETTINGS_FIELD_NOT_EDITABLE"
+
+
+@pytest.mark.asyncio
 async def test_platform_admin_nonexistent_tenant_context_returns_404(
     client: AsyncClient,
     platform_ctx: dict,
@@ -161,6 +217,29 @@ async def test_support_session_allows_platform_admin_tenant_access_without_org_h
 
 
 @pytest.mark.asyncio
+async def test_framework_admin_cannot_access_platform_tenant_operations(
+    client: AsyncClient,
+    platform_ctx: dict,
+):
+    framework_user = await _register_and_login(
+        client, email="framework-role@test.com", full_name="Framework Admin"
+    )
+    me = await client.get("/api/auth/me", headers=framework_user["headers"])
+    assert me.status_code == 200
+
+    assign = await client.post(
+        f"/api/users/{me.json()['id']}/roles",
+        json={"role": "framework_admin", "scope_type": "platform", "scope_id": None},
+        headers=platform_ctx["platform_headers"],
+    )
+    assert assign.status_code == 201
+
+    tenants = await client.get("/api/platform/tenants", headers=framework_user["headers"])
+    assert tenants.status_code == 403
+    assert tenants.json()["error"]["code"] == "PLATFORM_ADMIN_REQUIRED"
+
+
+@pytest.mark.asyncio
 async def test_invalid_support_session_id_is_rejected(
     client: AsyncClient,
     platform_ctx: dict,
@@ -174,6 +253,47 @@ async def test_invalid_support_session_id_is_rejected(
     )
     assert resp.status_code == 404
     assert resp.json()["error"]["code"] == "NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_support_session_unique_index_maps_race_to_conflict(
+    client: AsyncClient,
+    platform_ctx: dict,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    me = await client.get("/api/auth/me", headers=platform_ctx["platform_headers"])
+    assert me.status_code == 200
+    user_id = me.json()["id"]
+
+    async with TestSessionLocal() as session:
+        repo = PlatformRepository(session)
+        await repo.create_support_session(
+            platform_admin_id=user_id,
+            tenant_id=platform_ctx["org_id"],
+            reason="Existing support session",
+        )
+        await session.commit()
+
+    async with TestSessionLocal() as session:
+        repo = PlatformRepository(session)
+        service = PlatformService(repo=repo, audit_repo=AuditRepository(session))
+
+        async def _pretend_no_active_session(_admin_id: int):
+            return None
+
+        monkeypatch.setattr(repo, "get_active_support_session", _pretend_no_active_session)
+
+        ctx = RequestContext(
+            user_id=user_id,
+            email="platform@test.com",
+            organization_id=None,
+            role="platform_admin",
+            is_platform_admin=True,
+        )
+        with pytest.raises(AppError) as exc_info:
+            await service.start_support_session(ctx, platform_ctx["org_id"], "Race condition")
+
+    assert exc_info.value.code == "SUPPORT_SESSION_ACTIVE"
 
 
 @pytest.mark.asyncio
@@ -537,6 +657,48 @@ async def test_user_role_endpoints_support_platform_and_tenant_admin_flows(
     )
     assert forbidden.status_code == 403
     assert forbidden.json()["error"]["code"] == "CANNOT_ASSIGN_PLATFORM_ROLE"
+
+
+@pytest.mark.asyncio
+async def test_user_role_endpoints_reject_second_role_in_same_scope(
+    client: AsyncClient,
+    platform_ctx: dict,
+):
+    await _register_and_login(client, email="single-role@test.com", full_name="Single Role User")
+
+    first_role = await client.post(
+        "/api/users/2/roles",
+        json={
+            "role": "collector",
+            "scope_type": "organization",
+            "scope_id": platform_ctx["org_id"],
+        },
+        headers=platform_ctx["platform_headers"],
+    )
+    assert first_role.status_code == 201
+
+    second_role = await client.post(
+        "/api/users/2/roles",
+        json={
+            "role": "reviewer",
+            "scope_type": "organization",
+            "scope_id": platform_ctx["org_id"],
+        },
+        headers=platform_ctx["platform_headers"],
+    )
+    assert second_role.status_code == 409
+    assert second_role.json()["error"]["code"] == "ROLE_BINDING_EXISTS"
+
+    listed = await client.get(
+        f"/api/platform/tenants/{platform_ctx['org_id']}/users",
+        headers=platform_ctx["platform_headers"],
+    )
+    assert listed.status_code == 200
+    user_row = next(
+        item for item in listed.json()["items"] if item["email"] == "single-role@test.com"
+    )
+    assert user_row["role"] == "collector"
+    assert user_row["roles"] == ["collector"]
 
 
 @pytest.mark.asyncio

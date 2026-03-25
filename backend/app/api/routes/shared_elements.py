@@ -31,7 +31,7 @@ async def list_elements(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    return await _get_service(session).list_elements(page, page_size)
+    return await _get_service(session).list_elements(page, page_size, ctx)
 
 
 @router.post("", response_model=SharedElementOut, status_code=status.HTTP_201_CREATED)
@@ -49,7 +49,7 @@ async def get_element(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    return await _get_service(session).get_element(element_id)
+    return await _get_service(session).get_element(element_id, ctx)
 
 
 @router.get("/{element_id}/dimensions", response_model=list[DimensionOut])
@@ -58,7 +58,7 @@ async def list_dimensions(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    return await _get_service(session).list_dimensions(element_id)
+    return await _get_service(session).list_dimensions(element_id, ctx)
 
 
 @router.post(

@@ -50,7 +50,14 @@ class MappingService:
         )
         return MappingOut.model_validate(m)
 
-    async def list_mappings(self, page: int = 1, page_size: int = 50) -> MappingListOut:
+    async def list_mappings(
+        self,
+        page: int = 1,
+        page_size: int = 50,
+        ctx: RequestContext | None = None,
+    ) -> MappingListOut:
+        if ctx is not None:
+            self.policy.require_admin(ctx)
         items, total = await self.repo.list_all(page, page_size)
         return MappingListOut(
             items=[MappingOut.model_validate(m) for m in items],
@@ -58,8 +65,13 @@ class MappingService:
         )
 
     async def list_versions(
-        self, item_id: int, element_id: int
+        self,
+        item_id: int,
+        element_id: int,
+        ctx: RequestContext | None = None,
     ) -> MappingVersionListOut:
+        if ctx is not None:
+            self.policy.require_admin(ctx)
         versions = await self.repo.list_versions(item_id, element_id)
         return MappingVersionListOut(
             items=[MappingOut.model_validate(v) for v in versions],
@@ -67,8 +79,15 @@ class MappingService:
         )
 
     async def diff_versions(
-        self, item_id: int, element_id: int, v1: int, v2: int
+        self,
+        item_id: int,
+        element_id: int,
+        v1: int,
+        v2: int,
+        ctx: RequestContext | None = None,
     ) -> MappingDiffOut:
+        if ctx is not None:
+            self.policy.require_admin(ctx)
         ver1 = await self.repo.get_version(item_id, element_id, v1)
         ver2 = await self.repo.get_version(item_id, element_id, v2)
         if not ver1 or not ver2:
@@ -87,6 +106,11 @@ class MappingService:
                 ))
         return MappingDiffOut(v1=v1, v2=v2, changes=changes)
 
-    async def get_cross_standard(self) -> list[CrossStandardElement]:
+    async def get_cross_standard(
+        self,
+        ctx: RequestContext | None = None,
+    ) -> list[CrossStandardElement]:
+        if ctx is not None:
+            self.policy.require_admin(ctx)
         elements = await self.repo.get_cross_standard_elements()
         return [CrossStandardElement(**el) for el in elements]

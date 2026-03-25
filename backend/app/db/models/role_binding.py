@@ -21,6 +21,9 @@ class RoleBinding(Base, TimestampMixin):
     user = relationship("User", back_populates="role_bindings", foreign_keys=[user_id])
 
     __table_args__ = (
+        # One role per user per scope — prevents multi-role ambiguity
+        UniqueConstraint("user_id", "scope_type", "scope_id", name="uq_user_scope"),
+        # Keep the old granular unique for backward compat during migration
         UniqueConstraint("user_id", "role", "scope_type", "scope_id", name="uq_role_binding"),
         CheckConstraint(
             "(scope_type = 'platform' AND scope_id IS NULL) OR "
@@ -28,12 +31,12 @@ class RoleBinding(Base, TimestampMixin):
             name="chk_scope_id_required",
         ),
         CheckConstraint(
-            "(scope_type = 'platform' AND role = 'platform_admin') OR "
-            "(scope_type = 'organization' AND role != 'platform_admin')",
+            "(scope_type = 'platform' AND role IN ('platform_admin', 'framework_admin')) OR "
+            "(scope_type = 'organization' AND role NOT IN ('platform_admin', 'framework_admin'))",
             name="chk_platform_role",
         ),
         CheckConstraint(
-            "role IN ('platform_admin', 'admin', 'esg_manager', 'reviewer', 'collector', 'auditor')",
+            "role IN ('platform_admin', 'framework_admin', 'admin', 'esg_manager', 'reviewer', 'collector', 'auditor')",
             name="chk_role_enum",
         ),
         CheckConstraint(

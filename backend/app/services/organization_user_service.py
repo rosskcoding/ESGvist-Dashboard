@@ -2,15 +2,23 @@ from sqlalchemy import func, select
 
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError
-from app.policies.auth_policy import AuthPolicy
 from app.db.models.role_binding import RoleBinding
 from app.db.models.user import User
+from app.policies.auth_policy import AuthPolicy
 from app.repositories.audit_repo import AuditRepository
 from app.repositories.refresh_token_repo import RefreshTokenRepository
 from app.repositories.role_binding_repo import RoleBindingRepository
 from app.repositories.user_repo import UserRepository
-from app.schemas.auth import OrgUserOut, OrganizationUsersOut, PendingInvitationOut
+from app.schemas.auth import OrganizationUsersOut, OrgUserOut, PendingInvitationOut
 from app.services.invitation_service import InvitationService
+
+ROLE_PRIORITY = {
+    "admin": 0,
+    "esg_manager": 1,
+    "reviewer": 2,
+    "collector": 3,
+    "auditor": 4,
+}
 
 
 class OrganizationUserService:
@@ -29,7 +37,7 @@ class OrganizationUserService:
         self.audit_repo = audit_repo
 
     def _ensure_manage_access(self, ctx: RequestContext) -> int:
-        AuthPolicy.require_role(ctx, ["admin", "platform_admin"])
+        AuthPolicy.require_role(ctx, ["admin", "esg_manager", "platform_admin"])
         if not ctx.organization_id:
             raise AppError("ORG_HEADER_REQUIRED", 400, "Organization context required")
         return ctx.organization_id
@@ -49,7 +57,7 @@ class OrganizationUserService:
                 RoleBinding.scope_type == "organization",
                 RoleBinding.scope_id == org_id,
                 RoleBinding.role == "admin",
-                User.is_active == True,
+                User.is_active,
             )
         )
         if exclude_user_id is not None:
@@ -62,7 +70,11 @@ class OrganizationUserService:
             return
         remaining = await self._active_admin_count(org_id, exclude_user_id=binding.user_id)
         if remaining == 0:
-            raise AppError("LAST_ADMIN_CANNOT_LEAVE", 422, "Cannot remove or deactivate the last admin in this organization")
+            raise AppError(
+                "LAST_ADMIN_CANNOT_LEAVE",
+                422,
+                "Cannot remove or deactivate the last admin in this organization",
+            )
 
     def _guard_user_management(
         self,
@@ -84,17 +96,27 @@ class OrganizationUserService:
         users = await self.user_repo.list_by_ids([binding.user_id for binding in bindings])
         users_by_id = {user.id: user for user in users}
 
+        bindings_by_user: dict[int, list[RoleBinding]] = {}
+        for binding in bindings:
+            bindings_by_user.setdefault(binding.user_id, []).append(binding)
+
         org_users = []
-        for binding in sorted(bindings, key=lambda item: item.user_id):
-            user = users_by_id.get(binding.user_id)
+        for user_id in sorted(bindings_by_user):
+            user = users_by_id.get(user_id)
             if not user:
                 continue
+            user_bindings = sorted(
+                bindings_by_user[user_id],
+                key=lambda item: ROLE_PRIORITY.get(item.role, len(ROLE_PRIORITY)),
+            )
+            roles = [binding.role for binding in user_bindings]
             org_users.append(
                 OrgUserOut(
                     id=user.id,
                     email=user.email,
                     full_name=user.full_name,
-                    role=binding.role,
+                    role=roles[0],
+                    roles=roles,
                     status="active" if user.is_active else "inactive",
                     joined_date=user.created_at.isoformat() if user.created_at else None,
                 )
@@ -110,7 +132,11 @@ class OrganizationUserService:
         org_id = self._ensure_manage_access(ctx)
         binding = await self._get_org_binding_or_raise(user_id, org_id)
         self._guard_user_management(ctx, user_id, binding.role, role)
-        await self._guard_last_admin(binding, org_id, removing_admin_access=(binding.role == "admin" and role != "admin"))
+        await self._guard_last_admin(
+            binding,
+            org_id,
+            removing_admin_access=(binding.role == "admin" and role != "admin"),
+        )
 
         updated = await self.role_binding_repo.update_role(user_id, "organization", org_id, role)
         if not updated:
@@ -128,15 +154,35 @@ class OrganizationUserService:
         return {"id": user_id, "role": updated.role}
 
     async def update_user_status(self, user_id: int, status: str, ctx: RequestContext) -> dict:
+        """Activate or deactivate a user's membership in THIS organization.
+
+        This does NOT affect the user's global account or memberships in
+        other organizations.  Deactivation removes the org role binding
+        (reversible by re-inviting).
+        """
         org_id = self._ensure_manage_access(ctx)
         binding = await self._get_org_binding_or_raise(user_id, org_id)
         self._guard_user_management(ctx, user_id, binding.role, allow_self_target=False)
+        if status not in {"active", "inactive"}:
+            raise AppError("INVALID_STATUS", 422, "Status must be either 'active' or 'inactive'")
 
         is_active = status == "active"
         await self._guard_last_admin(binding, org_id, removing_admin_access=not is_active)
-        user = await self.user_repo.set_active(user_id, is_active)
+
         if not is_active:
-            await self.refresh_token_repo.delete_all_for_user(user_id)
+            # Deactivate = remove org binding (org-scoped, not global)
+            await self.role_binding_repo.delete_all_for_scope(user_id, "organization", org_id)
+        else:
+            # Re-activate = restore the binding if missing
+            existing = await self.role_binding_repo.get_binding(user_id, "organization", org_id)
+            if not existing:
+                await self.role_binding_repo.create(
+                    user_id=user_id,
+                    role=binding.role,
+                    scope_type="organization",
+                    scope_id=org_id,
+                    created_by=ctx.user_id,
+                )
 
         await self.audit_repo.log(
             entity_type="User",
@@ -147,7 +193,7 @@ class OrganizationUserService:
             changes={"user_id": user_id, "status": status},
             performed_by_platform_admin=ctx.is_platform_admin,
         )
-        return {"id": user.id, "status": "active" if user.is_active else "inactive"}
+        return {"id": user_id, "status": status}
 
     async def remove_user_from_organization(self, user_id: int, ctx: RequestContext) -> dict:
         org_id = self._ensure_manage_access(ctx)
@@ -155,8 +201,10 @@ class OrganizationUserService:
         self._guard_user_management(ctx, user_id, binding.role)
         await self._guard_last_admin(binding, org_id, removing_admin_access=True)
 
-        deleted = await self.role_binding_repo.delete_binding(user_id, "organization", org_id)
-        if not deleted:
+        deleted_count = await self.role_binding_repo.delete_all_for_scope(
+            user_id, "organization", org_id
+        )
+        if deleted_count == 0:
             raise AppError("NOT_FOUND", 404, f"User {user_id} is not a member of this organization")
 
         await self.audit_repo.log(

@@ -27,6 +27,19 @@ from app.schemas.sso import (
     SSOStartOut,
 )
 
+SSO_PROVIDER_EDITABLE_FIELDS = {
+    "name",
+    "auth_url",
+    "issuer",
+    "client_id",
+    "client_secret",
+    "redirect_uri",
+    "entity_id",
+    "is_active",
+    "auto_provision",
+    "default_role",
+}
+
 
 class SSOService:
     @staticmethod
@@ -145,6 +158,13 @@ class SSOService:
             raise AppError("FORBIDDEN", 403, "Provider belongs to another organization")
 
         changes = payload.model_dump(mode="json", exclude_unset=True)
+        invalid_fields = sorted(set(changes) - SSO_PROVIDER_EDITABLE_FIELDS)
+        if invalid_fields:
+            raise AppError(
+                "SSO_PROVIDER_FIELD_NOT_EDITABLE",
+                422,
+                f"SSO provider fields are not editable: {', '.join(invalid_fields)}",
+            )
         for key, value in changes.items():
             setattr(provider, key, value)
         await self.sso_repo.session.flush()

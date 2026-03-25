@@ -14,11 +14,14 @@ from app.db.models.boundary_snapshot import BoundarySnapshot
 from app.db.models.completeness import RequirementItemStatus
 from app.db.models.data_point import DataPoint
 from app.db.models.export_job import ExportJob
+from app.db.models.idempotency_record import IdempotencyRecord
 from app.db.models.mapping import RequirementItemSharedElement
 from app.db.models.project import ReportingProject
 from app.db.models.requirement_item import RequirementItem
 from app.db.models.shared_element import SharedElement
 from app.db.models.standard import DisclosureRequirement, Standard
+from app.repositories.idempotency_repo import IdempotencyRepository
+from app.schemas.export import ExportJobCreate
 from app.services.export_service import ExportService
 from app.workers.job_runner import JobRunner
 from tests.conftest import TestSessionLocal
@@ -331,6 +334,90 @@ async def test_export_queue_replays_same_job_with_idempotency_key(client: AsyncC
     )
     assert conflict.status_code == 409
     assert conflict.json()["error"]["code"] == "IDEMPOTENCY_KEY_REUSED"
+
+
+@pytest.mark.asyncio
+async def test_export_queue_uses_atomic_idempotency_reserve_and_finalize(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    ctx = await _setup_project(
+        client,
+        email="export-idempotent-atomic@test.com",
+        org_name="Export Idempotent Atomic Org",
+        project_name="Atomic Export Project",
+    )
+    headers = {**ctx["tenant_headers"], "X-Idempotency-Key": "export-atomic-key"}
+    calls: list[str] = []
+
+    original_try_reserve = IdempotencyRepository.try_reserve
+    original_finalize = IdempotencyRepository.finalize_record
+
+    async def spy_try_reserve(self, **kwargs):
+        calls.append("try_reserve")
+        return await original_try_reserve(self, **kwargs)
+
+    async def spy_finalize(self, record, *, status_code: int, response_body: dict):
+        calls.append(f"finalize:{status_code}")
+        return await original_finalize(
+            self,
+            record,
+            status_code=status_code,
+            response_body=response_body,
+        )
+
+    async def fail_create_record(self, **kwargs):
+        raise AssertionError("create_record should not be used for export idempotency")
+
+    monkeypatch.setattr(IdempotencyRepository, "try_reserve", spy_try_reserve)
+    monkeypatch.setattr(IdempotencyRepository, "finalize_record", spy_finalize)
+    monkeypatch.setattr(IdempotencyRepository, "create_record", fail_create_record)
+
+    queued = await client.post(
+        f"/api/projects/{ctx['project_id']}/exports",
+        json={"export_format": "json", "report_type": "project_report"},
+        headers=headers,
+    )
+
+    assert queued.status_code == 201
+    assert queued.json()["status"] == "queued"
+    assert calls == ["try_reserve", "finalize:201"]
+
+
+@pytest.mark.asyncio
+async def test_export_queue_rejects_pending_idempotency_record(client: AsyncClient):
+    ctx = await _setup_project(
+        client,
+        email="export-idempotent-pending@test.com",
+        org_name="Export Idempotent Pending Org",
+        project_name="Pending Idempotent Export Project",
+    )
+    payload = ExportJobCreate(export_format="json", report_type="project_report")
+    idempotency_key = "export-pending-key"
+
+    async with TestSessionLocal() as session:
+        session.add(
+            IdempotencyRecord(
+                organization_id=ctx["org_id"],
+                user_id=ctx["user_id"],
+                method="POST",
+                path=f"/api/projects/{ctx['project_id']}/exports",
+                idempotency_key=idempotency_key,
+                request_fingerprint=ExportService._request_fingerprint(ctx["project_id"], payload),
+                response_status_code=0,
+                response_body={},
+            )
+        )
+        await session.commit()
+
+    blocked = await client.post(
+        f"/api/projects/{ctx['project_id']}/exports",
+        json=payload.model_dump(mode="json"),
+        headers={**ctx["tenant_headers"], "X-Idempotency-Key": idempotency_key},
+    )
+
+    assert blocked.status_code == 409
+    assert blocked.json()["error"]["code"] == "IDEMPOTENCY_REQUEST_PENDING"
 
 
 @pytest.mark.asyncio

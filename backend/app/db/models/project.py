@@ -18,9 +18,6 @@ class ReportingProject(Base, TimestampMixin):
     boundary_definition_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("boundary_definitions.id", ondelete="SET NULL"), nullable=True
     )
-    boundary_snapshot_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("boundary_snapshots.id", ondelete="SET NULL"), nullable=True
-    )
 
 
 class ReportingProjectStandard(Base, TimestampMixin):

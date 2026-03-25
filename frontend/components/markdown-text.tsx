@@ -37,7 +37,7 @@ function markdownToHtml(md: string): string {
     // Links [text](url)
     .replace(
       /\[([^\]]+)\]\(([^)]+)\)/g,
-      '<a href="$2" class="text-blue-600 underline" target="_blank" rel="noopener noreferrer">$1</a>'
+      '<a href="$2" class="text-cyan-600 underline" target="_blank" rel="noopener noreferrer">$1</a>'
     )
     // Line breaks (double newline = paragraph break)
     .replace(/\n\n/g, '</p><p class="mt-2">')
@@ -101,7 +101,7 @@ export function MarkdownTextarea({
         placeholder={placeholder}
         rows={rows}
         disabled={disabled}
-        className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-mono placeholder:text-slate-400 focus:border-blue-300 focus:outline-none focus:ring-1 focus:ring-blue-300 disabled:opacity-50"
+        className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-mono placeholder:text-slate-400 focus:border-cyan-300 focus:outline-none focus:ring-1 focus:ring-cyan-300 disabled:opacity-50"
       />
       {preview && value && (
         <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">

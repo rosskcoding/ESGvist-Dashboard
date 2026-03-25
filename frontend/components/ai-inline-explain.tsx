@@ -65,7 +65,7 @@ export function AIFieldExplain({ requirementItemId, className }: AIFieldExplainP
         type="button"
         onClick={handleClick}
         disabled={isLoading}
-        className="inline-flex items-center gap-1 text-slate-400 transition-colors hover:text-blue-600"
+        className="inline-flex items-center gap-1 text-slate-400 transition-colors hover:text-cyan-600"
         title="Explain this field with AI"
         aria-label="Explain field"
       >
@@ -125,7 +125,7 @@ export function AIBoundaryWhy({ entityId, projectId, included, className }: AIBo
         type="button"
         onClick={handleClick}
         disabled={isLoading}
-        className="inline-flex items-center gap-1 text-xs text-blue-600 underline-offset-2 transition-colors hover:text-blue-800 hover:underline"
+        className="inline-flex items-center gap-1 text-xs text-cyan-600 underline-offset-2 transition-colors hover:text-cyan-800 hover:underline"
         title="Explain boundary decision"
       >
         {isLoading ? (
@@ -315,7 +315,7 @@ function AIExplainCard({
   onClose: () => void;
 }) {
   return (
-    <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50/50 p-4">
+    <div className="mt-3 rounded-lg border border-cyan-100 bg-cyan-50/50 p-4">
       <div className="flex items-start justify-between gap-2">
         <p className="text-sm font-medium text-slate-800">{response.text}</p>
         <button
@@ -335,7 +335,7 @@ function AIExplainCard({
         </ul>
       )}
       {response.references && response.references.length > 0 && (
-        <div className="mt-3 border-t border-blue-100 pt-2">
+        <div className="mt-3 border-t border-cyan-100 pt-2">
           <p className="text-xs font-medium text-slate-500">References</p>
           {response.references.map((ref) => (
             <p key={`${ref.source}-${ref.title}`} className="text-xs text-slate-600">

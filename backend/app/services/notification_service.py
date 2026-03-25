@@ -224,16 +224,16 @@ class NotificationService:
         # so operational issues always surface even if previous notification is unread
         if severity not in ("critical", "important"):
             existing = await self.repo.session.execute(
-                select(Notification).where(
+                select(Notification.id).where(
                     Notification.organization_id == org_id,
                     Notification.user_id == user_id,
                     Notification.type == type,
                     Notification.entity_type == entity_type,
                     Notification.entity_id == entity_id,
                     Notification.is_read.is_(False),
-                )
+                ).limit(1)
             )
-            if existing.scalar_one_or_none():
+            if existing.scalars().first() is not None:
                 return None  # Already notified, skip
 
         resolved_channel = self._resolve_channel(type, severity, channel)

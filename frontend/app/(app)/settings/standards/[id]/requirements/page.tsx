@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, usePathname, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, FileText, Loader2, Plus, ShieldAlert } from "lucide-react";
 
@@ -214,6 +214,7 @@ function AddRequirementItemDialog({
 
 export default function RequirementItemsPage() {
   const params = useParams<{ id: string }>();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const standardId = Number(params.id);
   const initialDisclosureId = searchParams.get("disclosureId");
@@ -226,9 +227,12 @@ export default function RequirementItemsPage() {
     roles: Array<{ role: string }>;
   }>(["auth-me"], "/auth/me");
 
-  const role = me?.roles?.[0]?.role ?? "";
-  const canAccess = role === "admin" || role === "platform_admin";
-  const accessDenied = Boolean(role) && !canAccess;
+  const roles = me?.roles?.map((binding) => binding.role) ?? [];
+  const canAccess = roles.some((role) => role === "framework_admin" || role === "platform_admin");
+  const accessDenied = Boolean(me) && !canAccess;
+  const basePath = pathname.startsWith("/platform/framework")
+    ? "/platform/framework"
+    : "/settings";
 
   const { data: standard, isLoading: standardLoading } = useApiQuery<Standard>(
     ["standard", standardId],
@@ -281,7 +285,9 @@ export default function RequirementItemsPage() {
             <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" />
             <div>
               <p className="font-semibold">Access denied</p>
-              <p className="mt-1 text-sm">Only admin and platform admin roles can configure requirement items.</p>
+              <p className="mt-1 text-sm">
+                Only framework admin and platform admin roles can configure requirement items.
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -299,7 +305,7 @@ export default function RequirementItemsPage() {
           </p>
         </div>
         <Button variant="outline" asChild>
-          <Link href="/settings/standards">
+          <Link href={`${basePath}/standards`}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to standards
           </Link>
@@ -390,7 +396,7 @@ export default function RequirementItemsPage() {
                       <TableCell className="text-right">
                         <Button variant="outline" size="sm" asChild>
                           <Link
-                            href={`/settings/mappings?standardId=${standardId}&disclosureId=${selectedDisclosureId}&itemId=${item.id}`}
+                            href={`${basePath}/mappings?standardId=${standardId}&disclosureId=${selectedDisclosureId}&itemId=${item.id}`}
                           >
                             Mapping History
                           </Link>

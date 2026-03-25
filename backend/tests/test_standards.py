@@ -2,6 +2,19 @@ import pytest
 from httpx import AsyncClient
 
 
+async def _register_and_login(client: AsyncClient, *, email: str, full_name: str) -> dict:
+    await client.post(
+        "/api/auth/register",
+        json={"email": email, "password": "password123", "full_name": full_name},
+    )
+    resp = await client.post(
+        "/api/auth/login",
+        json={"email": email, "password": "password123"},
+    )
+    token = resp.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
 @pytest.fixture
 async def admin_headers(client: AsyncClient) -> dict:
     """Create the first user (platform_admin) and return auth headers."""
@@ -15,6 +28,79 @@ async def admin_headers(client: AsyncClient) -> dict:
     )
     token = resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.mark.asyncio
+async def test_framework_admin_can_manage_standard_catalog_without_org_context(
+    client: AsyncClient,
+):
+    platform_headers = await _register_and_login(
+        client, email="platform@test.com", full_name="Platform Admin"
+    )
+    setup = await client.post(
+        "/api/organizations/setup",
+        json={"name": "Catalog Org", "country": "GB"},
+        headers=platform_headers,
+    )
+    assert setup.status_code == 201
+
+    framework_headers = await _register_and_login(
+        client, email="framework@test.com", full_name="Framework Admin"
+    )
+    me = await client.get("/api/auth/me", headers=framework_headers)
+    assert me.status_code == 200
+
+    assign = await client.post(
+        f"/api/users/{me.json()['id']}/roles",
+        json={"role": "framework_admin", "scope_type": "platform", "scope_id": None},
+        headers=platform_headers,
+    )
+    assert assign.status_code == 201
+
+    create = await client.post(
+        "/api/standards",
+        json={"code": "IFRS-S2", "name": "IFRS Sustainability S2"},
+        headers=framework_headers,
+    )
+    assert create.status_code == 201
+    assert create.json()["code"] == "IFRS-S2"
+
+
+@pytest.mark.asyncio
+async def test_tenant_admin_cannot_manage_standard_catalog(
+    client: AsyncClient,
+):
+    platform_headers = await _register_and_login(
+        client, email="platform-admin@test.com", full_name="Platform Admin"
+    )
+    setup = await client.post(
+        "/api/organizations/setup",
+        json={"name": "Tenant Catalog Org", "country": "GB"},
+        headers=platform_headers,
+    )
+    assert setup.status_code == 201
+    org_id = setup.json()["organization_id"]
+
+    tenant_admin_headers = await _register_and_login(
+        client, email="tenant-admin@test.com", full_name="Tenant Admin"
+    )
+    me = await client.get("/api/auth/me", headers=tenant_admin_headers)
+    assert me.status_code == 200
+
+    assign = await client.post(
+        f"/api/users/{me.json()['id']}/roles",
+        json={"role": "admin", "scope_type": "organization", "scope_id": org_id},
+        headers=platform_headers,
+    )
+    assert assign.status_code == 201
+
+    create = await client.post(
+        "/api/standards",
+        json={"code": "SASB", "name": "SASB Climate"},
+        headers={**tenant_admin_headers, "X-Organization-Id": str(org_id)},
+    )
+    assert create.status_code == 403
+    assert create.json()["error"]["code"] == "FORBIDDEN"
 
 
 # --- Standards CRUD ---

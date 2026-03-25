@@ -212,6 +212,40 @@ class WorkflowService:
             requirement_items = [item_map[item_id] for item_id in item_ids if item_id in item_map]
             item_statuses = [status_map.get(item_id, "missing") for item_id in item_ids]
 
+        # ── Resolve expected_value_type from first bound requirement item ──
+        expected_value_type = None
+        if requirement_items:
+            expected_value_type = getattr(requirement_items[0], "value_type", None)
+
+        # ── Check if a reviewer is assigned to this DP's scope ────────
+        reviewer_assigned = False
+        assignment_result = await self.dp_repo.session.execute(
+            select(MetricAssignment).where(
+                MetricAssignment.reporting_project_id == dp.reporting_project_id,
+                MetricAssignment.shared_element_id == dp.shared_element_id,
+                MetricAssignment.reviewer_id.is_not(None),
+            )
+        )
+        if assignment_result.scalar_one_or_none():
+            reviewer_assigned = True
+
+        # ── Check boundary membership for entity-scoped data points ───
+        boundary_entity_included: bool | None = None
+        if (
+            getattr(dp, "entity_id", None)
+            and getattr(project, "boundary_definition_id", None)
+        ):
+            from app.db.models.boundary import BoundaryMembership
+
+            membership_result = await self.dp_repo.session.execute(
+                select(BoundaryMembership).where(
+                    BoundaryMembership.boundary_definition_id == project.boundary_definition_id,
+                    BoundaryMembership.entity_id == dp.entity_id,
+                    BoundaryMembership.included == True,  # noqa: E712
+                )
+            )
+            boundary_entity_included = membership_result.scalar_one_or_none() is not None
+
         return {
             "data_point": dp,
             "project": project,
@@ -223,6 +257,10 @@ class WorkflowService:
             "requirement_item": requirement_items[0] if requirement_items else None,
             "item_statuses": item_statuses,
             "item_status": item_statuses[0] if item_statuses else None,
+            # Gate-specific fields that were previously missing:
+            "expected_value_type": expected_value_type,
+            "reviewer_assigned": reviewer_assigned,
+            "boundary_entity_included": boundary_entity_included,
         }
 
     async def submit(self, dp_id: int, ctx: RequestContext) -> dict:

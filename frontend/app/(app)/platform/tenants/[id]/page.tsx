@@ -52,7 +52,6 @@ type TenantUpdatePayload = {
   name: string;
   country: string | null;
   industry: string | null;
-  status: TenantDetail["status"];
 };
 
 type JobStatusResponse = {
@@ -191,7 +190,6 @@ export default function TenantDetailPage() {
       name: form.name,
       country: form.country || null,
       industry: form.industry || null,
-      status: form.status,
     };
     await updateTenant.mutateAsync(payload);
     patchTenantCaches(payload);

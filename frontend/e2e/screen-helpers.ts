@@ -68,19 +68,30 @@ type OrganizationUsersResponse = {
   }>;
 };
 
+type RegisteredUserResponse = {
+  id: number;
+  email: string;
+  full_name: string;
+};
+
 const demoStatePath = path.resolve(__dirname, "..", "..", "artifacts", "demo", "demo-state.json");
 
 export function loadDemoState(): DemoState {
   return JSON.parse(fs.readFileSync(demoStatePath, "utf-8")) as DemoState;
 }
 
-export async function loginThroughUi(page: Page, email: string, password: string) {
+export async function loginThroughUi(
+  page: Page,
+  email: string,
+  password: string,
+  expectedUrl: RegExp = /dashboard/,
+) {
   await page.goto("/login");
   await expect(page.getByRole("button", { name: "Sign in" })).toBeEnabled();
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL(/dashboard/, { timeout: 15_000 });
+  await expect(page).toHaveURL(expectedUrl, { timeout: 15_000 });
 }
 
 type SessionListResponse = {
@@ -228,6 +239,86 @@ async function loadOrganizationUsers(request: APIRequestContext) {
     adminAuth.headers,
   );
   return new Map(response.users.map((user) => [user.email, user]));
+}
+
+async function registerScenarioUser(
+  request: APIRequestContext,
+  {
+    email,
+    fullName,
+  }: {
+    email: string;
+    fullName: string;
+  },
+) {
+  const state = loadDemoState();
+  const apiUrl = state.api_url!.replace("localhost", "127.0.0.1");
+  const registered = await apiPost<RegisteredUserResponse>(
+    request,
+    `${apiUrl}/auth/register`,
+    {},
+    {
+      email,
+      password: state.password,
+      full_name: fullName,
+    },
+  );
+  return {
+    id: registered.id,
+    email,
+    password: state.password,
+    fullName,
+  };
+}
+
+export async function createFrameworkAdminUser(
+  request: APIRequestContext,
+  suffix: string,
+) {
+  const state = loadDemoState();
+  const apiUrl = state.api_url!.replace("localhost", "127.0.0.1");
+  const platformAuth = await loginByApi(request, state.users.admin.email, state.password);
+  const user = await registerScenarioUser(request, {
+    email: `framework.${suffix}@example.com`,
+    fullName: `Framework ${suffix}`,
+  });
+
+  await apiPost(
+    request,
+    `${apiUrl}/users/${user.id}/roles`,
+    platformAuth.headers,
+    {
+      role: "framework_admin",
+      scope_type: "platform",
+      scope_id: null,
+    },
+  );
+
+  return user;
+}
+
+export async function createTenantAdminUser(
+  request: APIRequestContext,
+  suffix: string,
+) {
+  const state = loadDemoState();
+  const apiUrl = state.api_url!.replace("localhost", "127.0.0.1");
+  const platformAuth = await loginByApi(request, state.users.admin.email, state.password);
+  const user = await registerScenarioUser(request, {
+    email: `tenant.admin.${suffix}@example.com`,
+    fullName: `Tenant Admin ${suffix}`,
+  });
+
+  await apiPost(
+    request,
+    `${apiUrl}/platform/tenants/${state.organization.id}/admins`,
+    platformAuth.headers,
+    {
+      user_id: user.id,
+    },
+  );
+
+  return user;
 }
 
 export async function apiPut<T>(

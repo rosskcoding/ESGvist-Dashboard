@@ -12,7 +12,7 @@ from __future__ import annotations
 import dataclasses
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.access import get_user_assignments
@@ -22,11 +22,11 @@ from app.db.models.boundary import BoundaryMembership
 from app.db.models.completeness import RequirementItemDataPoint, RequirementItemStatus
 from app.db.models.data_point import DataPoint
 from app.db.models.evidence import DataPointEvidence
-from app.db.models.project import MetricAssignment, ReportingProject
+from app.db.models.mapping import RequirementItemSharedElement
+from app.db.models.project import MetricAssignment
 from app.db.models.requirement_item import RequirementItem
 from app.db.models.shared_element import SharedElement
 from app.db.models.standard import DisclosureRequirement, Standard
-
 
 # ---------------------------------------------------------------------------
 # Tool definitions (metadata consumed by the LLM and by ToolAccessGate)
@@ -595,37 +595,63 @@ async def get_scoped_completeness(
             "scope_note": "No assignments found for your role",
         }
 
-    # Requirement items bound to the user's assigned shared elements
-    bound_item_ids_q = (
-        select(RequirementItemDataPoint.requirement_item_id)
-        .where(
-            RequirementItemDataPoint.reporting_project_id == project_id,
-            RequirementItemDataPoint.data_point_id.in_(
-                select(DataPoint.id).where(
-                    DataPoint.reporting_project_id == project_id,
-                    DataPoint.shared_element_id.in_(assigned_se_ids),
-                )
-            ),
+    mapping_scope_rows = (
+        await session.execute(
+            select(
+                RequirementItemSharedElement.requirement_item_id,
+                RequirementItem.disclosure_requirement_id,
+            )
+            .join(
+                RequirementItem,
+                RequirementItem.id == RequirementItemSharedElement.requirement_item_id,
+            )
+            .where(
+                RequirementItemSharedElement.shared_element_id.in_(assigned_se_ids),
+                RequirementItemSharedElement.is_current == True,  # noqa: E712
+            )
         )
+    ).all()
+    assigned_item_ids = sorted({item_id for item_id, _disclosure_id in mapping_scope_rows})
+    allowed_disclosure_ids = sorted(
+        {
+            disclosure_id
+            for _item_id, disclosure_id in mapping_scope_rows
+            if disclosure_id is not None
+        }
     )
+    if not assigned_item_ids:
+        return {
+            "project_id": project_id,
+            "disclosure_id": disclosure_id,
+            "status_counts": {},
+            "completion_percent": 0,
+            "missing_items": [],
+            "partial_items": [],
+            "complete_items": [],
+            "scope_note": "No mapped requirement items found for your assignments",
+        }
 
-    # Items that have status="missing" may have NO binding/data point yet.
-    # If we only filter by bound_item_ids_q we hide the truly missing items
-    # and underreport the problem.  Include any item that has a tracked
-    # status for this project (the system always creates RequirementItemStatus
-    # rows even when data is absent).
-    missing_unbound_item_ids_q = (
+    # Requirement items directly related to the user's assigned shared elements
+    bound_item_ids_q = (
         select(RequirementItemStatus.requirement_item_id)
         .where(
             RequirementItemStatus.reporting_project_id == project_id,
-            RequirementItemStatus.status == "missing",
+            RequirementItemStatus.requirement_item_id.in_(assigned_item_ids),
         )
     )
 
-    # Combine: items the user has bindings for  OR  items still "missing"
+    # Missing items can have no binding yet, so widen only to disclosures
+    # that are reachable from the user's assigned shared elements.
     scope_filter = or_(
         RequirementItemStatus.requirement_item_id.in_(bound_item_ids_q),
-        RequirementItemStatus.requirement_item_id.in_(missing_unbound_item_ids_q),
+        and_(
+            RequirementItemStatus.status == "missing",
+            RequirementItemStatus.requirement_item_id.in_(
+                select(RequirementItem.id).where(
+                    RequirementItem.disclosure_requirement_id.in_(allowed_disclosure_ids)
+                )
+            ),
+        ),
     )
 
     status_query = (

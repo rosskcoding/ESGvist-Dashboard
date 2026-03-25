@@ -65,9 +65,9 @@ export function AIActionHandlers() {
 
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
-      el.classList.add("ring-2", "ring-blue-400", "ring-offset-2", "transition-all");
+      el.classList.add("ring-2", "ring-cyan-400", "ring-offset-2", "transition-all");
       setTimeout(() => {
-        el.classList.remove("ring-2", "ring-blue-400", "ring-offset-2", "transition-all");
+        el.classList.remove("ring-2", "ring-cyan-400", "ring-offset-2", "transition-all");
       }, 2500);
     }
   }, []);
@@ -106,7 +106,7 @@ export function AIActionHandlers() {
           <button
             type="button"
             onClick={handleDialogAction}
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
+            className="rounded-md bg-cyan-600 px-3 py-1.5 text-sm text-white hover:bg-cyan-700"
           >
             Go to {dialogInfo?.title ?? "page"}
           </button>

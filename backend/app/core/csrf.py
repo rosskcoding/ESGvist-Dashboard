@@ -15,6 +15,7 @@ from app.core.config import settings
 CSRF_HEADER_NAME = "X-CSRF-Token"
 ORIGIN_HEADER_NAME = "Origin"
 REFERER_HEADER_NAME = "Referer"
+FRONTEND_ORIGIN_HEADER_NAME = "X-Frontend-Origin"
 SEC_FETCH_SITE_HEADER_NAME = "Sec-Fetch-Site"
 ALLOWED_FETCH_SITES = {"same-origin", "same-site", "none"}
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
@@ -50,17 +51,21 @@ def _allowed_origins(request: Request) -> set[str]:
     if request_origin:
         allowed.add(request_origin)
 
-    forwarded_proto = request.headers.get("X-Forwarded-Proto")
-    forwarded_host = request.headers.get("X-Forwarded-Host")
-    forwarded_origin = _normalize_origin(
-        f"{forwarded_proto.split(',')[0].strip()}://{forwarded_host.split(',')[0].strip()}"
-        if forwarded_proto and forwarded_host
-        else None
-    )
+    forwarded_origin = _forwarded_origin(request)
     if forwarded_origin:
         allowed.add(forwarded_origin)
 
     return allowed
+
+
+def _forwarded_origin(request: Request) -> str | None:
+    forwarded_proto = request.headers.get("X-Forwarded-Proto")
+    forwarded_host = request.headers.get("X-Forwarded-Host")
+    if not (forwarded_proto and forwarded_host):
+        return None
+    return _normalize_origin(
+        f"{forwarded_proto.split(',')[0].strip()}://{forwarded_host.split(',')[0].strip()}"
+    )
 
 
 def _has_trusted_origin_or_referer(request: Request) -> bool:
@@ -73,6 +78,13 @@ def _has_trusted_origin_or_referer(request: Request) -> bool:
     referer = _normalize_origin(request.headers.get(REFERER_HEADER_NAME))
     if referer:
         return referer in trusted_origins
+
+    # Next.js rewrite/proxy flows may not preserve Origin/Referer to the backend.
+    # Allow the frontend to explicitly forward its browser origin on unsafe
+    # cookie-auth requests so CSRF/origin validation still works server-side.
+    frontend_origin = _normalize_origin(request.headers.get(FRONTEND_ORIGIN_HEADER_NAME))
+    if frontend_origin:
+        return frontend_origin in trusted_origins
 
     return False
 

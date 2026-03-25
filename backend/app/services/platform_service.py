@@ -1,10 +1,13 @@
 """Service for platform-admin operations."""
 
-from app.core.config import settings
+from sqlalchemy.exc import IntegrityError
+
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError
 from app.repositories.audit_repo import AuditRepository
 from app.repositories.platform_repo import PlatformRepository
+
+TENANT_EDITABLE_FIELDS = {"name", "country", "industry"}
 
 
 class PlatformService:
@@ -99,6 +102,13 @@ class PlatformService:
         org = await self.repo.get_tenant(tenant_id)
         if not org:
             raise AppError("NOT_FOUND", 404, f"Tenant {tenant_id} not found")
+        invalid_fields = sorted(set(changes) - TENANT_EDITABLE_FIELDS)
+        if invalid_fields:
+            raise AppError(
+                "TENANT_FIELD_NOT_EDITABLE",
+                422,
+                f"Tenant fields are not editable here: {', '.join(invalid_fields)}",
+            )
         for key, value in changes.items():
             setattr(org, key, value)
         await self._audit(
@@ -200,11 +210,19 @@ class PlatformService:
             raise AppError(
                 "SUPPORT_SESSION_ACTIVE", 409, "You already have an active support session"
             )
-        ss = await self.repo.create_support_session(
-            platform_admin_id=ctx.user_id,
-            tenant_id=tenant_id,
-            reason=reason,
-        )
+        try:
+            ss = await self.repo.create_support_session(
+                platform_admin_id=ctx.user_id,
+                tenant_id=tenant_id,
+                reason=reason,
+            )
+        except IntegrityError as exc:
+            await self.repo.session.rollback()
+            raise AppError(
+                "SUPPORT_SESSION_ACTIVE",
+                409,
+                "You already have an active support session",
+            ) from exc
         await self._audit(
             ctx,
             entity_type="SupportSession",

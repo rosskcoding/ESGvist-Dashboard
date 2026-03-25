@@ -176,6 +176,16 @@ async def test_assignment_matrix_supports_frontend_contract_and_inline_updates(c
     assert collector_rows[0]["shared_element_code"] == "E1-1"
     assert collector_rows[0]["collector_name"] == "Collector One"
 
+    reviewer_list = await client.get(
+        f"/api/projects/{project.json()['id']}/assignments",
+        headers=reviewer["headers"],
+    )
+    assert reviewer_list.status_code == 200
+    reviewer_rows = reviewer_list.json()["assignments"]
+    assert len(reviewer_rows) == 1
+    assert reviewer_rows[0]["shared_element_code"] == "E1-1"
+    assert reviewer_rows[0]["reviewer_name"] == "Reviewer One"
+
 
 @pytest.mark.asyncio
 async def test_assignment_bulk_update_updates_multiple_rows(client: AsyncClient):

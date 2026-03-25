@@ -1,6 +1,11 @@
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.routes._auth_helpers import (
+    resolve_client_ip,
+    resolve_user_agent,
+    serialize_auth_response,
+)
 from app.core.auth_cookies import (
     generate_csrf_token,
     set_access_token_cookie,
@@ -28,39 +33,6 @@ from app.schemas.sso import (
 from app.services.sso_service import SSOService
 
 router = APIRouter(prefix="/api/auth/sso", tags=["SSO"])
-
-
-def _resolve_client_ip(request: Request) -> str | None:
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip() or None
-    if request.client:
-        return request.client.host
-    return None
-
-
-def _resolve_user_agent(request: Request) -> str | None:
-    user_agent = request.headers.get("User-Agent")
-    if not user_agent:
-        return None
-    normalized = user_agent.strip()
-    return normalized[:512] if normalized else None
-
-
-def _is_browser_auth_request(request: Request) -> bool:
-    if request.headers.get("Origin") or request.headers.get("Referer"):
-        return True
-    return bool(request.headers.get("Sec-Fetch-Mode") or request.headers.get("Sec-Fetch-Site"))
-
-
-def _serialize_auth_response(request: Request, tokens: TokenResponse) -> TokenResponse:
-    if _is_browser_auth_request(request):
-        return TokenResponse(token_type=tokens.token_type, session_mode="cookie")
-    return TokenResponse(
-        access_token=tokens.access_token,
-        token_type=tokens.token_type,
-        session_mode="token",
-    )
 
 
 def _get_service(session: AsyncSession) -> SSOService:
@@ -132,11 +104,11 @@ async def callback(
     tokens = await _get_service(session).handle_callback_with_session_metadata(
         provider_id,
         payload,
-        client_ip=_resolve_client_ip(request),
-        user_agent=_resolve_user_agent(request),
+        client_ip=resolve_client_ip(request),
+        user_agent=resolve_user_agent(request),
     )
     set_access_token_cookie(response, tokens.access_token)
     set_csrf_token_cookie(response, generate_csrf_token())
     if tokens.refresh_token:
         set_refresh_token_cookie(response, tokens.refresh_token)
-    return _serialize_auth_response(request, tokens)
+    return serialize_auth_response(request, tokens)

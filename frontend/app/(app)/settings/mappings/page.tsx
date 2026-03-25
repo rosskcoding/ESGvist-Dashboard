@@ -134,7 +134,7 @@ export default function MappingHistoryPage() {
     "/auth/me"
   );
   const roles = me?.roles?.map((binding) => binding.role) ?? [];
-  const canAccess = roles.some((role) => ["admin", "platform_admin"].includes(role));
+  const canAccess = roles.some((role) => ["framework_admin", "platform_admin"].includes(role));
   const accessDenied = Boolean(me) && !canAccess;
 
   const {
@@ -360,7 +360,7 @@ export default function MappingHistoryPage() {
             <div>
               <p className="font-semibold">Access denied</p>
               <p className="mt-1 text-sm">
-                Only admins and platform admins can inspect mapping history.
+                Only framework admins and platform admins can inspect mapping history.
               </p>
             </div>
           </CardContent>

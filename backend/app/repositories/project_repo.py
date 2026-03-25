@@ -1,9 +1,17 @@
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError
 from app.db.models.boundary import BoundaryDefinition
 from app.db.models.project import MetricAssignment, ReportingProject, ReportingProjectStandard
+
+PROJECT_EDITABLE_FIELDS = {
+    "name",
+    "status",
+    "deadline",
+    "reporting_year",
+    "boundary_definition_id",
+}
 
 
 class ProjectRepository:
@@ -57,6 +65,13 @@ class ProjectRepository:
 
     async def update_project(self, project_id: int, **kwargs) -> ReportingProject:
         p = await self.get_or_raise(project_id)
+        invalid_fields = sorted(set(kwargs) - PROJECT_EDITABLE_FIELDS)
+        if invalid_fields:
+            raise AppError(
+                "PROJECT_FIELD_NOT_EDITABLE",
+                422,
+                f"Project fields are not editable: {', '.join(invalid_fields)}",
+            )
         for k, v in kwargs.items():
             if v is not None:
                 setattr(p, k, v)
@@ -100,8 +115,16 @@ class ProjectRepository:
             raise AppError("NOT_FOUND", 404, f"Assignment {assignment_id} not found")
         return assignment
 
+    ASSIGNMENT_EDITABLE_FIELDS = {
+        "collector_id", "reviewer_id", "backup_collector_id",
+        "deadline", "status", "priority", "escalation_after_days",
+    }
+
     async def update_assignment(self, assignment_id: int, **kwargs) -> MetricAssignment:
         assignment = await self.get_assignment_or_raise(assignment_id)
+        invalid = sorted(set(kwargs) - self.ASSIGNMENT_EDITABLE_FIELDS)
+        if invalid:
+            raise ValueError(f"Cannot update assignment fields: {invalid}")
         for key, value in kwargs.items():
             setattr(assignment, key, value)
         await self.session.flush()
@@ -113,6 +136,23 @@ class ProjectRepository:
         self.session.add(b)
         await self.session.flush()
         return b
+
+    async def clear_default_boundaries(
+        self,
+        org_id: int,
+        exclude_boundary_id: int | None = None,
+    ) -> None:
+        query = (
+            update(BoundaryDefinition)
+            .where(
+                BoundaryDefinition.organization_id == org_id,
+                BoundaryDefinition.is_default == True,  # noqa: E712
+            )
+            .values(is_default=False)
+        )
+        if exclude_boundary_id is not None:
+            query = query.where(BoundaryDefinition.id != exclude_boundary_id)
+        await self.session.execute(query)
 
     async def list_boundaries(self, org_id: int) -> list[BoundaryDefinition]:
         q = select(BoundaryDefinition).where(

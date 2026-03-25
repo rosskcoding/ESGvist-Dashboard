@@ -29,6 +29,9 @@ function resolvePostLoginRoute(me: UserResponse) {
   if (orgRole?.scope_id) {
     return "/dashboard";
   }
+  if (me.roles.some((role) => role.role === "framework_admin")) {
+    return "/platform/framework";
+  }
   if (me.roles.some((role) => role.role === "platform_admin")) {
     return "/platform/tenants";
   }

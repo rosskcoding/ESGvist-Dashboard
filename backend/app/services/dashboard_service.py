@@ -80,13 +80,23 @@ class DashboardService:
 
     async def _build_standard_progress(self, project_id: int) -> list[dict]:
         standards = await self.completeness_repo.list_project_standards(project_id)
+        if not standards:
+            return []
+
+        # Batch: load ALL items and statuses in 2 queries instead of 2N
+        all_items = await self.completeness_repo.list_project_items(project_id)
+        all_item_ids = [item.id for item, _disclosure in all_items]
+        all_statuses = await self.completeness_repo.list_project_item_statuses(project_id, all_item_ids)
+        status_by_item = {s.requirement_item_id: s.status for s in all_statuses}
+
+        # Group items by standard_id via disclosure
+        items_by_standard: dict[int, list[int]] = {}
+        for item, disclosure in all_items:
+            items_by_standard.setdefault(disclosure.standard_id, []).append(item.id)
+
         progress = []
         for standard_id, standard_code, standard_name in standards:
-            items_with_disclosures = await self.completeness_repo.list_project_items(project_id, standard_id)
-            item_ids = [item.id for item, _disclosure in items_with_disclosures]
-            statuses = await self.completeness_repo.list_project_item_statuses(project_id, item_ids)
-            status_by_item = {status.requirement_item_id: status.status for status in statuses}
-
+            item_ids = items_by_standard.get(standard_id, [])
             complete = partial = missing = 0
             for item_id in item_ids:
                 status = status_by_item.get(item_id, "missing")

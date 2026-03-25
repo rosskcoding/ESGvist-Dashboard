@@ -1,6 +1,10 @@
 import pytest
 from httpx import AsyncClient
 
+from app.core.exceptions import AppError
+from app.repositories.form_config_repo import FormConfigRepository
+from tests.conftest import TestSessionLocal
+
 
 async def _setup_project_context(client: AsyncClient, *, email: str = "forms@test.com") -> dict:
     await client.post(
@@ -223,6 +227,30 @@ async def test_active_form_config_falls_back_to_org_default_and_prefers_project_
     )
     assert active_project.status_code == 200
     assert active_project.json()["id"] == project_specific.json()["id"]
+
+
+@pytest.mark.asyncio
+async def test_form_config_repo_rejects_non_editable_fields(client: AsyncClient):
+    ctx = await _setup_project_context(client, email="forms-invalid-update@test.com")
+    created = await client.post(
+        "/api/form-configs",
+        json={
+            "project_id": None,
+            "name": "Locked Config",
+            "description": "Cannot re-scope via generic update",
+            "config": {"steps": []},
+            "is_active": True,
+        },
+        headers=ctx["headers"],
+    )
+    assert created.status_code == 201
+
+    async with TestSessionLocal() as session:
+        repo = FormConfigRepository(session)
+        with pytest.raises(AppError) as exc_info:
+            await repo.update(created.json()["id"], organization_id=ctx["organization_id"] + 1)
+
+    assert exc_info.value.code == "FORM_CONFIG_FIELD_NOT_EDITABLE"
 
 
 @pytest.mark.asyncio

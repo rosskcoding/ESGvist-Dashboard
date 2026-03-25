@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.models.base import Base
@@ -8,6 +8,15 @@ from app.db.models.base import Base
 
 class SupportSession(Base):
     __tablename__ = "support_sessions"
+    __table_args__ = (
+        Index(
+            "uq_support_sessions_active_admin",
+            "platform_admin_id",
+            unique=True,
+            sqlite_where=text("is_active = 1"),
+            postgresql_where=text("is_active = true"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     platform_admin_id: Mapped[int] = mapped_column(

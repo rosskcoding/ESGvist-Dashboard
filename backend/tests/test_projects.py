@@ -1,6 +1,8 @@
 import pytest
 from httpx import AsyncClient
 
+from app.core.exceptions import AppError
+from app.repositories.project_repo import ProjectRepository
 from tests.conftest import TestSessionLocal
 
 
@@ -108,6 +110,23 @@ async def test_list_projects(client: AsyncClient, org_ctx: dict):
 
 
 @pytest.mark.asyncio
+async def test_project_repo_rejects_non_editable_fields(client: AsyncClient, org_ctx: dict):
+    project = await client.post(
+        "/api/projects",
+        json={"name": "Repo Guard"},
+        headers=org_ctx["headers"],
+    )
+    assert project.status_code == 201
+
+    async with TestSessionLocal() as session:
+        repo = ProjectRepository(session)
+        with pytest.raises(AppError) as exc_info:
+            await repo.update_project(project.json()["id"], organization_id=org_ctx["org_id"] + 1)
+
+    assert exc_info.value.code == "PROJECT_FIELD_NOT_EDITABLE"
+
+
+@pytest.mark.asyncio
 async def test_add_standard_to_project(client: AsyncClient, org_ctx: dict):
     # Create standard
     std = await client.post(
@@ -194,6 +213,36 @@ async def test_create_boundary(client: AsyncClient, org_ctx: dict):
     assert resp.status_code == 201
     assert resp.json()["boundary_type"] == "financial_reporting_default"
     assert resp.json()["is_default"] is True
+
+    boundaries = await client.get("/api/boundaries", headers=org_ctx["headers"])
+    assert boundaries.status_code == 200
+    defaults = [item for item in boundaries.json() if item["is_default"]]
+    assert len(defaults) == 1
+    assert defaults[0]["id"] == resp.json()["id"]
+
+
+@pytest.mark.asyncio
+async def test_update_boundary_promotes_single_default(client: AsyncClient, org_ctx: dict):
+    boundary = await client.post(
+        "/api/boundaries",
+        json={"name": "Operational Boundary", "boundary_type": "operational_control"},
+        headers=org_ctx["headers"],
+    )
+    assert boundary.status_code == 201
+
+    promoted = await client.patch(
+        f"/api/boundaries/{boundary.json()['id']}",
+        json={"is_default": True},
+        headers=org_ctx["headers"],
+    )
+    assert promoted.status_code == 200
+    assert promoted.json()["is_default"] is True
+
+    boundaries = await client.get("/api/boundaries", headers=org_ctx["headers"])
+    assert boundaries.status_code == 200
+    defaults = [item for item in boundaries.json() if item["is_default"]]
+    assert len(defaults) == 1
+    assert defaults[0]["id"] == boundary.json()["id"]
 
 
 @pytest.mark.asyncio

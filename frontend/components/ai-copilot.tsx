@@ -97,7 +97,7 @@ export function AICopilot({ open, onClose }: AICopilotProps) {
       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
         <div>
           <div className="flex items-center gap-2">
-            <BotMessageSquare className="h-5 w-5 text-blue-600" />
+            <BotMessageSquare className="h-5 w-5 text-cyan-600" />
             <h3 className="text-sm font-semibold text-slate-900">AI Copilot</h3>
           </div>
           <p className="mt-1 text-xs text-slate-500">
@@ -105,7 +105,7 @@ export function AICopilot({ open, onClose }: AICopilotProps) {
             {capabilitiesLabel}
           </p>
           {screenContext.screen !== "unknown" && (
-            <p className="text-xs text-blue-500">
+            <p className="text-xs text-cyan-500">
               Context: {screenContext.screen}
               {screenContext.projectId ? ` · Project #${screenContext.projectId}` : ""}
             </p>
@@ -142,7 +142,7 @@ export function AICopilot({ open, onClose }: AICopilotProps) {
                 <button
                   key={prompt}
                   onClick={() => handleSubmit(prompt)}
-                  className="rounded-lg border border-slate-200 px-3 py-2 text-left text-sm text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-left text-sm text-slate-600 transition-colors hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-700"
                 >
                   {prompt}
                 </button>
@@ -169,7 +169,7 @@ export function AICopilot({ open, onClose }: AICopilotProps) {
                     className={cn(
                       "flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
                       message.role === "user"
-                        ? "bg-blue-100 text-blue-700"
+                        ? "bg-cyan-100 text-cyan-700"
                         : "bg-slate-100 text-slate-600",
                     )}
                   >
@@ -183,7 +183,7 @@ export function AICopilot({ open, onClose }: AICopilotProps) {
                     className={cn(
                       "rounded-lg px-3 py-2 text-sm",
                       message.role === "user"
-                        ? "bg-blue-600 text-white"
+                        ? "bg-cyan-600 text-white"
                         : "bg-slate-100 text-slate-800",
                     )}
                   >
@@ -220,7 +220,7 @@ export function AICopilot({ open, onClose }: AICopilotProps) {
                               key={`${action.action_type}-${action.target}`}
                               type="button"
                               onClick={() => handleActionClick(action)}
-                              className="w-full rounded-md border border-slate-200 bg-white/60 px-2 py-2 text-left text-xs text-slate-700 transition-colors hover:border-blue-300 hover:bg-blue-50"
+                              className="w-full rounded-md border border-slate-200 bg-white/60 px-2 py-2 text-left text-xs text-slate-700 transition-colors hover:border-cyan-300 hover:bg-cyan-50"
                             >
                               <p className="font-medium">{action.label}</p>
                               <p>

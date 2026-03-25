@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     app_name: str = "ESGvist API"
     app_version: str = "0.1.0"
     slow_request_warning_ms: int = 1000
-    dashboard_progress_cache_ttl_seconds: int = 15
+    dashboard_progress_cache_ttl_seconds: int = 60
     db_auto_upgrade: bool = False
     db_require_current_revision: bool | None = None
 

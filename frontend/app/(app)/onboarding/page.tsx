@@ -358,7 +358,7 @@ export default function OnboardingPage() {
             onClick={() => index <= step && setStep(index)}
             className={
               index === step
-                ? "rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-left"
+                ? "rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-left"
                 : index < step
                   ? "rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-left"
                   : "rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left"

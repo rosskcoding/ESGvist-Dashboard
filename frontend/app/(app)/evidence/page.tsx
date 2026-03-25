@@ -397,7 +397,7 @@ export default function EvidencePage() {
               className={cn(
                 "flex flex-1 flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors",
                 isDragOver
-                  ? "border-blue-400 bg-blue-50"
+                  ? "border-cyan-400 bg-cyan-50"
                   : "border-slate-300 bg-slate-50 hover:border-slate-400"
               )}
             >
@@ -525,7 +525,7 @@ export default function EvidencePage() {
                   >
                     <TableCell>
                       {item.type === "file" ? (
-                        <FileText className="h-4 w-4 text-blue-500" />
+                        <FileText className="h-4 w-4 text-cyan-500" />
                       ) : (
                         <Link2 className="h-4 w-4 text-emerald-500" />
                       )}
@@ -618,7 +618,7 @@ export default function EvidencePage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {detailTarget?.type === "file" ? (
-                <FileText className="h-5 w-5 text-blue-500" />
+                <FileText className="h-5 w-5 text-cyan-500" />
               ) : (
                 <Link2 className="h-5 w-5 text-emerald-500" />
               )}
@@ -686,7 +686,7 @@ export default function EvidencePage() {
                     href={detailTarget.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="mt-1 inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
+                    className="mt-1 inline-flex items-center gap-1 text-sm text-cyan-600 hover:underline"
                   >
                     {detailTarget.url}
                     <ExternalLink className="h-3 w-3" />

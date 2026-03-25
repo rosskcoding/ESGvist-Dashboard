@@ -1,15 +1,27 @@
 """Repository for platform-admin operations (cross-tenant)."""
 
+from collections import defaultdict
 from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import AppError
 from app.db.models.organization import Organization
 from app.db.models.platform_settings import PlatformSettings
 from app.db.models.role_binding import RoleBinding
 from app.db.models.support_session import SupportSession
 from app.db.models.user import User
+
+ROLE_PRIORITY = {
+    "admin": 0,
+    "esg_manager": 1,
+    "reviewer": 2,
+    "collector": 3,
+    "auditor": 4,
+    "platform_admin": 5,
+}
+PLATFORM_SETTINGS_EDITABLE_FIELDS = {"allow_self_registration"}
 
 
 class PlatformRepository:
@@ -44,7 +56,7 @@ class PlatformRepository:
     async def count_users_in_tenant(self, tenant_id: int) -> int:
         return (
             await self.session.execute(
-                select(func.count())
+                select(func.count(func.distinct(RoleBinding.user_id)))
                 .select_from(RoleBinding)
                 .where(
                     RoleBinding.scope_type == "organization",
@@ -66,16 +78,21 @@ class PlatformRepository:
     # -- Role bindings ---------------------------------------------------------
 
     async def get_role_binding(
-        self, user_id: int, scope_type: str, scope_id: int
+        self,
+        user_id: int,
+        scope_type: str,
+        scope_id: int,
+        role: str | None = None,
     ) -> RoleBinding | None:
-        result = await self.session.execute(
-            select(RoleBinding).where(
-                RoleBinding.user_id == user_id,
-                RoleBinding.scope_type == scope_type,
-                RoleBinding.scope_id == scope_id,
-            )
+        query = select(RoleBinding).where(
+            RoleBinding.user_id == user_id,
+            RoleBinding.scope_type == scope_type,
+            RoleBinding.scope_id == scope_id,
         )
-        return result.scalar_one_or_none()
+        if role is not None:
+            query = query.where(RoleBinding.role == role)
+        result = await self.session.execute(query.order_by(RoleBinding.id).limit(1))
+        return result.scalars().first()
 
     async def create_role_binding(self, **kwargs) -> RoleBinding:
         binding = RoleBinding(**kwargs)
@@ -165,9 +182,15 @@ class PlatformRepository:
 
     async def update_platform_settings(self, **kwargs) -> PlatformSettings:
         settings_row = await self.get_platform_settings()
+        invalid_fields = sorted(set(kwargs) - PLATFORM_SETTINGS_EDITABLE_FIELDS)
+        if invalid_fields:
+            raise AppError(
+                "PLATFORM_SETTINGS_FIELD_NOT_EDITABLE",
+                422,
+                f"Platform settings are not editable here: {', '.join(invalid_fields)}",
+            )
         for key, value in kwargs.items():
-            if hasattr(settings_row, key):
-                setattr(settings_row, key, value)
+            setattr(settings_row, key, value)
         await self.session.flush()
         return settings_row
 
@@ -181,7 +204,29 @@ class PlatformRepository:
             )
             .order_by(User.id)
         )
-        return [
-            {"id": uid, "email": email, "full_name": name, "is_active": active, "role": role}
-            for uid, email, name, active, role in result.all()
-        ]
+        grouped: dict[int, dict] = {}
+        role_sets: dict[int, set[str]] = defaultdict(set)
+        for uid, email, name, active, role in result.all():
+            if uid not in grouped:
+                grouped[uid] = {
+                    "id": uid,
+                    "email": email,
+                    "full_name": name,
+                    "is_active": active,
+                }
+            role_sets[uid].add(role)
+
+        items: list[dict] = []
+        for uid in sorted(grouped):
+            roles = sorted(
+                role_sets[uid],
+                key=lambda item: ROLE_PRIORITY.get(item, len(ROLE_PRIORITY)),
+            )
+            items.append(
+                {
+                    **grouped[uid],
+                    "role": roles[0] if roles else None,
+                    "roles": roles,
+                }
+            )
+        return items

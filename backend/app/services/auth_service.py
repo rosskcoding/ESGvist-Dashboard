@@ -88,17 +88,16 @@ class AuthService:
         return result.scalar_one_or_none()
 
     async def _resolve_user_organization_name(self, bindings: list[RoleBindingOut]) -> str | None:
-        org_binding = next(
-            (
-                binding
+        organization_scope_ids = sorted(
+            {
+                binding.scope_id
                 for binding in bindings
                 if binding.scope_type == "organization" and binding.scope_id is not None
-            ),
-            None,
+            }
         )
-        if not org_binding or org_binding.scope_id is None:
+        if len(organization_scope_ids) != 1:
             return None
-        organization = await self._get_organization_or_raise(org_binding.scope_id)
+        organization = await self._get_organization_or_raise(organization_scope_ids[0])
         return organization.name
 
     async def _serialize_user_response(self, user) -> UserResponse:
@@ -811,6 +810,12 @@ class AuthService:
 
         if "default_boundary_id" in updates:
             boundary_id = updates["default_boundary_id"]
+            if boundary_id is None:
+                raise AppError(
+                    "DEFAULT_BOUNDARY_REQUIRED",
+                    422,
+                    "A default boundary must remain selected",
+                )
             boundaries_result = await self.user_repo.session.execute(
                 select(BoundaryDefinition).where(
                     BoundaryDefinition.organization_id == organization.id

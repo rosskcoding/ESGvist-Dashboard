@@ -150,7 +150,7 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
 ];
 
 const ENTITY_TYPE_COLORS: Record<EntityType, string> = {
-  parent_company: "bg-blue-100 text-blue-800",
+  parent_company: "bg-cyan-100 text-cyan-800",
   legal_entity: "bg-purple-100 text-purple-800",
   branch: "bg-cyan-100 text-cyan-800",
   joint_venture: "bg-amber-100 text-amber-800",
@@ -306,7 +306,7 @@ function EntityNode({ data }: NodeProps<Node<EntityNodeData>>) {
   }
 
   if (isSelected) {
-    borderColor = "border-blue-500 ring-2 ring-blue-200";
+    borderColor = "border-cyan-500 ring-2 ring-cyan-200";
   }
 
   return (
@@ -497,7 +497,7 @@ function EntityTreeItem({
       <div
         className={cn(
           "flex w-full items-center gap-1 rounded px-2 py-1 text-left text-sm transition-colors",
-          selectedId === node.id ? "bg-blue-50 text-blue-700" : "hover:bg-slate-100"
+          selectedId === node.id ? "bg-cyan-50 text-cyan-700" : "hover:bg-slate-100"
         )}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
       >
@@ -1141,7 +1141,7 @@ function EntityDetailPanel({
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Effective Ownership</span>
-                <span className="font-semibold text-blue-700">
+                <span className="font-semibold text-cyan-700">
                   {effectiveOwnership}%
                 </span>
               </div>

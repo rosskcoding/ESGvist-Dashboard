@@ -90,7 +90,8 @@ class TenantUpdate(BaseModel):
     name: str | None = None
     country: str | None = None
     industry: str | None = None
-    status: str | None = Field(default=None, pattern=r"^(active|suspended|archived)$")
+
+    model_config = {"extra": "forbid"}
 
 
 @router.patch("/tenants/{tenant_id}")

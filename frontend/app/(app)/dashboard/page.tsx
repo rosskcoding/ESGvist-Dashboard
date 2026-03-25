@@ -279,7 +279,7 @@ export default function DashboardPage() {
             <Progress
               value={progress.overall_completion_percent}
               className="mt-3"
-              indicatorClassName="bg-blue-600"
+              indicatorClassName="bg-cyan-600"
             />
           </CardContent>
         </Card>
@@ -377,7 +377,7 @@ export default function DashboardPage() {
                           ? "bg-green-500"
                           : std.completion_percent >= 50
                             ? "bg-amber-500"
-                            : "bg-blue-600"
+                            : "bg-cyan-600"
                       )}
                     />
                     <p className="text-xs text-slate-400">

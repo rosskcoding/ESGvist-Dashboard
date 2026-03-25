@@ -73,11 +73,15 @@ class EvidenceService:
             created_by=ctx.user_id,
         )
 
-        if payload.type == "file" and payload.file_name:
+        if payload.type == "file":
+            if not payload.file_name:
+                raise AppError("INVALID_INPUT", 422, "file_name is required for file evidence")
+            if not payload.file_uri or not payload.file_uri.strip():
+                raise AppError("INVALID_INPUT", 422, "file_uri is required for file evidence")
             await self.repo.create_file(
                 evidence_id=ev.id,
                 file_name=payload.file_name,
-                file_uri=payload.file_uri or "",
+                file_uri=payload.file_uri,
                 mime_type=payload.mime_type,
                 file_size=payload.file_size,
             )
@@ -177,6 +181,8 @@ class EvidenceService:
         ev = await self.repo.get_or_raise(evidence_id)
         if ev.organization_id != ctx.organization_id and not ctx.is_platform_admin:
             raise AppError("FORBIDDEN", 403, "Evidence belongs to another organization")
+        if ev.type != "file":
+            raise AppError("INVALID_INPUT", 422, "Download URL is only available for file-type evidence")
         file_row = await self.repo.session.execute(
             select(EvidenceFile.file_uri).where(EvidenceFile.evidence_id == evidence_id)
         )
@@ -192,6 +198,10 @@ class EvidenceService:
         context = await self._load_context([ev])
         return self._serialize(ev, context)
 
+    # Fields that can be updated via the API. Everything else is immutable
+    # or managed by internal logic (organization_id, created_by, type, etc.).
+    _UPDATABLE_FIELDS = {"title", "description"}
+
     async def update_evidence(
         self,
         evidence_id: int,
@@ -202,11 +212,15 @@ class EvidenceService:
         ev = await self.repo.get_or_raise(evidence_id)
         if ev.organization_id != ctx.organization_id and not ctx.is_platform_admin:
             raise AppError("FORBIDDEN", 403, "Evidence belongs to another organization")
+        applied: dict = {}
         for key, value in changes.items():
-            if hasattr(ev, key):
+            if key in self._UPDATABLE_FIELDS:
                 setattr(ev, key, value)
+                applied[key] = value
+        if not applied:
+            raise AppError("INVALID_INPUT", 422, "No updatable fields provided")
         await self.repo.session.flush()
-        await self._audit("evidence_updated", ev.id, ctx, changes)
+        await self._audit("evidence_updated", ev.id, ctx, applied)
         context = await self._load_context([ev])
         return self._serialize(ev, context)
 
@@ -222,17 +236,10 @@ class EvidenceService:
             page,
             page_size,
             created_by=created_by,
+            unlinked=unlinked,
         )
         context = await self._load_context(items)
         serialized = [self._serialize(item, context) for item in items]
-
-        if unlinked is not None:
-            if unlinked:
-                serialized = [s for s in serialized if s.binding_status == "unbound"]
-            else:
-                serialized = [s for s in serialized if s.binding_status == "bound"]
-            total = len(serialized)
-
         return EvidenceListOut(items=serialized, total=total)
 
     async def unlink_from_data_point(

@@ -1,8 +1,9 @@
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import update
+from sqlalchemy import select, update
 
 from app.db.models.boundary import BoundaryMembership
+from app.db.models.completeness import RequirementItemDataPoint
 from app.db.models.data_point import DataPoint
 from tests.conftest import TestSessionLocal
 
@@ -103,6 +104,37 @@ async def test_bind_data_point(client: AsyncClient, ctx: dict):
 
 
 @pytest.mark.asyncio
+async def test_bind_data_point_is_idempotent(client: AsyncClient, ctx: dict):
+    first = await client.post(
+        f"/api/projects/{ctx['project_id']}/bindings",
+        json={"requirement_item_id": ctx["item1_id"], "data_point_id": ctx["dp_id"]},
+        headers=ctx["headers"],
+    )
+    second = await client.post(
+        f"/api/projects/{ctx['project_id']}/bindings",
+        json={"requirement_item_id": ctx["item1_id"], "data_point_id": ctx["dp_id"]},
+        headers=ctx["headers"],
+    )
+
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert second.json()["binding_id"] == first.json()["binding_id"]
+
+    async with TestSessionLocal() as session:
+        bindings = (
+            await session.execute(
+                select(RequirementItemDataPoint).where(
+                    RequirementItemDataPoint.reporting_project_id == ctx["project_id"],
+                    RequirementItemDataPoint.requirement_item_id == ctx["item1_id"],
+                    RequirementItemDataPoint.data_point_id == ctx["dp_id"],
+                )
+            )
+        ).scalars().all()
+
+    assert len(bindings) == 1
+
+
+@pytest.mark.asyncio
 async def test_item_status_partial_not_approved(client: AsyncClient, ctx: dict):
     """Binding exists but data point is draft → partial."""
     await client.post(
@@ -128,9 +160,10 @@ async def test_item_status_complete_after_approve(client: AsyncClient, ctx: dict
     )
 
     # Set data point to approved
-    from tests.conftest import TestSessionLocal
-    from app.db.models.data_point import DataPoint
     from sqlalchemy import update
+
+    from app.db.models.data_point import DataPoint
+    from tests.conftest import TestSessionLocal
 
     async with TestSessionLocal() as session:
         await session.execute(
@@ -166,9 +199,10 @@ async def test_disclosure_status_partial(client: AsyncClient, ctx: dict):
         headers=ctx["headers"],
     )
 
-    from tests.conftest import TestSessionLocal
-    from app.db.models.data_point import DataPoint
     from sqlalchemy import update
+
+    from app.db.models.data_point import DataPoint
+    from tests.conftest import TestSessionLocal
 
     async with TestSessionLocal() as session:
         await session.execute(
@@ -212,9 +246,10 @@ async def test_disclosure_status_complete(client: AsyncClient, ctx: dict):
     )
 
     # Approve both
-    from tests.conftest import TestSessionLocal
-    from app.db.models.data_point import DataPoint
     from sqlalchemy import update
+
+    from app.db.models.data_point import DataPoint
+    from tests.conftest import TestSessionLocal
 
     async with TestSessionLocal() as session:
         await session.execute(
@@ -242,9 +277,10 @@ async def test_project_completeness_overall(client: AsyncClient, ctx: dict):
         headers=ctx["headers"],
     )
 
-    from tests.conftest import TestSessionLocal
-    from app.db.models.data_point import DataPoint
     from sqlalchemy import update
+
+    from app.db.models.data_point import DataPoint
+    from tests.conftest import TestSessionLocal
 
     async with TestSessionLocal() as session:
         await session.execute(
@@ -281,9 +317,10 @@ async def test_project_completeness_per_standard(client: AsyncClient, ctx: dict)
         headers=ctx["headers"],
     )
 
-    from tests.conftest import TestSessionLocal
-    from app.db.models.data_point import DataPoint
     from sqlalchemy import update
+
+    from app.db.models.data_point import DataPoint
+    from tests.conftest import TestSessionLocal
 
     async with TestSessionLocal() as session:
         await session.execute(

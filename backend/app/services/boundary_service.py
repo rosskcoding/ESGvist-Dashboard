@@ -1,4 +1,4 @@
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dashboard_cache import invalidate_dashboard_projects
@@ -166,8 +166,20 @@ class BoundaryService:
         boundary = await self._get_boundary_or_raise(boundary_id, ctx)
         await self._assert_editable(boundary)
         changes = payload.model_dump(exclude_unset=True)
+        if changes.get("is_default") is True:
+            await self.session.execute(
+                update(BoundaryDefinition)
+                .where(
+                    BoundaryDefinition.organization_id == boundary.organization_id,
+                    BoundaryDefinition.id != boundary.id,
+                    BoundaryDefinition.is_default == True,  # noqa: E712
+                )
+                .values(is_default=False)
+            )
+        _BOUNDARY_EDITABLE = {"name", "boundary_type", "description", "is_default"}
         for key, value in changes.items():
-            setattr(boundary, key, value)
+            if key in _BOUNDARY_EDITABLE:
+                setattr(boundary, key, value)
         await self.session.flush()
         await invalidate_dashboard_projects(await self._project_ids_using_boundary(boundary_id))
         if self.audit_repo:

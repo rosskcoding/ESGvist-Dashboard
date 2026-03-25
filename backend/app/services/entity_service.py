@@ -2,13 +2,12 @@ from datetime import date
 
 from sqlalchemy import select
 
-from app.db.models.boundary import BoundaryDefinition, BoundaryMembership
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError
+from app.db.models.boundary import BoundaryDefinition, BoundaryMembership
 from app.repositories.audit_repo import AuditRepository
 from app.repositories.entity_repo import EntityRepository
 from app.repositories.role_binding_repo import RoleBindingRepository
-from app.services.invitation_service import InvitationService
 from app.schemas.entities import (
     ControlLinkCreate,
     ControlLinkOut,
@@ -20,6 +19,7 @@ from app.schemas.entities import (
     OwnershipLinkCreate,
     OwnershipLinkOut,
 )
+from app.services.invitation_service import InvitationService
 
 COUNTRY_CURRENCY_MAP: dict[str, str] = {
     "US": "USD",
@@ -38,6 +38,18 @@ BOUNDARY_NAME_BY_TYPE: dict[str, str] = {
     "operational_control": "Operational Control Boundary",
     "equity_share": "Equity Share Boundary",
     "custom": "Custom Boundary",
+}
+
+ORG_SETTINGS_EDITABLE_FIELDS = {
+    "name",
+    "legal_name",
+    "country",
+    "jurisdiction",
+    "industry",
+    "default_currency",
+    "default_reporting_year",
+    "default_consolidation_approach",
+    "default_ghg_scope_approach",
 }
 
 
@@ -281,10 +293,39 @@ class EntityService:
 
         updates = payload.model_dump(exclude_unset=True)
         updated = await self.repo.update_entity(entity_id, **updates)
-        await self._audit("CompanyEntity", "update_entity", ctx, entity_id=entity_id, changes=updates)
+        await self._audit(
+            "CompanyEntity",
+            "update_entity",
+            ctx,
+            entity_id=entity_id,
+            changes=updates,
+        )
         return EntityOut.model_validate(updated)
 
     # --- Ownership ---
+    async def _assert_entity_in_org(self, entity_id: int, ctx: RequestContext) -> None:
+        """Verify the entity belongs to the current organization.
+
+        Prevents cross-tenant data corruption where a user with entity IDs
+        from another org could create links between tenants.
+
+        Platform admins may read across tenants, but ownership/control links
+        must always stay tenant-local to preserve graph integrity.
+        """
+        from app.db.models.company_entity import CompanyEntity
+
+        result = await self.repo.session.execute(
+            select(CompanyEntity).where(CompanyEntity.id == entity_id)
+        )
+        entity = result.scalar_one_or_none()
+        if not entity:
+            raise AppError("NOT_FOUND", 404, f"Entity {entity_id} not found")
+        if entity.organization_id != ctx.organization_id:
+            raise AppError(
+                "CROSS_TENANT_LINK", 403,
+                "Cannot create links to entities outside current organization"
+            )
+
     async def create_ownership(
         self, payload: OwnershipLinkCreate, ctx: RequestContext
     ) -> OwnershipLinkOut:
@@ -292,6 +333,13 @@ class EntityService:
 
         if payload.parent_entity_id == payload.child_entity_id:
             raise AppError("SELF_OWNERSHIP_NOT_ALLOWED", 422, "Entity cannot own itself")
+
+        # Cross-tenant guard
+        await self._assert_entity_in_org(payload.parent_entity_id, ctx)
+        await self._assert_entity_in_org(payload.child_entity_id, ctx)
+
+        # Serialize ownership checks per child entity to avoid race conditions
+        await self.repo.lock_entity_for_update(payload.child_entity_id)
 
         # Check sum ≤ 100%
         current_sum = await self.repo.get_ownership_sum(payload.child_entity_id)
@@ -318,6 +366,10 @@ class EntityService:
         if payload.controlling_entity_id == payload.controlled_entity_id:
             raise AppError("SELF_CONTROL_NOT_ALLOWED", 422, "Entity cannot control itself")
 
+        # Cross-tenant guard
+        await self._assert_entity_in_org(payload.controlling_entity_id, ctx)
+        await self._assert_entity_in_org(payload.controlled_entity_id, ctx)
+
         link = await self.repo.create_control(**payload.model_dump())
         await self._audit("ControlLink", "create_control", ctx, entity_id=link.id,
                           changes=payload.model_dump())
@@ -326,6 +378,7 @@ class EntityService:
     async def _check_ownership_cycle(self, parent_id: int, child_id: int) -> None:
         """Prevent cycles: check if child already owns parent (directly or indirectly)."""
         from sqlalchemy import select
+
         from app.db.models.company_entity import OwnershipLink
 
         visited = set()
@@ -379,8 +432,20 @@ class EntityService:
         org = await self.repo.get_organization(ctx.organization_id)
         if not org:
             raise AppError("NOT_FOUND", 404, "Organization not found")
+        invalid_fields = sorted(set(changes) - ORG_SETTINGS_EDITABLE_FIELDS)
+        if invalid_fields:
+            raise AppError(
+                "ORG_SETTINGS_FIELD_NOT_EDITABLE",
+                422,
+                f"Organization settings fields are not editable: {', '.join(invalid_fields)}",
+            )
         for key, value in changes.items():
-            if hasattr(org, key):
-                setattr(org, key, value)
-        await self._audit("Organization", "org_settings_updated", ctx, entity_id=org.id, changes=changes)
+            setattr(org, key, value)
+        await self._audit(
+            "Organization",
+            "org_settings_updated",
+            ctx,
+            entity_id=org.id,
+            changes=changes,
+        )
         return await self.get_org_settings(ctx)

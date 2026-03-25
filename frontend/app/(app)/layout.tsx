@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { logout } from "@/lib/auth";
 import { api, isAppApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -76,6 +77,14 @@ interface SupportSessionCurrent {
   started_at: string | null;
 }
 
+interface TenantListResponse {
+  items: Array<{
+    id: number;
+    name: string;
+  }>;
+  total: number;
+}
+
 interface NavItem {
   label: string;
   href: string;
@@ -86,14 +95,19 @@ interface NavItem {
 interface NavGroup {
   title: string;
   items: NavItem[];
-  requiredRole?: string;
+  requiredRoles?: string[];
 }
 
 const navGroups: NavGroup[] = [
   {
     title: "Main",
     items: [
-      { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+      {
+        label: "Dashboard",
+        href: "/dashboard",
+        icon: LayoutDashboard,
+        requiredRoles: ["collector", "reviewer", "esg_manager", "admin", "auditor", "platform_admin"],
+      },
       {
         label: "Collection",
         href: "/collection",
@@ -139,13 +153,13 @@ const navGroups: NavGroup[] = [
         label: "Report / Export",
         href: "/report",
         icon: FileOutput,
-        requiredRoles: ["admin", "esg_manager", "platform_admin"],
+        requiredRoles: ["admin", "esg_manager"],
       },
       {
         label: "Audit Log",
         href: "/audit",
         icon: ScrollText,
-        requiredRoles: ["admin", "auditor", "platform_admin"],
+        requiredRoles: ["admin", "auditor"],
       },
     ],
   },
@@ -178,24 +192,6 @@ const navGroups: NavGroup[] = [
         requiredRoles: ["admin", "esg_manager", "platform_admin"],
       },
       {
-        label: "Standards",
-        href: "/settings/standards",
-        icon: BookOpen,
-        requiredRoles: ["admin", "platform_admin"],
-      },
-      {
-        label: "Shared Elements",
-        href: "/settings/shared-elements",
-        icon: Share2,
-        requiredRoles: ["admin", "platform_admin"],
-      },
-      {
-        label: "Mapping History",
-        href: "/settings/mappings",
-        icon: GitMerge,
-        requiredRoles: ["admin", "platform_admin"],
-      },
-      {
         label: "Users",
         href: "/settings/users",
         icon: Users,
@@ -217,9 +213,19 @@ const navGroups: NavGroup[] = [
   },
   {
     title: "Platform",
-    requiredRole: "platform_admin",
     items: [
-      { label: "Tenants", href: "/platform/tenants", icon: Server },
+      {
+        label: "Framework Catalog",
+        href: "/platform/framework",
+        icon: BookOpen,
+        requiredRoles: ["framework_admin", "platform_admin"],
+      },
+      {
+        label: "Tenants",
+        href: "/platform/tenants",
+        icon: Server,
+        requiredRoles: ["platform_admin"],
+      },
     ],
   },
 ];
@@ -232,6 +238,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </AIContextProvider>
     </Providers>
   );
+}
+
+function routeRequiresTenantContext(pathname: string): boolean {
+  return pathname !== "/onboarding" && !pathname.startsWith("/platform");
 }
 
 function AppShell({ children }: { children: React.ReactNode }) {
@@ -247,6 +257,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const [copilotOpen, setCopilotOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [orgContextReady, setOrgContextReady] = useState(false);
+  const [orgContextError, setOrgContextError] = useState<string | null>(null);
   const [supportMode, setSupportMode] = useState<SupportModeState>(() => readSupportMode());
   const [supportModeReady, setSupportModeReady] = useState(false);
   const [supportEnding, setSupportEnding] = useState(false);
@@ -280,8 +291,12 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const userRoles = user?.roles?.map((role) => role.role) ?? [];
   const userRole = userRoles[0] ?? "";
   const isPlatformAdmin = user?.roles?.some((r) => r.role === "platform_admin") ?? false;
+  const isFrameworkAdmin = user?.roles?.some((r) => r.role === "framework_admin") ?? false;
+  const hasNotificationEligibleOrgRole =
+    user?.roles?.some((binding) => binding.scope_type === "organization" && binding.role !== "auditor") ?? false;
+  const requiresTenantContext = routeRequiresTenantContext(pathname);
   const organizationName = "Organization";
-  const canAccessNotifications = userRoles.some((role) => role !== "auditor");
+  const canAccessNotifications = isPlatformAdmin || hasNotificationEligibleOrgRole;
   const unreadQueryEnabled = mounted && Boolean(user) && canAccessNotifications && orgContextReady;
 
   const { data: currentSupportSession } = useApiQuery<SupportSessionCurrent>(
@@ -313,13 +328,23 @@ function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!mounted || !user) {
       setOrgContextReady(false);
+      setOrgContextError(null);
       return;
     }
+
+    if (!requiresTenantContext) {
+      setOrgContextError(null);
+      setOrgContextReady(true);
+      return;
+    }
+
     if (isPlatformAdmin && !supportModeReady) {
       setOrgContextReady(false);
       return;
     }
+
     if (supportMode.active) {
+      setOrgContextError(null);
       setOrgContextReady(true);
       return;
     }
@@ -327,32 +352,67 @@ function AppShell({ children }: { children: React.ReactNode }) {
     const orgRole = user.roles.find(
       (role) => role.scope_type === "organization" && role.scope_id
     );
-    if (!orgRole?.scope_id) {
-      setOrgContextReady(false);
-      return;
-    }
 
     let cancelled = false;
     setOrgContextReady(false);
-    void api
-      .post("/auth/context/organization", {
-        organization_id: orgRole.scope_id,
-      })
-      .then(() => {
-        if (!cancelled) {
-          setOrgContextReady(true);
+    setOrgContextError(null);
+
+    async function ensureTenantContext() {
+      try {
+        if (orgRole?.scope_id) {
+          await api.post("/auth/context/organization", {
+            organization_id: orgRole.scope_id,
+          });
+          if (!cancelled) {
+            setOrgContextReady(true);
+          }
+          return;
         }
-      })
-      .catch(() => {
+
+        if (!isPlatformAdmin) {
+          if (!cancelled) {
+            setOrgContextError(
+              isFrameworkAdmin
+                ? "This role works in Framework Catalog only. Open the platform framework workspace."
+                : "Organization context is unavailable for this account."
+            );
+            setOrgContextReady(false);
+          }
+          return;
+        }
+
+        const tenants = await api.get<TenantListResponse>("/platform/tenants?page=1&page_size=2");
+        if (cancelled) return;
+        if (tenants.total === 1 && tenants.items[0]) {
+          await api.post("/auth/context/organization", {
+            organization_id: tenants.items[0].id,
+          });
+          if (!cancelled) {
+            setOrgContextReady(true);
+          }
+          return;
+        }
+
+        setOrgContextError(
+          tenants.total > 1
+            ? "Select a tenant from Platform > Tenants before opening tenant-scoped screens."
+            : "Create or select a tenant before opening tenant-scoped screens."
+        );
+        setOrgContextReady(false);
+      } catch {
         if (!cancelled) {
+          setOrgContextError("Unable to establish organization context.");
           setOrgContextReady(false);
         }
-      });
+      }
+    }
+
+    void ensureTenantContext();
 
     return () => {
       cancelled = true;
     };
-  }, [isPlatformAdmin, mounted, supportMode.active, supportModeReady, user]);
+  }, [isFrameworkAdmin, isPlatformAdmin, mounted, requiresTenantContext, supportMode.active, supportModeReady, user]);
 
   useEffect(() => {
     if (!mounted || !user) {
@@ -418,10 +478,16 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!user || isPlatformAdmin || hasOrganizationRole) return;
+    if (isFrameworkAdmin) {
+      if (!pathname.startsWith("/platform/framework")) {
+        router.push("/platform/framework");
+      }
+      return;
+    }
     if (pathname !== "/onboarding") {
       router.push("/onboarding");
     }
-  }, [hasOrganizationRole, isPlatformAdmin, pathname, router, user]);
+  }, [hasOrganizationRole, isFrameworkAdmin, isPlatformAdmin, pathname, router, user]);
 
   if (!mounted || !user) {
     return (
@@ -431,19 +497,45 @@ function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
+  if (requiresTenantContext && !orgContextReady) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
+        <div className="max-w-md rounded-xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+          <div className="text-lg font-semibold text-slate-900">Preparing tenant context</div>
+          <p className="mt-2 text-sm text-slate-500">
+            {orgContextError ?? "Loading the organization context for this workspace."}
+          </p>
+          {isPlatformAdmin && orgContextError && (
+            <Button className="mt-4" onClick={() => router.push("/platform/tenants")}>
+              Open Tenants
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen">
       {/* Sidebar */}
       <aside className="flex w-64 flex-col border-r border-gray-200 bg-white">
-        <div className="flex h-16 items-center border-b border-gray-200 px-6">
-          <Link href="/dashboard" prefetch={false} className="text-xl font-bold text-gray-900">
-            ESGvist
+        <div className="flex h-16 items-center border-b border-gray-200 px-4">
+          <Link href="/dashboard" prefetch={false}>
+            <Image
+              src="/brand/logo-esgvist.png"
+              alt="ESGvist"
+              width={168}
+              height={32}
+              priority
+            />
           </Link>
         </div>
 
         <nav className="flex-1 overflow-y-auto py-4">
-          {navGroups.map((group) => {
-            if (group.requiredRole && !isPlatformAdmin) return null;
+                  {navGroups.map((group) => {
+            const visibleItems = group.items.filter((item) => hasRequiredRole(item.requiredRoles));
+            if (group.requiredRoles && !hasRequiredRole(group.requiredRoles)) return null;
+            if (visibleItems.length === 0) return null;
 
             return (
               <div key={group.title} className="mb-6 px-3">
@@ -451,10 +543,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
                   {group.title}
                 </p>
                 <div className="space-y-1">
-                  {group.items.map((item) => {
-                    if (!hasRequiredRole(item.requiredRoles)) {
-                      return null;
-                    }
+                  {visibleItems.map((item) => {
                     const isActive =
                       pathname === item.href ||
                       (item.href !== "/settings" && pathname.startsWith(item.href + "/"));
@@ -468,7 +557,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
                         className={cn(
                           "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                           isActive
-                            ? "bg-blue-50 text-blue-700"
+                            ? "bg-cyan-50 text-cyan-700"
                             : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
                         )}
                       >
@@ -530,7 +619,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="gap-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-sm font-medium text-blue-700">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-cyan-100 text-sm font-medium text-cyan-700">
                     {user.full_name
                       .split(" ")
                       .map((n) => n[0])

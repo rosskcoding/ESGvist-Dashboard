@@ -278,7 +278,7 @@ export default function CompletenessPage() {
                   ? "bg-green-500"
                   : (completeness?.overall_percent ?? 0) >= 50
                     ? "bg-amber-500"
-                    : "bg-blue-600"
+                    : "bg-cyan-600"
               )}
             />
           </CardContent>
@@ -356,7 +356,7 @@ export default function CompletenessPage() {
                         ? "bg-green-500"
                         : std.completion_percent >= 50
                           ? "bg-amber-500"
-                          : "bg-blue-600"
+                          : "bg-cyan-600"
                     )}
                   />
                   <p className="text-xs text-slate-400">
@@ -447,9 +447,9 @@ export default function CompletenessPage() {
                         <TableRow>
                           <TableCell colSpan={5} className="bg-slate-50 p-4">
                             <div className="space-y-3">
-                              <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
-                                <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-500" />
-                                <p className="text-sm text-blue-800">
+                              <div className="flex items-start gap-2 rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+                                <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-cyan-500" />
+                                <p className="text-sm text-cyan-800">
                                   Completion: {Math.round(disclosure.completion_percent)}%
                                 </p>
                               </div>

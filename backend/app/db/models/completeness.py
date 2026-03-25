@@ -20,6 +20,15 @@ class RequirementItemDataPoint(Base, TimestampMixin):
     )
     binding_type: Mapped[str] = mapped_column(String, default="direct", nullable=False)
 
+    __table_args__ = (
+        UniqueConstraint(
+            "reporting_project_id",
+            "requirement_item_id",
+            "data_point_id",
+            name="uq_requirement_item_data_point",
+        ),
+    )
+
 
 class RequirementItemStatus(Base, TimestampMixin):
     __tablename__ = "requirement_item_statuses"

@@ -104,7 +104,7 @@ test.describe("Platform and setup regressions", () => {
     await page.getByRole("button", { name: "Create Organization" }).click();
 
     await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
-    await expect(page.getByText(`Welcome to ESGvist, ${organizationName}!`)).toBeVisible();
+    await expect(page.getByText("Welcome to ESGvist!")).toBeVisible();
     await expect(page.getByRole("link", { name: "Create your first ESG report" })).toBeVisible();
   });
 

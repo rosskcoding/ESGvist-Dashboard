@@ -1,6 +1,16 @@
 import pytest
 from httpx import AsyncClient
 
+from app.core.dependencies import RequestContext
+from app.core.exceptions import AppError
+from app.repositories.audit_repo import AuditRepository
+from app.repositories.refresh_token_repo import RefreshTokenRepository
+from app.repositories.role_binding_repo import RoleBindingRepository
+from app.repositories.sso_repo import SSORepository
+from app.repositories.user_repo import UserRepository
+from app.services.sso_service import SSOService
+from tests.conftest import TestSessionLocal
+
 
 async def _register_and_login(client: AsyncClient, *, email: str, full_name: str) -> dict:
     await client.post(
@@ -330,6 +340,36 @@ async def test_password_login_blocked_when_org_enforces_sso(client: AsyncClient,
 
     still_allowed = await client.get("/api/auth/me", headers=member["headers"])
     assert still_allowed.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_sso_service_rejects_non_editable_provider_fields(client: AsyncClient, sso_ctx: dict):
+    provider_id = await _create_provider(client, sso_ctx["tenant_headers"], name="Unsafe Update SSO")
+    me = await client.get("/api/auth/me", headers=sso_ctx["tenant_headers"])
+    assert me.status_code == 200
+
+    class UnsafePayload:
+        def model_dump(self, mode: str = "json", exclude_unset: bool = True):
+            return {"organization_id": sso_ctx["org_id"] + 1, "name": "Updated"}
+
+    async with TestSessionLocal() as session:
+        service = SSOService(
+            sso_repo=SSORepository(session),
+            user_repo=UserRepository(session),
+            role_binding_repo=RoleBindingRepository(session),
+            refresh_token_repo=RefreshTokenRepository(session),
+            audit_repo=AuditRepository(session),
+        )
+        ctx = RequestContext(
+            user_id=me.json()["id"],
+            email=me.json()["email"],
+            organization_id=sso_ctx["org_id"],
+            role="admin",
+        )
+        with pytest.raises(AppError) as exc_info:
+            await service.update_provider(provider_id, UnsafePayload(), ctx)
+
+    assert exc_info.value.code == "SSO_PROVIDER_FIELD_NOT_EDITABLE"
 
 
 @pytest.mark.asyncio

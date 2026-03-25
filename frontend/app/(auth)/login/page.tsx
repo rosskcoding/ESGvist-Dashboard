@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { login } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,8 +60,15 @@ export default function LoginPage() {
 
   return (
     <Card className="w-full max-w-md">
-      <CardHeader className="text-center">
-        <CardTitle className="text-3xl font-bold">ESGvist</CardTitle>
+      <CardHeader className="flex flex-col items-center text-center">
+        <Image
+          src="/brand/logo-esgvist.png"
+          alt="ESGvist"
+          width={200}
+          height={38}
+          priority
+          className="mb-2"
+        />
         <CardDescription>ESG data management platform</CardDescription>
       </CardHeader>
 
@@ -112,6 +120,7 @@ export default function LoginPage() {
             <table className="w-full text-left">
               <tbody className="divide-y divide-slate-200">
                 <tr><td className="py-0.5 font-mono text-slate-700">admin@esgvist.com</td><td className="py-0.5 text-slate-400">platform_admin</td></tr>
+                <tr><td className="py-0.5 font-mono text-slate-700">framework@esgvist.com</td><td className="py-0.5 text-slate-400">framework_admin</td></tr>
                 <tr><td className="py-0.5 font-mono text-slate-700">manager@greentech.com</td><td className="py-0.5 text-slate-400">esg_manager</td></tr>
                 <tr><td className="py-0.5 font-mono text-slate-700">collector1@greentech.com</td><td className="py-0.5 text-slate-400">collector</td></tr>
                 <tr><td className="py-0.5 font-mono text-slate-700">collector2@greentech.com</td><td className="py-0.5 text-slate-400">collector</td></tr>
@@ -128,7 +137,7 @@ export default function LoginPage() {
           Don&apos;t have an account?{" "}
           <Link
             href="/register"
-            className="font-medium text-blue-600 hover:text-blue-500"
+            className="font-medium text-cyan-600 hover:text-cyan-500"
           >
             Create one
           </Link>

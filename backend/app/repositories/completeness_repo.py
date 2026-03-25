@@ -1,4 +1,5 @@
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.completeness import (
@@ -8,8 +9,8 @@ from app.db.models.completeness import (
 )
 from app.db.models.data_point import DataPoint
 from app.db.models.evidence import DataPointEvidence
-from app.db.models.requirement_item import RequirementItem
 from app.db.models.project import ReportingProjectStandard
+from app.db.models.requirement_item import RequirementItem
 from app.db.models.standard import DisclosureRequirement, Standard
 
 
@@ -18,18 +19,44 @@ class CompletenessRepository:
         self.session = session
 
     # --- Bindings ---
+    async def get_binding(
+        self,
+        project_id: int,
+        item_id: int,
+        dp_id: int,
+    ) -> RequirementItemDataPoint | None:
+        result = await self.session.execute(
+            select(RequirementItemDataPoint).where(
+                RequirementItemDataPoint.reporting_project_id == project_id,
+                RequirementItemDataPoint.requirement_item_id == item_id,
+                RequirementItemDataPoint.data_point_id == dp_id,
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def create_binding(
         self, project_id: int, item_id: int, dp_id: int, binding_type: str = "direct"
     ) -> RequirementItemDataPoint:
-        b = RequirementItemDataPoint(
-            reporting_project_id=project_id,
-            requirement_item_id=item_id,
-            data_point_id=dp_id,
-            binding_type=binding_type,
-        )
-        self.session.add(b)
-        await self.session.flush()
-        return b
+        existing = await self.get_binding(project_id, item_id, dp_id)
+        if existing:
+            return existing
+
+        try:
+            async with self.session.begin_nested():
+                b = RequirementItemDataPoint(
+                    reporting_project_id=project_id,
+                    requirement_item_id=item_id,
+                    data_point_id=dp_id,
+                    binding_type=binding_type,
+                )
+                self.session.add(b)
+                await self.session.flush()
+                return b
+        except IntegrityError:
+            existing = await self.get_binding(project_id, item_id, dp_id)
+            if existing:
+                return existing
+            raise
 
     async def get_bindings(self, project_id: int, item_id: int) -> list[RequirementItemDataPoint]:
         q = select(RequirementItemDataPoint).where(

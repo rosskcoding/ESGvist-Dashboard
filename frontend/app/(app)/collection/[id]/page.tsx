@@ -83,7 +83,7 @@ function StepIndicator({ current }: { current: number }) {
               className={cn(
                 "flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold transition-colors",
                 done && "bg-green-500 text-white",
-                active && "bg-blue-600 text-white",
+                active && "bg-cyan-600 text-white",
                 !done && !active && "bg-slate-100 text-slate-400"
               )}
             >
@@ -724,7 +724,7 @@ export default function DataEntryWizardPage() {
                 className={cn(
                   "flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-colors",
                   dragOver
-                    ? "border-blue-400 bg-blue-50"
+                    ? "border-cyan-400 bg-cyan-50"
                     : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
                 )}
               >

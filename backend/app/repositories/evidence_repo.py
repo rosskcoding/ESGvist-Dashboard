@@ -1,4 +1,4 @@
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError
@@ -32,10 +32,29 @@ class EvidenceRepository:
         page: int = 1,
         page_size: int = 50,
         created_by: int | None = None,
+        unlinked: bool | None = None,
     ) -> tuple[list[Evidence], int]:
         filters = [Evidence.organization_id == org_id]
         if created_by is not None:
             filters.append(Evidence.created_by == created_by)
+
+        # SQL-level bound/unbound filter — applied before pagination
+        if unlinked is not None:
+            has_dp_link = exists(
+                select(DataPointEvidence.id).where(
+                    DataPointEvidence.evidence_id == Evidence.id
+                )
+            )
+            has_ri_link = exists(
+                select(RequirementItemEvidence.id).where(
+                    RequirementItemEvidence.evidence_id == Evidence.id
+                )
+            )
+            is_bound = has_dp_link | has_ri_link
+            if unlinked:
+                filters.append(~is_bound)
+            else:
+                filters.append(is_bound)
 
         count_q = select(func.count()).select_from(Evidence).where(*filters)
         total = (await self.session.execute(count_q)).scalar_one()

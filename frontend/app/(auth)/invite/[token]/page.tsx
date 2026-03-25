@@ -128,7 +128,7 @@ export default function InvitePage() {
     return (
       <Card className="w-full max-w-md">
         <CardContent className="flex flex-col items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+          <Loader2 className="h-8 w-8 animate-spin text-cyan-600" />
           <p className="mt-4 text-sm text-muted-foreground">
             Validating invitation...
           </p>
@@ -191,7 +191,7 @@ export default function InvitePage() {
             {invitation?.organization_name}
           </span>{" "}
           as{" "}
-          <span className="font-medium text-blue-600">
+          <span className="font-medium text-cyan-600">
             {invitation?.role}
           </span>
         </CardDescription>
@@ -207,7 +207,7 @@ export default function InvitePage() {
 
           {!invitation?.already_registered && (
             <>
-              <div className="rounded-md bg-blue-50 p-3 text-sm text-blue-700">
+              <div className="rounded-md bg-cyan-50 p-3 text-sm text-cyan-700">
                 Create your account to accept this invitation.
               </div>
 

@@ -93,6 +93,9 @@ class OrgUserOut(BaseModel):
     email: str
     full_name: str
     role: Literal["collector", "reviewer", "esg_manager", "admin", "auditor"]
+    roles: list[Literal["collector", "reviewer", "esg_manager", "admin", "auditor"]] = Field(
+        default_factory=list
+    )
     status: Literal["active", "inactive"]
     joined_date: str | None = None
 
@@ -121,7 +124,15 @@ class UserStatusUpdateRequest(BaseModel):
 
 
 class UserRoleBindingCreateRequest(BaseModel):
-    role: Literal["platform_admin", "admin", "esg_manager", "reviewer", "collector", "auditor"]
+    role: Literal[
+        "platform_admin",
+        "framework_admin",
+        "admin",
+        "esg_manager",
+        "reviewer",
+        "collector",
+        "auditor",
+    ]
     scope_type: Literal["platform", "organization"]
     scope_id: int | None = None
 

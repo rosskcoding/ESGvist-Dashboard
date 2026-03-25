@@ -684,7 +684,7 @@ export default function ProjectSettingsPage() {
                               ? "bg-green-500"
                               : std.completion_percentage >= 50
                                 ? "bg-amber-500"
-                                : "bg-blue-600"
+                                : "bg-cyan-600"
                           }
                         />
                         <span className="text-sm font-semibold">
@@ -874,7 +874,7 @@ export default function ProjectSettingsPage() {
                                     ? "bg-green-500"
                                     : pct >= 50
                                       ? "bg-amber-500"
-                                      : "bg-blue-600"
+                                      : "bg-cyan-600"
                                 }
                               />
                               <span className="text-xs text-slate-500">

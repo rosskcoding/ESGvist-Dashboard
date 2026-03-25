@@ -4,6 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import AppError
 from app.db.models.form_config import FormConfiguration
 
+FORM_CONFIG_EDITABLE_FIELDS = {"name", "description", "config", "is_active"}
+
 
 class FormConfigRepository:
     def __init__(self, session: AsyncSession):
@@ -87,8 +89,14 @@ class FormConfigRepository:
 
     async def update(self, config_id: int, **kwargs) -> FormConfiguration:
         fc = await self.get_or_raise(config_id)
+        invalid_fields = sorted(set(kwargs) - FORM_CONFIG_EDITABLE_FIELDS)
+        if invalid_fields:
+            raise AppError(
+                "FORM_CONFIG_FIELD_NOT_EDITABLE",
+                422,
+                f"Form configuration fields are not editable: {', '.join(invalid_fields)}",
+            )
         for key, value in kwargs.items():
-            if hasattr(fc, key):
-                setattr(fc, key, value)
+            setattr(fc, key, value)
         await self.session.flush()
         return fc

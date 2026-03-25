@@ -106,36 +106,110 @@ class BaseLLMClient(ABC):
     def parse_ai_response(self, raw: str) -> AIResponse:
         """Parse LLM output into AIResponse."""
         try:
-            data = json.loads(raw)
+            data = self._parse_structured_payload(raw)
+            prose = self._extract_leading_text(raw)
+            text = (
+                data.get("text")
+                or data.get("response")
+                or data.get("message")
+                or data.get("answer")
+                or prose
+                or raw
+            )
+            reasons = data.get("reasons")
+            if isinstance(reasons, str):
+                reasons = [reasons]
             return AIResponse(
-                text=data.get("text", raw),
-                reasons=data.get("reasons"),
+                text=text,
+                reasons=reasons,
                 next_actions=[
-                    SuggestedAction(**a) for a in (data.get("next_actions") or [])
+                    SuggestedAction(**a)
+                    for a in (data.get("next_actions") or data.get("nextActions") or [])
                 ] or None,
                 references=[
                     Reference(**r) for r in (data.get("references") or [])
                 ] or None,
                 confidence=data.get("confidence", "medium"),
             )
-        except (json.JSONDecodeError, TypeError, KeyError):
+        except (json.JSONDecodeError, TypeError, KeyError, AttributeError):
             return AIResponse(text=raw, confidence="low")
 
     def parse_review_response(self, raw: str) -> ReviewAssistResponse:
         """Parse LLM output into ReviewAssistResponse."""
         try:
-            data = json.loads(raw)
+            data = self._parse_structured_payload(raw)
+            prose = self._extract_leading_text(raw)
             return ReviewAssistResponse(
-                summary=data.get("summary", raw),
+                summary=(
+                    data.get("summary")
+                    or data.get("response")
+                    or data.get("message")
+                    or prose
+                    or raw
+                ),
                 anomalies=data.get("anomalies", []),
-                missing_evidence=data.get("missing_evidence", []),
-                draft_comment=data.get("draft_comment"),
-                reuse_impact=data.get("reuse_impact"),
+                missing_evidence=data.get("missing_evidence") or data.get("missingEvidence") or [],
+                draft_comment=data.get("draft_comment") or data.get("draftComment"),
+                reuse_impact=data.get("reuse_impact") or data.get("reuseImpact"),
             )
-        except (json.JSONDecodeError, TypeError, KeyError):
+        except (json.JSONDecodeError, TypeError, KeyError, AttributeError):
             return ReviewAssistResponse(
                 summary=raw, anomalies=[], missing_evidence=[]
             )
+
+    @staticmethod
+    def _strip_code_fence(raw: str) -> str:
+        stripped = raw.strip()
+        if not stripped.startswith("```"):
+            return stripped
+
+        lines = stripped.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        return "\n".join(lines).strip()
+
+    @staticmethod
+    def _extract_leading_text(raw: str) -> str | None:
+        prefix = raw.split("```", 1)[0].strip()
+        return prefix or None
+
+    @staticmethod
+    def _extract_fenced_block(raw: str) -> str | None:
+        if "```" not in raw:
+            return None
+
+        parts = raw.split("```", 2)
+        if len(parts) < 3:
+            return None
+        return f"```{parts[1]}```"
+
+    def _parse_structured_payload(self, raw: str) -> dict[str, Any]:
+        try:
+            return self._parse_json_object(raw)
+        except (json.JSONDecodeError, TypeError, KeyError, AttributeError):
+            fenced = self._extract_fenced_block(raw)
+            if not fenced:
+                raise
+            return self._parse_json_object(fenced)
+
+    def _parse_json_object(self, raw: str) -> dict[str, Any]:
+        payload = json.loads(self._strip_code_fence(raw))
+        if not isinstance(payload, dict):
+            raise TypeError("LLM payload must be a JSON object")
+
+        if len(payload) == 1:
+            key = next(iter(payload))
+            nested = payload[key]
+            if isinstance(nested, dict) and key.lower() in {
+                "airesponse",
+                "reviewassistresponse",
+                "response",
+            }:
+                return nested
+
+        return payload
 
 
 # ---------------------------------------------------------------------------
@@ -298,7 +372,7 @@ def build_llm_client() -> BaseLLMClient | None:
     max_tokens = settings.ai_max_tokens
     temperature = settings.ai_temperature
 
-    if provider in ("anthropic", "claude", "grounded"):
+    if provider in ("anthropic", "claude"):
         return AnthropicLLMClient(
             api_key=settings.ai_api_key,
             model=model,

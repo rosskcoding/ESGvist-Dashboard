@@ -37,6 +37,7 @@ class DemoUserSpec:
     full_name: str
     org_role: str | None = None
     platform_admin: bool = False
+    framework_admin: bool = False
 
 
 PASSWORD = os.getenv("DEMO_PASSWORD", "Test1234")
@@ -54,6 +55,12 @@ USER_SPECS = [
         full_name="Ross Admin",
         org_role="admin",
         platform_admin=True,
+    ),
+    DemoUserSpec(
+        key="framework_admin",
+        email="framework@esgvist.com",
+        full_name="Iris Framework",
+        framework_admin=True,
     ),
     DemoUserSpec(
         key="esg_manager",
@@ -153,6 +160,16 @@ async def main() -> None:
                         scope_type="platform",
                         scope_id=None,
                         created_by=users[spec.key].id,
+                    )
+                )
+            if spec.framework_admin:
+                session.add(
+                    RoleBinding(
+                        user_id=users[spec.key].id,
+                        role="framework_admin",
+                        scope_type="platform",
+                        scope_id=None,
+                        created_by=users["admin"].id,
                     )
                 )
             if spec.org_role:
@@ -896,6 +913,7 @@ async def main() -> None:
             "| Role | Full Name | Email | Notes |",
             "| --- | --- | --- | --- |",
             "| platform_admin | Ross Admin | `admin@esgvist.com` | Full access plus tenant management for the demo org |",
+            "| framework_admin | Iris Framework | `framework@esgvist.com` | Maintain ESG standards, shared elements, and mappings without tenant admin access |",
             "| esg_manager | Anna Manager | `manager@greentech.com` | Projects, assignments, boundary, dashboard |",
             "| collector | Ivan Collector | `collector1@greentech.com` | Input for GHG Scope 1 and Scope 2 data |",
             "| collector | Maria Data | `collector2@greentech.com` | Input for Energy and Water style operational data |",

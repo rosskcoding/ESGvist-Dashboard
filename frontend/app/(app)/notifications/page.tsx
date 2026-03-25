@@ -379,7 +379,7 @@ export default function NotificationsPage() {
                   className={
                     notification.is_read
                       ? "rounded-lg border border-slate-200 px-4 py-4"
-                      : "rounded-lg border border-blue-200 bg-blue-50 px-4 py-4"
+                      : "rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-4"
                   }
                 >
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -388,7 +388,7 @@ export default function NotificationsPage() {
                         {notification.is_read ? (
                           <MailOpen className="h-4 w-4 text-slate-400" />
                         ) : (
-                          <Mail className="h-4 w-4 text-blue-600" />
+                          <Mail className="h-4 w-4 text-cyan-600" />
                         )}
                         <p className="font-medium text-slate-900">{notification.title}</p>
                         <Badge variant={severityVariant(notification.severity)}>{notification.severity}</Badge>

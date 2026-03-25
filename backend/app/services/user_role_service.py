@@ -33,13 +33,25 @@ class UserRoleService:
             raise AppError("NOT_FOUND", 404, f"Role binding {binding_id} not found")
         return binding
 
-    async def _validate_scope(self, scope_type: str, scope_id: int | None) -> None:
+    async def _validate_scope(self, role: str, scope_type: str, scope_id: int | None) -> None:
         if scope_type == "platform":
             if scope_id is not None:
                 raise AppError("INVALID_SCOPE", 422, "Platform-scoped role must not have scope_id")
+            if role not in {"platform_admin", "framework_admin"}:
+                raise AppError(
+                    "INVALID_SCOPE",
+                    422,
+                    "Only platform roles can use the platform scope",
+                )
             return
         if scope_id is None:
             raise AppError("INVALID_SCOPE", 422, "Organization-scoped role requires scope_id")
+        if role in {"platform_admin", "framework_admin"}:
+            raise AppError(
+                "INVALID_SCOPE",
+                422,
+                "Platform roles cannot be assigned within an organization",
+            )
         org_result = await self.user_repo.session.execute(
             select(Organization.id).where(Organization.id == scope_id)
         )
@@ -126,7 +138,7 @@ class UserRoleService:
         resolved_scope_type, resolved_scope_id = await self._authorize_write(
             ctx, role=role, scope_type=scope_type, scope_id=scope_id
         )
-        await self._validate_scope(resolved_scope_type, resolved_scope_id)
+        await self._validate_scope(role, resolved_scope_type, resolved_scope_id)
 
         existing = await self.role_binding_repo.get_binding(user_id, resolved_scope_type, resolved_scope_id)
         if existing and existing.role == role:
@@ -179,7 +191,7 @@ class UserRoleService:
             if remaining == 0:
                 raise AppError("LAST_ADMIN_CANNOT_LEAVE", 422, "Cannot remove the last admin from this organization")
 
-        await self.role_binding_repo.delete_binding(user_id, binding.scope_type, binding.scope_id)
+        await self.role_binding_repo.delete_binding_by_id(binding.id)
         await self.audit_repo.log(
             entity_type="RoleBinding",
             entity_id=binding.id,

@@ -30,7 +30,14 @@ class SharedElementService:
             dimensions=[DimensionOut.model_validate(d) for d in dims],
         )
 
-    async def list_elements(self, page: int = 1, page_size: int = 50) -> SharedElementListOut:
+    async def list_elements(
+        self,
+        page: int = 1,
+        page_size: int = 50,
+        ctx: RequestContext | None = None,
+    ) -> SharedElementListOut:
+        if ctx is not None:
+            self.policy.require_admin(ctx)
         items, total = await self.repo.list_elements(page, page_size)
         out_items = [await self._to_out(el) for el in items]
         return SharedElementListOut(items=out_items, total=total)
@@ -47,7 +54,13 @@ class SharedElementService:
         el = await self.repo.create(**payload.model_dump())
         return await self._to_out(el)
 
-    async def get_element(self, element_id: int) -> SharedElementOut:
+    async def get_element(
+        self,
+        element_id: int,
+        ctx: RequestContext | None = None,
+    ) -> SharedElementOut:
+        if ctx is not None:
+            self.policy.require_admin(ctx)
         el = await self.repo.get_or_raise(element_id)
         return await self._to_out(el)
 
@@ -59,7 +72,13 @@ class SharedElementService:
         dim = await self.repo.create_dimension(element_id, **payload.model_dump())
         return DimensionOut.model_validate(dim)
 
-    async def list_dimensions(self, element_id: int) -> list[DimensionOut]:
+    async def list_dimensions(
+        self,
+        element_id: int,
+        ctx: RequestContext | None = None,
+    ) -> list[DimensionOut]:
+        if ctx is not None:
+            self.policy.require_admin(ctx)
         await self.repo.get_or_raise(element_id)
         dims = await self.repo.list_dimensions(element_id)
         return [DimensionOut.model_validate(d) for d in dims]

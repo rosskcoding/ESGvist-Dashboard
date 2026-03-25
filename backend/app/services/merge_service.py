@@ -56,7 +56,8 @@ class MergeService:
 
         matrix_rows = await self._get_matrix_rows(project_id, [std["standard_id"] for std in standards])
         latest_points = await self._get_latest_data_points(project_id)
-        evidence_counts = await self._get_evidence_counts(list(latest_points.values()))
+        all_dps = [dp for dps in latest_points.values() for dp in dps]
+        evidence_counts = await self._get_evidence_counts(all_dps)
         boundary_scope = await self._get_boundary_scope(project)
         orphans = await self._get_orphans(project_id, [std["standard_id"] for std in standards])
 
@@ -66,8 +67,9 @@ class MergeService:
 
         for shared_element_id, element_rows in matrix_rows.items():
             first_row = element_rows[0]
+            element_dps = latest_points.get(shared_element_id, [])
             cells = [
-                self._build_cell(row, latest_points.get(shared_element_id), evidence_counts)
+                self._build_cell(row, element_dps, evidence_counts)
                 for row in element_rows
             ]
             reuse_count = len(cells)
@@ -220,19 +222,33 @@ class MergeService:
 
         return element_rows
 
-    async def _get_latest_data_points(self, project_id: int) -> dict[int, DataPoint]:
+    async def _get_latest_data_points(
+        self, project_id: int
+    ) -> dict[int, list[DataPoint]]:
+        """Return ALL data points per shared_element_id, grouped and sorted.
+
+        Returns a dict of ``{shared_element_id: [dp1, dp2, ...]}`` where each
+        list is sorted by entity_id then updated_at descending.  This preserves
+        the multi-entity picture so the merge view can show aggregated state
+        (e.g. "3 data points / 2 entities") instead of a single arbitrary DP.
+        """
         rows = (
             await self.session.execute(
                 select(DataPoint)
                 .where(DataPoint.reporting_project_id == project_id)
-                .order_by(DataPoint.shared_element_id, DataPoint.updated_at.desc(), DataPoint.id.desc())
+                .order_by(
+                    DataPoint.shared_element_id,
+                    DataPoint.entity_id,
+                    DataPoint.updated_at.desc(),
+                    DataPoint.id.desc(),
+                )
             )
         ).scalars().all()
 
-        latest: dict[int, DataPoint] = {}
+        grouped: dict[int, list[DataPoint]] = defaultdict(list)
         for data_point in rows:
-            latest.setdefault(data_point.shared_element_id, data_point)
-        return latest
+            grouped[data_point.shared_element_id].append(data_point)
+        return dict(grouped)
 
     async def _get_evidence_counts(self, data_points: list[DataPoint]) -> dict[int, int]:
         if not data_points:
@@ -331,23 +347,46 @@ class MergeService:
             "consolidation_method": consolidation_method,
         }
 
-    def _build_cell(self, row: dict, data_point: DataPoint | None, evidence_counts: dict[int, int]) -> dict:
+    def _build_cell(
+        self,
+        row: dict,
+        data_points: list[DataPoint],
+        evidence_counts: dict[int, int],
+    ) -> dict:
         statuses = row["statuses"]
         status = self._collapse_status(statuses)
         evidence_status = "none"
         current_value = None
         entity_scope = None
+        data_point_count = len(data_points)
+        entity_ids: set[int] = set()
 
-        if data_point is not None:
-            if data_point.numeric_value is not None:
-                current_value = f"{float(data_point.numeric_value):g} {data_point.unit_code or ''}".strip()
-            elif data_point.text_value:
-                current_value = data_point.text_value
-            if evidence_counts.get(data_point.id, 0) > 0:
+        if data_points:
+            # Show the first (latest) DP's value as primary
+            primary_dp = data_points[0]
+            if primary_dp.numeric_value is not None:
+                current_value = f"{float(primary_dp.numeric_value):g} {primary_dp.unit_code or ''}".strip()
+            elif primary_dp.text_value:
+                current_value = primary_dp.text_value
+
+            # Aggregate evidence status across all DPs
+            total_with_evidence = sum(
+                1 for dp in data_points if evidence_counts.get(dp.id, 0) > 0
+            )
+            if total_with_evidence == data_point_count:
                 evidence_status = "attached"
+            elif total_with_evidence > 0:
+                evidence_status = "partial"
             else:
                 evidence_status = "pending"
-            entity_scope = f"Entity #{data_point.entity_id}" if data_point.entity_id else None
+
+            # Collect distinct entity IDs
+            entity_ids = {dp.entity_id for dp in data_points if dp.entity_id}
+
+            if len(entity_ids) > 1:
+                entity_scope = f"{len(entity_ids)} entities"
+            elif len(entity_ids) == 1:
+                entity_scope = f"Entity #{entity_ids.pop()}"
 
         if len(set(statuses)) == 1:
             binding_type = "full"
@@ -364,6 +403,7 @@ class MergeService:
             "current_value": current_value,
             "evidence_status": evidence_status,
             "entity_scope": entity_scope,
+            "data_point_count": data_point_count,
         }
 
     @staticmethod

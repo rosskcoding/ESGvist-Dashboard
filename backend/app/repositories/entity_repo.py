@@ -5,6 +5,16 @@ from app.core.exceptions import AppError
 from app.db.models.company_entity import CompanyEntity, ControlLink, OwnershipLink
 from app.db.models.organization import Organization
 
+ENTITY_EDITABLE_FIELDS = {
+    "name",
+    "code",
+    "country",
+    "jurisdiction",
+    "status",
+    "valid_from",
+    "valid_to",
+}
+
 
 class EntityRepository:
     def __init__(self, session: AsyncSession):
@@ -34,6 +44,17 @@ class EntityRepository:
             raise AppError("NOT_FOUND", 404, f"Entity {entity_id} not found")
         return e
 
+    async def lock_entity_for_update(self, entity_id: int) -> CompanyEntity:
+        result = await self.session.execute(
+            select(CompanyEntity)
+            .where(CompanyEntity.id == entity_id)
+            .with_for_update()
+        )
+        entity = result.scalar_one_or_none()
+        if not entity:
+            raise AppError("NOT_FOUND", 404, f"Entity {entity_id} not found")
+        return entity
+
     async def list_entities(
         self, org_id: int, page: int = 1, page_size: int = 50
     ) -> tuple[list[CompanyEntity], int]:
@@ -60,6 +81,13 @@ class EntityRepository:
 
     async def update_entity(self, entity_id: int, **kwargs) -> CompanyEntity:
         entity = await self.get_or_raise(entity_id)
+        invalid_fields = sorted(set(kwargs) - ENTITY_EDITABLE_FIELDS)
+        if invalid_fields:
+            raise AppError(
+                "ENTITY_FIELD_NOT_EDITABLE",
+                422,
+                f"Entity fields are not editable: {', '.join(invalid_fields)}",
+            )
         for key, value in kwargs.items():
             setattr(entity, key, value)
         await self.session.flush()

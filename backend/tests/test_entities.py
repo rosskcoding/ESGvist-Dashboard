@@ -1,8 +1,14 @@
 import pytest
 from httpx import AsyncClient
 
+from app.core.dependencies import RequestContext
+from app.core.exceptions import AppError
 from app.db.models.audit_log import AuditLog
 from app.db.models.boundary import BoundaryMembership
+from app.repositories.audit_repo import AuditRepository
+from app.repositories.entity_repo import EntityRepository
+from app.repositories.role_binding_repo import RoleBindingRepository
+from app.services.entity_service import EntityService
 from tests.conftest import TestSessionLocal
 
 
@@ -52,7 +58,9 @@ async def test_org_setup_creates_org_and_root(client: AsyncClient, admin_headers
 
 
 @pytest.mark.asyncio
-async def test_org_setup_creates_default_boundary_membership(client: AsyncClient, admin_headers: dict):
+async def test_org_setup_creates_default_boundary_membership(
+    client: AsyncClient, admin_headers: dict
+):
     resp = await client.post(
         "/api/organizations/setup",
         json={"name": "BoundaryCo", "country": "US"},
@@ -120,16 +128,16 @@ async def test_org_setup_allows_unaffiliated_user_without_org_header(client: Asy
 
     me = await client.get("/api/auth/me", headers=headers)
     org_roles = [
-        role
-        for role in me.json()["roles"]
-        if role["scope_id"] == setup.json()["organization_id"]
+        role for role in me.json()["roles"] if role["scope_id"] == setup.json()["organization_id"]
     ]
     assert len(org_roles) == 1
     assert org_roles[0]["role"] == "admin"
 
 
 @pytest.mark.asyncio
-async def test_org_setup_persists_defaults_children_and_invites(client: AsyncClient, admin_headers: dict):
+async def test_org_setup_persists_defaults_children_and_invites(
+    client: AsyncClient, admin_headers: dict
+):
     resp = await client.post(
         "/api/organizations/setup",
         json={
@@ -198,13 +206,17 @@ async def test_org_setup_persists_defaults_children_and_invites(client: AsyncCli
         from sqlalchemy import select
 
         audit_logs = (
-            await session.execute(
-                select(AuditLog).where(
-                    AuditLog.organization_id == data["organization_id"],
-                    AuditLog.action.in_(["create_entity", "create_boundary"]),
+            (
+                await session.execute(
+                    select(AuditLog).where(
+                        AuditLog.organization_id == data["organization_id"],
+                        AuditLog.action.in_(["create_entity", "create_boundary"]),
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
     assert len(audit_logs) >= 4
 
@@ -300,7 +312,11 @@ async def test_ownership_exceeds_100(client: AsyncClient, org_setup: dict):
 
     await client.post(
         "/api/ownership-links",
-        json={"parent_entity_id": org_setup["root_id"], "child_entity_id": child_id, "ownership_percent": 60},
+        json={
+            "parent_entity_id": org_setup["root_id"],
+            "child_entity_id": child_id,
+            "ownership_percent": 60,
+        },
         headers=org_setup["headers"],
     )
 
@@ -313,11 +329,126 @@ async def test_ownership_exceeds_100(client: AsyncClient, org_setup: dict):
 
     resp = await client.post(
         "/api/ownership-links",
-        json={"parent_entity_id": owner2.json()["id"], "child_entity_id": child_id, "ownership_percent": 50},
+        json={
+            "parent_entity_id": owner2.json()["id"],
+            "child_entity_id": child_id,
+            "ownership_percent": 50,
+        },
         headers=org_setup["headers"],
     )
     assert resp.status_code == 422
     assert resp.json()["error"]["code"] == "OWNERSHIP_EXCEEDS_100"
+
+
+@pytest.mark.asyncio
+async def test_platform_admin_cannot_create_cross_tenant_ownership_link(
+    client: AsyncClient,
+    org_setup: dict,
+    admin_headers: dict,
+):
+    tenant_b = await client.post(
+        "/api/platform/tenants",
+        json={"name": "Tenant B", "country": "DE"},
+        headers=admin_headers,
+    )
+    assert tenant_b.status_code == 201
+
+    tenant_b_headers = {
+        **admin_headers,
+        "X-Organization-Id": str(tenant_b.json()["id"]),
+    }
+    foreign_entity = await client.post(
+        "/api/entities",
+        json={"name": "Foreign Child", "entity_type": "legal_entity"},
+        headers=tenant_b_headers,
+    )
+    assert foreign_entity.status_code == 201
+
+    resp = await client.post(
+        "/api/ownership-links",
+        json={
+            "parent_entity_id": org_setup["root_id"],
+            "child_entity_id": foreign_entity.json()["id"],
+            "ownership_percent": 25,
+        },
+        headers=org_setup["headers"],
+    )
+    assert resp.status_code == 403
+    assert resp.json()["error"]["code"] == "CROSS_TENANT_LINK"
+
+
+@pytest.mark.asyncio
+async def test_platform_admin_cannot_create_cross_tenant_control_link(
+    client: AsyncClient,
+    org_setup: dict,
+    admin_headers: dict,
+):
+    tenant_b = await client.post(
+        "/api/platform/tenants",
+        json={"name": "Tenant B Control", "country": "FR"},
+        headers=admin_headers,
+    )
+    assert tenant_b.status_code == 201
+
+    tenant_b_headers = {
+        **admin_headers,
+        "X-Organization-Id": str(tenant_b.json()["id"]),
+    }
+    foreign_entity = await client.post(
+        "/api/entities",
+        json={"name": "Foreign Facility", "entity_type": "facility"},
+        headers=tenant_b_headers,
+    )
+    assert foreign_entity.status_code == 201
+
+    resp = await client.post(
+        "/api/control-links",
+        json={
+            "controlling_entity_id": org_setup["root_id"],
+            "controlled_entity_id": foreign_entity.json()["id"],
+            "control_type": "operational_control",
+            "is_controlled": True,
+        },
+        headers=org_setup["headers"],
+    )
+    assert resp.status_code == 403
+    assert resp.json()["error"]["code"] == "CROSS_TENANT_LINK"
+
+
+@pytest.mark.asyncio
+async def test_entity_repo_rejects_non_editable_fields(org_setup: dict):
+    async with TestSessionLocal() as session:
+        repo = EntityRepository(session)
+        with pytest.raises(AppError) as exc_info:
+            await repo.update_entity(org_setup["root_id"], organization_id=999999)
+
+    assert exc_info.value.code == "ENTITY_FIELD_NOT_EDITABLE"
+
+
+@pytest.mark.asyncio
+async def test_update_org_settings_rejects_non_editable_fields(
+    client: AsyncClient, org_setup: dict
+):
+    me = await client.get("/api/auth/me", headers=org_setup["headers"])
+    assert me.status_code == 200
+
+    async with TestSessionLocal() as session:
+        service = EntityService(
+            repo=EntityRepository(session),
+            role_binding_repo=RoleBindingRepository(session),
+            audit_repo=AuditRepository(session),
+        )
+        ctx = RequestContext(
+            user_id=me.json()["id"],
+            email=me.json()["email"],
+            organization_id=org_setup["org_id"],
+            role="admin",
+        )
+
+        with pytest.raises(AppError) as exc_info:
+            await service.update_org_settings({"status": "archived"}, ctx)
+
+    assert exc_info.value.code == "ORG_SETTINGS_FIELD_NOT_EDITABLE"
 
 
 # --- Control ---

@@ -89,15 +89,16 @@ async def get_current_context(
     ),
     session: AsyncSession = Depends(get_session),
 ) -> RequestContext:
-    # Check platform_admin
+    # Resolve platform-scoped role first.
     result = await session.execute(
-        select(RoleBinding).where(
+        select(RoleBinding.role).where(
             RoleBinding.user_id == user.id,
             RoleBinding.scope_type == "platform",
-            RoleBinding.role == "platform_admin",
-        )
+            RoleBinding.role.in_(("platform_admin", "framework_admin")),
+        ).order_by(RoleBinding.id).limit(1)
     )
-    is_platform_admin = result.scalar_one_or_none() is not None
+    platform_role = result.scalars().first()
+    is_platform_admin = platform_role == "platform_admin"
     resolved_organization_id = x_organization_id
     if resolved_organization_id is None and organization_id_cookie:
         try:
@@ -169,15 +170,15 @@ async def get_current_context(
         )
 
     # Platform endpoints — no org needed
-    if is_platform_admin and resolved_organization_id is None:
+    if platform_role and resolved_organization_id is None:
         request.state.user_id = user.id
-        request.state.role = "platform_admin"
+        request.state.role = platform_role
         return RequestContext(
             user_id=user.id,
             email=user.email,
             organization_id=None,
-            role="platform_admin",
-            is_platform_admin=True,
+            role=platform_role,
+            is_platform_admin=is_platform_admin,
         )
 
     # Tenant endpoints — org header required
@@ -194,9 +195,9 @@ async def get_current_context(
             RoleBinding.user_id == user.id,
             RoleBinding.scope_type == "organization",
             RoleBinding.scope_id == resolved_organization_id,
-        )
+        ).order_by(RoleBinding.id).limit(1)
     )
-    binding = result.scalar_one_or_none()
+    binding = result.scalars().first()
 
     if binding is None and not is_platform_admin:
         raise AppError(code="FORBIDDEN", status_code=403, message="No access to this organization")
@@ -231,13 +232,13 @@ async def get_current_onboarding_context(
     session: AsyncSession = Depends(get_session),
 ) -> RequestContext:
     result = await session.execute(
-        select(RoleBinding).where(
+        select(RoleBinding.id).where(
             RoleBinding.user_id == user.id,
             RoleBinding.scope_type == "platform",
             RoleBinding.role == "platform_admin",
-        )
+        ).order_by(RoleBinding.id).limit(1)
     )
-    is_platform_admin = result.scalar_one_or_none() is not None
+    is_platform_admin = result.scalars().first() is not None
 
     request.state.user_id = user.id
     request.state.organization_id = None

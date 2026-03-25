@@ -247,6 +247,53 @@ async def test_notification_preferences_affect_delivery_channels(client: AsyncCl
 
 
 @pytest.mark.asyncio
+async def test_notification_dedupe_tolerates_existing_duplicate_unread_rows(client: AsyncClient, ctx: dict):
+    async with TestSessionLocal() as session:
+        session.add_all(
+            [
+                Notification(
+                    organization_id=ctx["org_id"],
+                    user_id=1,
+                    type="duplicate_info",
+                    title="Duplicate",
+                    message="First duplicate",
+                    severity="info",
+                    entity_type="Project",
+                    entity_id=77,
+                    is_read=False,
+                ),
+                Notification(
+                    organization_id=ctx["org_id"],
+                    user_id=1,
+                    type="duplicate_info",
+                    title="Duplicate",
+                    message="Second duplicate",
+                    severity="info",
+                    entity_type="Project",
+                    entity_id=77,
+                    is_read=False,
+                ),
+            ]
+        )
+        await session.commit()
+
+    async with TestSessionLocal() as session:
+        service = NotificationService(NotificationRepository(session))
+        result = await service.notify(
+            user_id=1,
+            org_id=ctx["org_id"],
+            type="duplicate_info",
+            title="Duplicate",
+            message="Should dedupe cleanly",
+            severity="info",
+            entity_type="Project",
+            entity_id=77,
+        )
+
+    assert result is None
+
+
+@pytest.mark.asyncio
 async def test_digest_frequency_defers_immediate_email_delivery(client: AsyncClient, ctx: dict):
     updated = await client.patch(
         "/api/notifications/preferences",

@@ -2,9 +2,12 @@
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 
+from app.db.models.comment import Comment
+from app.db.models.completeness import RequirementItemStatus
+from app.db.models.user import User
 from tests.conftest import TestSessionLocal
-from app.db.models.notification import Notification
 
 
 @pytest.fixture
@@ -13,9 +16,16 @@ async def ctx(client: AsyncClient) -> dict:
         "/api/auth/register",
         json={"email": "a@t.com", "password": "password123", "full_name": "Admin"},
     )
-    login = await client.post("/api/auth/login", json={"email": "a@t.com", "password": "password123"})
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": "a@t.com", "password": "password123"},
+    )
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
-    org = await client.post("/api/organizations/setup", json={"name": "Co"}, headers=headers)
+    org = await client.post(
+        "/api/organizations/setup",
+        json={"name": "Co"},
+        headers=headers,
+    )
     headers["X-Organization-Id"] = str(org.json()["organization_id"])
     return {
         "headers": headers,
@@ -39,6 +49,39 @@ async def _create_data_point(client: AsyncClient, headers: dict) -> int:
     return data_point.json()["id"]
 
 
+async def _create_requirement_item(client: AsyncClient, headers: dict) -> int:
+    standard = await client.post(
+        "/api/standards",
+        json={"code": "COMMENT-STD", "name": "Comment Standard"},
+        headers=headers,
+    )
+    assert standard.status_code == 201
+    disclosure = await client.post(
+        f"/api/standards/{standard.json()['id']}/disclosures",
+        json={
+            "code": "COMMENT-DISC",
+            "title": "Comment Disclosure",
+            "requirement_type": "qualitative",
+            "mandatory_level": "mandatory",
+        },
+        headers=headers,
+    )
+    assert disclosure.status_code == 201
+    item = await client.post(
+        f"/api/disclosures/{disclosure.json()['id']}/items",
+        json={
+            "item_code": "COMMENT-ITEM",
+            "name": "Comment Item",
+            "item_type": "narrative",
+            "value_type": "text",
+            "is_required": True,
+        },
+        headers=headers,
+    )
+    assert item.status_code == 201, item.text
+    return item.json()["id"]
+
+
 # === COMMENTS (threaded) ===
 
 @pytest.mark.asyncio
@@ -46,7 +89,11 @@ async def test_create_comment(client: AsyncClient, ctx: dict):
     data_point_id = await _create_data_point(client, ctx["headers"])
     resp = await client.post(
         "/api/comments",
-        json={"body": "Please check this value", "comment_type": "question", "data_point_id": data_point_id},
+        json={
+            "body": "Please check this value",
+            "comment_type": "question",
+            "data_point_id": data_point_id,
+        },
         headers=ctx["headers"],
     )
     assert resp.status_code == 201
@@ -65,7 +112,11 @@ async def test_threaded_comments(client: AsyncClient, ctx: dict):
     # Create reply
     reply = await client.post(
         "/api/comments",
-        json={"body": "Reply", "data_point_id": data_point_id, "parent_comment_id": parent.json()["id"]},
+        json={
+            "body": "Reply",
+            "data_point_id": data_point_id,
+            "parent_comment_id": parent.json()["id"],
+        },
         headers=ctx["headers"],
     )
     assert reply.status_code == 201
@@ -80,13 +131,90 @@ async def test_threaded_comments(client: AsyncClient, ctx: dict):
 
 @pytest.mark.asyncio
 async def test_resolve_comment(client: AsyncClient, ctx: dict):
+    data_point_id = await _create_data_point(client, ctx["headers"])
     c = await client.post(
         "/api/comments",
-        json={"body": "Issue", "comment_type": "issue"},
+        json={"body": "Issue", "comment_type": "issue", "data_point_id": data_point_id},
         headers=ctx["headers"],
     )
     resp = await client.patch(
         f"/api/comments/{c.json()['id']}/resolve",
+        headers=ctx["headers"],
+    )
+    assert resp.status_code == 200
+    assert resp.json()["is_resolved"] is True
+
+
+@pytest.mark.asyncio
+async def test_requirement_item_only_comment_is_rejected(client: AsyncClient, ctx: dict):
+    requirement_item_id = await _create_requirement_item(client, ctx["headers"])
+    resp = await client.post(
+        "/api/comments",
+        json={"body": "Unscoped requirement item note", "requirement_item_id": requirement_item_id},
+        headers=ctx["headers"],
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "COMMENT_SCOPE_UNSUPPORTED"
+
+
+@pytest.mark.asyncio
+async def test_comment_requirement_item_must_match_data_point_context(
+    client: AsyncClient,
+    ctx: dict,
+):
+    data_point_id = await _create_data_point(client, ctx["headers"])
+    requirement_item_id = await _create_requirement_item(client, ctx["headers"])
+
+    resp = await client.post(
+        "/api/comments",
+        json={
+            "body": "This item should not attach to an unrelated data point",
+            "data_point_id": data_point_id,
+            "requirement_item_id": requirement_item_id,
+        },
+        headers=ctx["headers"],
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "INVALID_REQUIREMENT_ITEM_CONTEXT"
+
+
+@pytest.mark.asyncio
+async def test_legacy_requirement_item_only_comment_can_be_resolved_by_admin(
+    client: AsyncClient,
+    ctx: dict,
+):
+    requirement_item_id = await _create_requirement_item(client, ctx["headers"])
+    project = await client.post(
+        "/api/projects",
+        json={"name": "Legacy Comment Project"},
+        headers=ctx["headers"],
+    )
+    assert project.status_code == 201
+
+    async with TestSessionLocal() as session:
+        user_id = (
+            await session.execute(select(User.id).where(User.email == "a@t.com"))
+        ).scalars().one()
+        session.add(
+            RequirementItemStatus(
+                reporting_project_id=project.json()["id"],
+                requirement_item_id=requirement_item_id,
+                status="missing",
+            )
+        )
+        comment = Comment(
+            user_id=user_id,
+            body="Legacy requirement item-only note",
+            requirement_item_id=requirement_item_id,
+            comment_type="issue",
+        )
+        session.add(comment)
+        await session.flush()
+        comment_id = comment.id
+        await session.commit()
+
+    resp = await client.patch(
+        f"/api/comments/{comment_id}/resolve",
         headers=ctx["headers"],
     )
     assert resp.status_code == 200
@@ -150,10 +278,19 @@ async def test_list_pending_invitations(client: AsyncClient, ctx: dict):
 
 @pytest.mark.asyncio
 async def test_impact_requirement_change(client: AsyncClient, ctx: dict):
-    std = await client.post("/api/standards", json={"code": "G", "name": "G"}, headers=ctx["headers"])
+    std = await client.post(
+        "/api/standards",
+        json={"code": "G", "name": "G"},
+        headers=ctx["headers"],
+    )
     disc = await client.post(
         f"/api/standards/{std.json()['id']}/disclosures",
-        json={"code": "D1", "title": "D1", "requirement_type": "quantitative", "mandatory_level": "mandatory"},
+        json={
+            "code": "D1",
+            "title": "D1",
+            "requirement_type": "quantitative",
+            "mandatory_level": "mandatory",
+        },
         headers=ctx["headers"],
     )
     item = await client.post(
@@ -162,7 +299,10 @@ async def test_impact_requirement_change(client: AsyncClient, ctx: dict):
         headers=ctx["headers"],
     )
 
-    resp = await client.get(f"/api/impact/requirement-item/{item.json()['id']}", headers=ctx["headers"])
+    resp = await client.get(
+        f"/api/impact/requirement-item/{item.json()['id']}",
+        headers=ctx["headers"],
+    )
     assert resp.status_code == 200
     assert "affected_standards" in resp.json()
 
@@ -215,7 +355,11 @@ async def test_effective_ownership(client: AsyncClient, ctx: dict):
 
     await client.post(
         "/api/ownership-links",
-        json={"parent_entity_id": ctx["root_id"], "child_entity_id": child_id, "ownership_percent": 75},
+        json={
+            "parent_entity_id": ctx["root_id"],
+            "child_entity_id": child_id,
+            "ownership_percent": 75,
+        },
         headers=ctx["headers"],
     )
 
@@ -274,8 +418,8 @@ async def test_boundary_approaches_crud(client: AsyncClient, ctx: dict):
 
 @pytest.mark.asyncio
 async def test_event_handlers_registered():
-    from app.events.handlers.notification_handler import NotificationEventHandler
     from app.events.handlers.audit_handler import AuditEventHandler
+    from app.events.handlers.notification_handler import NotificationEventHandler
     # Verify classes exist and have methods
     assert hasattr(NotificationEventHandler, "on_data_point_submitted")
     assert hasattr(NotificationEventHandler, "on_data_point_rejected")

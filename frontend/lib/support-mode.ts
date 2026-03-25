@@ -1,8 +1,12 @@
 "use client";
 
-const SUPPORT_TENANT_ID_KEY = "support_tenant_id";
-const SUPPORT_TENANT_NAME_KEY = "support_tenant_name";
 const SUPPORT_MODE_EVENT = "support-mode-changed";
+
+let supportModeState: SupportModeState = {
+  active: false,
+  tenantId: null,
+  tenantName: null,
+};
 
 export type SupportModeState = {
   active: boolean;
@@ -22,16 +26,7 @@ function emitSupportModeChange() {
 }
 
 export function readSupportMode(): SupportModeState {
-  if (typeof window === "undefined") {
-    return { active: false, tenantId: null, tenantName: null };
-  }
-
-  const tenantId = localStorage.getItem(SUPPORT_TENANT_ID_KEY);
-  return {
-    active: Boolean(tenantId),
-    tenantId,
-    tenantName: localStorage.getItem(SUPPORT_TENANT_NAME_KEY),
-  };
+  return { ...supportModeState };
 }
 
 export function syncSupportModeState(state: SupportModeSyncInput) {
@@ -47,16 +42,11 @@ export function syncSupportModeState(state: SupportModeSyncInput) {
     current.tenantId !== tenantId ||
     current.tenantName !== tenantName;
 
-  if (tenantId) {
-    localStorage.setItem(SUPPORT_TENANT_ID_KEY, tenantId);
-  } else {
-    localStorage.removeItem(SUPPORT_TENANT_ID_KEY);
-  }
-  if (tenantName) {
-    localStorage.setItem(SUPPORT_TENANT_NAME_KEY, tenantName);
-  } else {
-    localStorage.removeItem(SUPPORT_TENANT_NAME_KEY);
-  }
+  supportModeState = {
+    active: Boolean(tenantId),
+    tenantId,
+    tenantName,
+  };
 
   if (changed) {
     emitSupportModeChange();
@@ -120,9 +110,7 @@ export function subscribeSupportMode(listener: () => void) {
   }
 
   window.addEventListener(SUPPORT_MODE_EVENT, listener);
-  window.addEventListener("storage", listener);
   return () => {
     window.removeEventListener(SUPPORT_MODE_EVENT, listener);
-    window.removeEventListener("storage", listener);
   };
 }

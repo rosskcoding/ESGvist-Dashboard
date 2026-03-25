@@ -177,6 +177,23 @@ async def test_create_evidence_file(client: AsyncClient, ctx: dict):
 
 
 @pytest.mark.asyncio
+async def test_create_evidence_file_requires_non_empty_file_uri(client: AsyncClient, ctx: dict):
+    resp = await client.post(
+        "/api/evidences",
+        json={
+            "type": "file",
+            "title": "Broken Upload",
+            "file_name": "broken.pdf",
+            "file_uri": "   ",
+        },
+        headers=ctx["headers"],
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "INVALID_INPUT"
+    assert "file_uri" in resp.json()["error"]["message"]
+
+
+@pytest.mark.asyncio
 async def test_create_evidence_link(client: AsyncClient, ctx: dict):
     resp = await client.post(
         "/api/evidences",

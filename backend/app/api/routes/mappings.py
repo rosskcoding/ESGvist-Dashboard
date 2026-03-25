@@ -32,7 +32,7 @@ async def list_mappings(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    return await _get_service(session).list_mappings(page, page_size)
+    return await _get_service(session).list_mappings(page, page_size, ctx)
 
 
 @router.post("", response_model=MappingOut, status_code=status.HTTP_201_CREATED)
@@ -51,7 +51,7 @@ async def mapping_history(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    return await _get_service(session).list_versions(item_id, element_id)
+    return await _get_service(session).list_versions(item_id, element_id, ctx)
 
 
 @router.get("/{item_id}/{element_id}/diff", response_model=MappingDiffOut)
@@ -63,7 +63,7 @@ async def mapping_diff(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    return await _get_service(session).diff_versions(item_id, element_id, v1, v2)
+    return await _get_service(session).diff_versions(item_id, element_id, v1, v2, ctx)
 
 
 @router.get("/cross-standard", response_model=list[CrossStandardElement])
@@ -71,4 +71,4 @@ async def cross_standard(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    return await _get_service(session).get_cross_standard()
+    return await _get_service(session).get_cross_standard(ctx)

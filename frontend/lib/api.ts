@@ -3,6 +3,7 @@ import { clearSupportModeForLogout } from "./support-mode";
 const API_BASE = "/api";
 const CSRF_COOKIE_KEY = "csrf_token";
 const CSRF_HEADER_NAME = "X-CSRF-Token";
+const FRONTEND_ORIGIN_HEADER_NAME = "X-Frontend-Origin";
 const LEGACY_AUTH_STORAGE_KEYS = ["access_token", "refresh_token"] as const;
 export const API_ERROR_EVENT = "app-api-error";
 export const AUTH_EXPIRED_EVENT = "app-auth-expired";
@@ -106,6 +107,11 @@ function emitWindowEvent(name: string, detail?: Record<string, unknown>) {
 function currentBrowserPath(): string | undefined {
   if (typeof window === "undefined") return undefined;
   return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+}
+
+function currentBrowserOrigin(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  return window.location.origin;
 }
 
 function resolveLoginRedirectUrl(reason: "session-expired" | "auth-required"): string {
@@ -213,8 +219,12 @@ export async function reportClientRuntimeEvent(event: ClientRuntimeEvent): Promi
       "Content-Type": "application/json",
     };
     const csrfToken = getCookieValue(CSRF_COOKIE_KEY);
+    const browserOrigin = currentBrowserOrigin();
     if (csrfToken) {
       headers[CSRF_HEADER_NAME] = csrfToken;
+    }
+    if (browserOrigin) {
+      headers[FRONTEND_ORIGIN_HEADER_NAME] = browserOrigin;
     }
 
     await fetch(`${API_BASE}/runtime/client-events`, {
@@ -262,6 +272,12 @@ class ApiClient {
     }
     if (csrfToken && !merged[CSRF_HEADER_NAME]) {
       merged[CSRF_HEADER_NAME] = csrfToken;
+    }
+    if (requiresCsrfHeader(options.method) && !merged[FRONTEND_ORIGIN_HEADER_NAME]) {
+      const browserOrigin = currentBrowserOrigin();
+      if (browserOrigin) {
+        merged[FRONTEND_ORIGIN_HEADER_NAME] = browserOrigin;
+      }
     }
 
     return merged;
@@ -378,8 +394,16 @@ class ApiClient {
         method: "POST",
         credentials: "same-origin",
         headers: (() => {
+          const headers: Record<string, string> = {};
           const csrfToken = getCookieValue(CSRF_COOKIE_KEY);
-          return csrfToken ? { [CSRF_HEADER_NAME]: csrfToken } : undefined;
+          const browserOrigin = currentBrowserOrigin();
+          if (csrfToken) {
+            headers[CSRF_HEADER_NAME] = csrfToken;
+          }
+          if (browserOrigin) {
+            headers[FRONTEND_ORIGIN_HEADER_NAME] = browserOrigin;
+          }
+          return Object.keys(headers).length > 0 ? headers : undefined;
         })(),
       });
 

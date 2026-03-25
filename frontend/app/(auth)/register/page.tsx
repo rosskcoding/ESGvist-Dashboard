@@ -142,11 +142,11 @@ export default function RegisterPage() {
             />
             <Label htmlFor="terms" className="text-sm font-normal">
               I agree to the{" "}
-              <span className="text-blue-600 hover:text-blue-500 cursor-pointer">
+              <span className="text-cyan-600 hover:text-cyan-500 cursor-pointer">
                 Terms of Service
               </span>{" "}
               and{" "}
-              <span className="text-blue-600 hover:text-blue-500 cursor-pointer">
+              <span className="text-cyan-600 hover:text-cyan-500 cursor-pointer">
                 Privacy Policy
               </span>
             </Label>
@@ -163,7 +163,7 @@ export default function RegisterPage() {
           Already have an account?{" "}
           <Link
             href="/login"
-            className="font-medium text-blue-600 hover:text-blue-500"
+            className="font-medium text-cyan-600 hover:text-cyan-500"
           >
             Sign in
           </Link>

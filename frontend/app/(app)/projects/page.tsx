@@ -258,7 +258,7 @@ export default function ProjectsPage() {
                                 ? "bg-green-500"
                                 : (project.completion_percentage ?? 0) >= 50
                                   ? "bg-amber-500"
-                                  : "bg-blue-600"
+                                  : "bg-cyan-600"
                             }
                           />
                           <span className="text-sm text-slate-600">

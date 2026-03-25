@@ -31,19 +31,22 @@ async def ctx(client: AsyncClient) -> dict:
     login = await client.post(
         "/api/auth/login", json={"email": "a@t.com", "password": "password123"}
     )
-    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    platform_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 
     org = await client.post(
         "/api/organizations/setup",
         json={"name": "Co"},
-        headers=headers,
+        headers=platform_headers,
     )
-    headers["X-Organization-Id"] = str(org.json()["organization_id"])
+    headers = {
+        **platform_headers,
+        "X-Organization-Id": str(org.json()["organization_id"]),
+    }
 
     std = await client.post(
         "/api/standards",
         json={"code": "GRI", "name": "GRI"},
-        headers=headers,
+        headers=platform_headers,
     )
     disc = await client.post(
         f"/api/standards/{std.json()['id']}/disclosures",
@@ -53,12 +56,12 @@ async def ctx(client: AsyncClient) -> dict:
             "requirement_type": "quantitative",
             "mandatory_level": "mandatory",
         },
-        headers=headers,
+        headers=platform_headers,
     )
     item = await client.post(
         f"/api/disclosures/{disc.json()['id']}/items",
         json={"name": "Scope1", "item_type": "metric", "value_type": "number"},
-        headers=headers,
+        headers=platform_headers,
     )
     project = await client.post(
         "/api/projects",
@@ -141,6 +144,30 @@ async def test_ai_status_endpoint(client: AsyncClient, ctx: dict):
 
 
 @pytest.mark.asyncio
+async def test_ai_status_reports_openai_when_llm_client_is_available(
+    monkeypatch,
+    client: AsyncClient,
+    ctx: dict,
+):
+    class _FakeLLMClient:
+        model = "gpt-4o-mini"
+
+    monkeypatch.setattr(settings, "ai_enabled", True)
+    monkeypatch.setattr(settings, "ai_provider", "openai")
+    monkeypatch.setattr(settings, "ai_model", "gpt-4o-mini")
+    monkeypatch.setattr(settings, "ai_api_key", "test-key")
+    monkeypatch.setattr(
+        "app.infrastructure.llm_client.build_llm_client",
+        lambda: _FakeLLMClient(),
+    )
+
+    resp = await client.get("/api/ai/status", headers=ctx["headers"])
+    assert resp.status_code == 200
+    assert resp.json()["configured_provider"] == "openai"
+    assert resp.json()["effective_provider"] == "openai"
+    assert resp.json()["model"] == "gpt-4o-mini"
+
+
 async def test_ai_explain_completeness(client: AsyncClient, ctx: dict):
     resp = await client.post(
         "/api/ai/explain/completeness",
@@ -174,7 +201,26 @@ async def test_ai_ask(client: AsyncClient, ctx: dict):
 
 
 @pytest.mark.asyncio
-async def test_ai_ask_logs_interaction(client: AsyncClient, ctx: dict):
+async def test_ai_ask_logs_interaction(monkeypatch, client: AsyncClient, ctx: dict):
+    class _FakeLLMClient:
+        model = "gpt-4o"
+
+        async def generate(self, system_prompt: str, user_message: str, *, tools=None) -> str:
+            return '{"text":"Check the dashboard backlog first.","confidence":"high"}'
+
+        def parse_ai_response(self, raw: str):
+            from app.schemas.ai import AIResponse
+
+            return AIResponse(
+                text="Check the dashboard backlog first.",
+                confidence="high",
+            )
+
+    monkeypatch.setattr(
+        "app.infrastructure.llm_client.build_llm_client",
+        lambda: _FakeLLMClient(),
+    )
+
     resp = await client.post(
         "/api/ai/ask",
         json={"question": "What should I check next?", "screen": "dashboard"},
@@ -423,6 +469,50 @@ async def test_ai_ask_stream_returns_ndjson(monkeypatch, client: AsyncClient, ct
         event = _json.loads(line)
         assert event["type"] == "chunk"
         assert "text" in event
+
+
+@pytest.mark.asyncio
+async def test_ai_ask_stream_falls_back_when_llm_client_build_fails(
+    monkeypatch,
+    client: AsyncClient,
+    ctx: dict,
+):
+    monkeypatch.setattr(settings, "ai_enabled", True)
+    monkeypatch.setattr(settings, "ai_provider", "openai")
+    monkeypatch.setattr(settings, "ai_model", "gpt-4o")
+    monkeypatch.setattr(settings, "ai_api_key", "test-key")
+
+    def _raise_build_failure():
+        raise RuntimeError(
+            "openai package is required for OpenAI provider. Install it with: pip install openai"
+        )
+
+    monkeypatch.setattr(
+        "app.infrastructure.llm_client.build_llm_client",
+        _raise_build_failure,
+    )
+
+    resp = await client.post(
+        "/api/ai/ask/stream",
+        json={"question": "What is missing?", "screen": "dashboard"},
+        headers=ctx["headers"],
+    )
+    assert resp.status_code == 200
+    assert "application/x-ndjson" in resp.headers.get("content-type", "")
+    assert "openai package is required" not in resp.text
+
+    import json as _json
+
+    lines = [line for line in resp.text.strip().split("\n") if line.strip()]
+    assert len(lines) >= 2
+
+    last_event = _json.loads(lines[-1])
+    assert last_event["type"] == "done"
+    assert last_event["response"]["provider"] == "static"
+    assert "Fallback provider was used" in (
+        last_event["response"].get("reasons") or []
+    )
+    assert all(_json.loads(line)["type"] != "error" for line in lines)
 
 
 @pytest.mark.asyncio

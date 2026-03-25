@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ChevronDown,
@@ -56,18 +57,27 @@ const actionOptions = [
 ];
 
 export default function AuditPage() {
+  const queryClient = useQueryClient();
   const [entityType, setEntityType] = useState("");
   const [action, setAction] = useState("");
   const [entityId, setEntityId] = useState("");
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
+  const cachedMe = queryClient.getQueryData<{
+    roles: Array<{ role: string }>;
+  }>(["auth-me"]);
   const { data: me, isLoading: meLoading } = useApiQuery<{
     roles: Array<{ role: string }>;
-  }>(["auth-me"], "/auth/me");
+  }>(["auth-me"], "/auth/me", {
+    initialData: cachedMe,
+    staleTime: 60_000,
+    refetchOnMount: false,
+  });
 
-  const role = me?.roles?.[0]?.role ?? "";
-  const canAccess = role === "admin" || role === "auditor";
-  const accessDenied = Boolean(role) && !canAccess;
+  const roles = me?.roles?.map((entry) => entry.role) ?? [];
+  const primaryRole = roles[0] ?? "";
+  const canAccess = primaryRole === "admin" || primaryRole === "auditor";
+  const accessDenied = roles.length > 0 && !canAccess;
 
   const query = useMemo(() => {
     const params = new URLSearchParams();
@@ -82,7 +92,10 @@ export default function AuditPage() {
   const { data, isLoading, error } = useApiQuery<AuditResponse>(
     ["audit-log", action, entityType, entityId],
     query,
-    { enabled: canAccess }
+    {
+      enabled: canAccess,
+      placeholderData: (previousData) => previousData,
+    }
   );
 
   const items = data?.items ?? [];
@@ -96,7 +109,7 @@ export default function AuditPage() {
     window.open(`/api/audit-log/export?${params.toString()}`, "_blank");
   }
 
-  if (meLoading || (canAccess && isLoading)) {
+  if (meLoading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
@@ -196,7 +209,12 @@ export default function AuditPage() {
 
       <Card>
         <CardContent className="p-0">
-          {items.length === 0 ? (
+          {isLoading && items.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-slate-500">
+              <Loader2 className="mb-3 h-10 w-10 animate-spin text-slate-300" />
+              <p>Loading audit log entries...</p>
+            </div>
+          ) : items.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-slate-500">
               <Search className="mb-3 h-10 w-10 text-slate-300" />
               <p>No audit log entries found.</p>

@@ -640,8 +640,10 @@ export default function BoundariesPage() {
     "/boundaries"
   );
 
-  const currentRole = currentUser?.roles?.[0]?.role ?? "";
-  const canManageBoundaries = ["admin", "platform_admin"].includes(currentRole);
+  const currentRoles = currentUser?.roles?.map((entry) => entry.role) ?? [];
+  const canManageBoundaries = currentRoles.some((role) =>
+    ["admin", "platform_admin"].includes(role)
+  );
 
   const selectedBoundary = useMemo(
     () => boundaries?.find((b) => b.id === selectedId) ?? null,

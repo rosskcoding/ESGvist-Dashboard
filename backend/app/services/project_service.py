@@ -919,19 +919,19 @@ class ProjectService:
         return AssignmentOut.model_validate(a)
 
     async def list_assignments(self, project_id: int, ctx: RequestContext) -> AssignmentMatrixOut:
-        if ctx.role == "collector":
+        if ctx.role in {"collector", "reviewer"}:
             project = await get_project_for_ctx(
                 self.repo.session,
                 project_id,
                 ctx,
-                allow_collectors=True,
-                allow_reviewers=False,
+                allow_collectors=ctx.role == "collector",
+                allow_reviewers=ctx.role == "reviewer",
             )
             items = await get_user_assignments(
                 self.repo.session,
                 project_id,
                 ctx.user_id,
-                "collector",
+                ctx.role,
             )
         else:
             self._require_manager(ctx)
@@ -1020,6 +1020,8 @@ class ProjectService:
             raise AppError("FORBIDDEN", 403, "Only admin can create boundaries")
         if not ctx.organization_id:
             raise AppError("ORG_HEADER_REQUIRED", 400, "Organization context required")
+        if payload.is_default:
+            await self.repo.clear_default_boundaries(ctx.organization_id)
         b = await self.repo.create_boundary(ctx.organization_id, **payload.model_dump())
         await self._audit("BoundaryDefinition", "create_boundary", ctx, entity_id=b.id,
                           changes=payload.model_dump())

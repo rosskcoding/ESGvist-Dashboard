@@ -143,13 +143,21 @@ export default function ReportPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  const cachedMe = queryClient.getQueryData<{
+    roles: Array<{ role: string }>;
+  }>(["auth-me"]);
   const { data: me, isLoading: meLoading } = useApiQuery<{
     roles: Array<{ role: string }>;
-  }>(["auth-me"], "/auth/me");
+  }>(["auth-me"], "/auth/me", {
+    initialData: cachedMe,
+    staleTime: 60_000,
+    refetchOnMount: false,
+  });
 
-  const role = me?.roles?.[0]?.role ?? "";
-  const canAccess = role === "admin" || role === "esg_manager";
-  const accessDenied = Boolean(role) && !canAccess;
+  const roles = me?.roles?.map((entry) => entry.role) ?? [];
+  const primaryRole = roles[0] ?? "";
+  const canAccess = primaryRole === "admin" || primaryRole === "esg_manager";
+  const accessDenied = roles.length > 0 && !canAccess;
 
   const {
     data: readiness,
@@ -284,14 +292,6 @@ export default function ReportPage() {
     }
   }
 
-  if (meLoading || (canAccess && (readinessLoading || exportJobsLoading))) {
-    return (
-      <div className="flex min-h-[400px] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
-      </div>
-    );
-  }
-
   if (accessDenied) {
     return (
       <div className="space-y-6">
@@ -317,6 +317,90 @@ export default function ReportPage() {
   }
 
   if (readinessError || !readiness) {
+    if (meLoading || (canAccess && (readinessLoading || exportJobsLoading))) {
+      return (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-900">Report &amp; Export</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Check readiness, preview exports, and publish reporting output.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button variant="outline" disabled>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Refresh readiness
+              </Button>
+              <Button variant="outline" disabled>
+                <Eye className="mr-2 h-4 w-4" />
+                Preview latest
+              </Button>
+              <Button disabled>
+                <Send className="mr-2 h-4 w-4" />
+                Publish Project
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle>Readiness Summary</CardTitle>
+                <CardDescription>Overall state before export or publish.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex min-h-[180px] items-center justify-center text-sm text-slate-500">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Loading readiness snapshot...
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle>Boundary Validation</CardTitle>
+                <CardDescription>
+                  Snapshot lock and scope checks for the active reporting boundary.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex min-h-[180px] items-center justify-center text-sm text-slate-500">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Loading boundary checks...
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Blocking Issues</CardTitle>
+                <CardDescription>These must be cleared before publish.</CardDescription>
+              </CardHeader>
+              <CardContent className="text-sm text-slate-500">Loading issue summary...</CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Warnings</CardTitle>
+                <CardDescription>These do not block export but should be reviewed.</CardDescription>
+              </CardHeader>
+              <CardContent className="text-sm text-slate-500">Loading warning summary...</CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Export Formats</CardTitle>
+              <CardDescription>
+                Queue report artifacts and open the preview screen for completed jobs.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex min-h-[160px] items-center justify-center text-sm text-slate-500">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Loading export actions...
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+
     return (
       <div className="space-y-6">
         <div>

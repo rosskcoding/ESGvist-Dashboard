@@ -397,6 +397,83 @@ class UnavailableAIProvider(BaseAIProvider):
         raise RuntimeError("Primary AI provider unavailable")
 
 
+class LLMBackedAIProvider(BaseAIProvider):
+    def __init__(self, provider_name: str, model_name: str):
+        super().__init__(model_name)
+        self.provider_name = provider_name
+
+    @staticmethod
+    def _format_context(context: dict) -> str:
+        from app.infrastructure.llm_client import format_context_for_llm
+
+        formatted = format_context_for_llm(context)
+        return formatted or "No additional context provided."
+
+    @staticmethod
+    def _get_client():
+        from app.infrastructure.llm_client import build_llm_client
+
+        client = build_llm_client()
+        if client is None:
+            raise RuntimeError("Primary AI provider unavailable")
+        return client
+
+    async def _generate_ai_response(
+        self,
+        prompt_type: str,
+        context: dict,
+        *,
+        question: str | None = None,
+    ) -> AIResponse:
+        from app.infrastructure.llm_client import get_system_prompt
+
+        llm_client = self._get_client()
+        user_parts = [f"Context:\n{self._format_context(context)}"]
+        if question:
+            user_parts.append(f"Question: {question}")
+        raw = await llm_client.generate(
+            get_system_prompt(prompt_type),
+            "\n\n".join(user_parts),
+        )
+        response = llm_client.parse_ai_response(raw)
+        response.provider = self.provider_name
+        return response
+
+    async def _generate_review_response(self, context: dict) -> ReviewAssistResponse:
+        from app.infrastructure.llm_client import get_system_prompt
+
+        llm_client = self._get_client()
+        raw = await llm_client.generate(
+            get_system_prompt("review_assist"),
+            f"Context:\n{self._format_context(context)}",
+        )
+        response = llm_client.parse_review_response(raw)
+        response.provider = self.provider_name
+        return response
+
+    async def explain_field(self, context: dict) -> AIResponse:
+        return await self._generate_ai_response("field_explanation", context)
+
+    async def explain_completeness(self, context: dict) -> AIResponse:
+        return await self._generate_ai_response("completeness_explanation", context)
+
+    async def explain_boundary(self, context: dict) -> AIResponse:
+        return await self._generate_ai_response("boundary_explanation", context)
+
+    async def explain_evidence(self, context: dict) -> AIResponse:
+        return await self._generate_ai_response("evidence_explanation", context)
+
+    async def ask(self, question: str, context: dict) -> AIResponse:
+        return await self._generate_ai_response(
+            "contextual_qa",
+            context,
+            question=question,
+        )
+
+    async def review_assist(self, context: dict) -> ReviewAssistResponse:
+        return await self._generate_review_response(context)
+
+
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
@@ -433,6 +510,48 @@ class AIAssistantService:
         return f"{prefix}_unexpected_error", exception_type
 
     @staticmethod
+    def _normalize_stream_provider_name(provider_name: str) -> str:
+        normalized = (provider_name or "static").lower()
+        if normalized in {"azure", "gpt"}:
+            return "openai"
+        if normalized == "claude":
+            return "anthropic"
+        return normalized or "static"
+
+    def _resolve_copilot_status(self) -> tuple[str, str]:
+        if not getattr(settings, "ai_enabled", False):
+            return self.primary_provider.provider_name, self.primary_provider.model_name
+
+        configured = self._normalize_stream_provider_name(self.configured_provider)
+        if configured == "unavailable":
+            return self.fallback_provider.provider_name, self.fallback_provider.model_name
+        if configured not in {"openai", "anthropic"}:
+            return self.primary_provider.provider_name, self.primary_provider.model_name
+
+        from app.infrastructure.llm_client import build_llm_client
+
+        try:
+            llm_client = build_llm_client()
+        except Exception:
+            return self.fallback_provider.provider_name, self.fallback_provider.model_name
+
+        if llm_client is None:
+            return self.fallback_provider.provider_name, self.fallback_provider.model_name
+        return configured, llm_client.model
+
+    async def _build_stream_fallback_response(
+        self,
+        question: str,
+        safe_context: dict,
+    ) -> tuple[AIResponse, str]:
+        response = await self.fallback_provider.ask(question, safe_context)
+        response.provider = self.fallback_provider.provider_name
+        response.reasons = list(response.reasons or [])
+        if "Fallback provider was used" not in response.reasons:
+            response.reasons.append("Fallback provider was used")
+        return response, self.fallback_provider.model_name
+
+    @staticmethod
     def _build_provider(provider_name: str, model_name: str) -> BaseAIProvider:
         normalized = (provider_name or "static").lower()
         if not getattr(settings, "ai_enabled", False):
@@ -441,6 +560,10 @@ class AIAssistantService:
             return GroundedAIProvider(model_name=model_name)
         if normalized == "unavailable":
             return UnavailableAIProvider(model_name=model_name)
+        if normalized in {"openai", "azure", "gpt"}:
+            return LLMBackedAIProvider(provider_name="openai", model_name=model_name)
+        if normalized in {"anthropic", "claude"}:
+            return LLMBackedAIProvider(provider_name="anthropic", model_name=model_name)
         return StaticAIProvider(model_name=model_name)
 
     async def _invoke_provider(self, method_name: str, *args):
@@ -478,11 +601,12 @@ class AIAssistantService:
             return fallback_result, self.fallback_provider.model_name, True
 
     def get_status(self) -> AIStatusOut:
+        effective_provider, model_name = self._resolve_copilot_status()
         return AIStatusOut(
             enabled=getattr(settings, "ai_enabled", False),
             configured_provider=self.configured_provider,
-            effective_provider=self.primary_provider.provider_name,
-            model=self.primary_provider.model_name,
+            effective_provider=effective_provider,
+            model=model_name,
             fallback_model=self.fallback_provider.model_name,
             capabilities=list(self.primary_provider.capabilities),
         )
@@ -959,9 +1083,35 @@ class AIAssistantService:
         filter_reason: str | None = None
         model_name = self.primary_provider.model_name
         used_fallback = False
+        stream_provider_name = self._normalize_stream_provider_name(
+            self.configured_provider
+        )
 
         # ── Try real LLM streaming ───────────────────────────────────
-        llm_client = build_llm_client()
+        try:
+            llm_client = build_llm_client()
+        except Exception as exc:
+            llm_client = None
+            used_fallback = True
+            failure_operation, failure_reason = self._classify_ai_exception(
+                exc,
+                prefix="stream_init",
+            )
+            try:
+                record_non_blocking_failure("ai_service", failure_operation)
+                logger.warning(
+                    "ai_stream_client_build_failed",
+                    screen=payload.screen,
+                    user_id=ctx.user_id,
+                    organization_id=ctx.organization_id,
+                    configured_provider=stream_provider_name,
+                    failure_reason=failure_reason,
+                    exception_type=type(exc).__name__,
+                    exc_info=True,
+                )
+            except Exception:
+                pass
+
         if llm_client is not None:
             system_prompt = get_system_prompt("contextual_qa")
             user_message = (
@@ -978,7 +1128,7 @@ class AIAssistantService:
 
                 full_text = "".join(accumulated)
                 response = llm_client.parse_ai_response(full_text)
-                response.provider = self.primary_provider.provider_name
+                response.provider = stream_provider_name
                 model_name = llm_client.model
             except Exception as exc:
                 # Primary LLM failed mid-stream → fall back
@@ -1001,17 +1151,31 @@ class AIAssistantService:
                 except Exception:
                     pass
                 used_fallback = True
-                response, model_name, _ = await self._invoke_provider(
-                    "ask", clean_question, safe_context
-                )
+                if stream_provider_name in {"openai", "anthropic"}:
+                    response, model_name = await self._build_stream_fallback_response(
+                        clean_question,
+                        safe_context,
+                    )
+                else:
+                    response, model_name, provider_fallback = await self._invoke_provider(
+                        "ask", clean_question, safe_context
+                    )
+                    used_fallback = used_fallback or provider_fallback
                 words = (response.text or "").split(" ")
                 for i, word in enumerate(words):
                     yield ("chunk", word if i == 0 else " " + word)
         else:
             # No LLM client → provider chain with fallback
-            response, model_name, used_fallback = await self._invoke_provider(
-                "ask", clean_question, safe_context
-            )
+            if stream_provider_name in {"openai", "anthropic"}:
+                response, model_name = await self._build_stream_fallback_response(
+                    clean_question,
+                    safe_context,
+                )
+                used_fallback = True
+            else:
+                response, model_name, used_fallback = await self._invoke_provider(
+                    "ask", clean_question, safe_context
+                )
             words = (response.text or "").split(" ")
             for i, word in enumerate(words):
                 yield ("chunk", word if i == 0 else " " + word)

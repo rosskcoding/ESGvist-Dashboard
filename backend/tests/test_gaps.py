@@ -48,6 +48,16 @@ async def test_platform_update_tenant(client: AsyncClient, ctx: dict):
 
 
 @pytest.mark.asyncio
+async def test_platform_update_tenant_rejects_status_field(client: AsyncClient, ctx: dict):
+    resp = await client.patch(
+        f"/api/platform/tenants/{ctx['org_id']}",
+        json={"status": "suspended"},
+        headers=ctx["headers"],
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_platform_suspend_reactivate(client: AsyncClient, ctx: dict):
     resp = await client.post(
         f"/api/platform/tenants/{ctx['org_id']}/suspend", headers=ctx["headers"]

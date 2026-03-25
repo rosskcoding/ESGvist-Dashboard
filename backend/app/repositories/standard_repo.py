@@ -43,8 +43,13 @@ class StandardRepository:
         await self.session.flush()
         return s
 
+    STANDARD_EDITABLE_FIELDS = {"name", "version", "is_active", "description"}
+
     async def update_standard(self, standard_id: int, **kwargs) -> Standard:
         s = await self.get_or_raise(standard_id)
+        invalid = sorted(set(kwargs) - self.STANDARD_EDITABLE_FIELDS)
+        if invalid:
+            raise ValueError(f"Cannot update standard fields: {invalid}")
         for key, value in kwargs.items():
             if value is not None:
                 setattr(s, key, value)

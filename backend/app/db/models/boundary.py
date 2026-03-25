@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, ForeignKey, Integer, JSON, String, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Index, Integer, JSON, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.models.base import Base, TimestampMixin
@@ -17,6 +17,16 @@ class BoundaryDefinition(Base, TimestampMixin):
     inclusion_rules: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     consolidation_rules: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    __table_args__ = (
+        Index(
+            "uq_boundary_default_per_org",
+            "organization_id",
+            unique=True,
+            sqlite_where=text("is_default = 1"),
+            postgresql_where=text("is_default"),
+        ),
+    )
 
 
 class BoundaryMembership(Base, TimestampMixin):

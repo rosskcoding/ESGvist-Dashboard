@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ArrowLeft, FileSearch, Loader2, ShieldAlert } from "lucide-react";
 
 import { useApiQuery } from "@/lib/hooks/use-api";
@@ -40,19 +41,36 @@ export default function ReportPreviewPage() {
   const jobId = searchParams.get("jobId");
   const resolvedProjectId = Number(searchParams.get("projectId") || "1");
   const projectId = Number.isFinite(resolvedProjectId) && resolvedProjectId > 0 ? resolvedProjectId : 1;
+  const queryClient = useQueryClient();
 
+  const cachedMe = queryClient.getQueryData<{
+    roles: Array<{ role: string }>;
+  }>(["auth-me"]);
   const { data: me, isLoading: meLoading } = useApiQuery<{
     roles: Array<{ role: string }>;
-  }>(["auth-me"], "/auth/me");
+  }>(["auth-me"], "/auth/me", {
+    initialData: cachedMe,
+    staleTime: 60_000,
+    refetchOnMount: false,
+  });
 
   const role = me?.roles?.[0]?.role ?? "";
   const canAccess = role === "admin" || role === "esg_manager";
   const accessDenied = Boolean(role) && !canAccess;
 
+  const cachedExportJobs = queryClient.getQueryData<ExportListResponse>([
+    "report",
+    "exports",
+    projectId,
+  ]);
   const { data: jobs, isLoading: jobsLoading } = useApiQuery<ExportListResponse>(
     ["report-preview", "exports", projectId],
     `/projects/${projectId}/exports`,
-    { enabled: canAccess }
+    {
+      enabled: canAccess,
+      initialData: cachedExportJobs,
+      placeholderData: (previousData) => previousData,
+    }
   );
 
   const selectedJob = useMemo(() => {
@@ -75,7 +93,7 @@ export default function ReportPreviewPage() {
     { enabled: canAccess && Boolean(selectedJob?.id) && selectedJob?.status === "completed" }
   );
 
-  if (meLoading || (canAccess && (jobsLoading || artifactLoading))) {
+  if (meLoading || (canAccess && !jobs && jobsLoading)) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-slate-400" />

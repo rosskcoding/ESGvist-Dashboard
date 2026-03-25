@@ -69,15 +69,32 @@ class DataPointRepository:
         )
         return list(result.scalars().all())
 
+    DP_EDITABLE_FIELDS = {
+        "numeric_value",
+        "text_value",
+        "unit_code",
+        "status",
+        "entity_id",
+        "facility_id",
+        "review_comment",
+    }
+
     async def update(self, dp_id: int, **kwargs) -> DataPoint:
         dp = await self.get_or_raise(dp_id)
+        invalid = sorted(set(kwargs) - self.DP_EDITABLE_FIELDS)
+        if invalid:
+            raise ValueError(f"Cannot update data point fields: {invalid}")
         for k, v in kwargs.items():
             setattr(dp, k, v)
         await self.session.flush()
         return dp
 
     async def add_dimension(self, dp_id: int, dim_type: str, dim_value: str) -> DataPointDimension:
-        dim = DataPointDimension(data_point_id=dp_id, dimension_type=dim_type, dimension_value=dim_value)
+        dim = DataPointDimension(
+            data_point_id=dp_id,
+            dimension_type=dim_type,
+            dimension_value=dim_value,
+        )
         self.session.add(dim)
         await self.session.flush()
         return dim

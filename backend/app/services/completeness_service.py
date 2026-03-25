@@ -175,16 +175,21 @@ class CompletenessService:
                 return status
 
         if requirement_item and requirement_item.requires_evidence:
-            has_evidence = False
-            for dp in data_points:
-                if dp.status == "approved":
-                    ev_count = await self.repo.count_evidence_for_dp(dp.id)
-                    if ev_count > 0:
-                        has_evidence = True
-                        break
-            if not has_evidence:
+            # Every approved data point must have at least one evidence.
+            # Not just "at least one DP has evidence" — that would hide
+            # missing evidence on other approved DPs.
+            approved_dps = [dp for dp in data_points if dp.status == "approved"]
+            dps_missing_evidence = []
+            for dp in approved_dps:
+                ev_count = await self.repo.count_evidence_for_dp(dp.id)
+                if ev_count == 0:
+                    dps_missing_evidence.append(dp.id)
+            if dps_missing_evidence:
                 status = "partial"
-                reason = "Missing required evidence"
+                reason = (
+                    f"Missing required evidence for {len(dps_missing_evidence)} "
+                    f"approved data point(s): {', '.join(str(d) for d in dps_missing_evidence[:5])}"
+                )
                 await self.repo.upsert_item_status(project_id, item_id, status, reason)
                 return status
 

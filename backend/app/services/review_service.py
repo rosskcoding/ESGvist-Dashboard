@@ -147,7 +147,15 @@ class ReviewService:
                 )
         elif ctx.role == "reviewer":
             assignment_result = await self.dp_repo.session.execute(
-                select(MetricAssignment).where(MetricAssignment.reviewer_id == ctx.user_id)
+                select(MetricAssignment)
+                .join(
+                    ReportingProject,
+                    ReportingProject.id == MetricAssignment.reporting_project_id,
+                )
+                .where(
+                    MetricAssignment.reviewer_id == ctx.user_id,
+                    ReportingProject.organization_id == ctx.organization_id,
+                )
             )
             assignments = list(assignment_result.scalars().all())
             project_ids = sorted({assignment.reporting_project_id for assignment in assignments})

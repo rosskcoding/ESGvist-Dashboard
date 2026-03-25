@@ -1,13 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  ArchiveX,
   BookOpen,
   FileText,
   Layers,
   Loader2,
+  Pencil,
   Plus,
   ShieldAlert,
 } from "lucide-react";
@@ -137,6 +140,88 @@ function AddStandardDialog({
           <Button onClick={() => mutation.mutate(form)} disabled={mutation.isPending || !form.code || !form.name}>
             {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Create Standard
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditStandardDialog({
+  standard,
+  open,
+  onOpenChange,
+}: {
+  standard: Standard;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState({ name: standard.name, version: standard.version ?? "" });
+
+  useEffect(() => {
+    if (!open) return;
+    setForm({ name: standard.name, version: standard.version ?? "" });
+  }, [open, standard]);
+
+  const mutation = useApiMutation<Standard, typeof form>(`/standards/${standard.id}`, "PATCH", {
+    onSuccess: (updated) => {
+      queryClient.setQueryData<StandardListResponse>(["standards-admin"], (current) =>
+        current
+          ? {
+              ...current,
+              items: current.items.map((item) => (item.id === updated.id ? updated : item)),
+            }
+          : current
+      );
+      onOpenChange(false);
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit Standard</DialogTitle>
+          <DialogDescription>Update the standard metadata without changing its code.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 py-4">
+          <div className="grid gap-1.5">
+            <Label htmlFor="standard-edit-code">Code</Label>
+            <Input id="standard-edit-code" value={standard.code} disabled />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="standard-edit-name">Name</Label>
+            <Input
+              id="standard-edit-name"
+              value={form.name}
+              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="standard-edit-version">Version</Label>
+            <Input
+              id="standard-edit-version"
+              value={form.version}
+              onChange={(event) => setForm((current) => ({ ...current, version: event.target.value }))}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() =>
+              mutation.mutate({
+                name: form.name,
+                version: form.version,
+              })
+            }
+            disabled={mutation.isPending || !form.name}
+          >
+            {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Save Standard
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -358,18 +443,24 @@ function AddDisclosureDialog({
 }
 
 export default function StandardsPage() {
+  const pathname = usePathname();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [standardDialogOpen, setStandardDialogOpen] = useState(false);
+  const [editStandardOpen, setEditStandardOpen] = useState(false);
   const [sectionDialogOpen, setSectionDialogOpen] = useState(false);
   const [disclosureDialogOpen, setDisclosureDialogOpen] = useState(false);
+  const queryClient = useQueryClient();
 
   const { data: me, isLoading: meLoading } = useApiQuery<{
     roles: Array<{ role: string }>;
   }>(["auth-me"], "/auth/me");
 
-  const role = me?.roles?.[0]?.role ?? "";
-  const canAccess = role === "admin" || role === "platform_admin";
-  const accessDenied = Boolean(role) && !canAccess;
+  const roles = me?.roles?.map((binding) => binding.role) ?? [];
+  const canAccess = roles.some((role) => role === "framework_admin" || role === "platform_admin");
+  const accessDenied = Boolean(me) && !canAccess;
+  const basePath = pathname.startsWith("/platform/framework")
+    ? "/platform/framework"
+    : "/settings";
 
   const { data: standardsData, isLoading: standardsLoading } = useApiQuery<StandardListResponse>(
     ["standards-admin"],
@@ -387,6 +478,23 @@ export default function StandardsPage() {
   const selectedStandard = useMemo(
     () => standards.find((standard) => standard.id === selectedId) ?? null,
     [selectedId, standards]
+  );
+
+  const deactivateStandard = useApiMutation<Standard, void>(
+    selectedStandard ? `/standards/${selectedStandard.id}/deactivate` : "/standards/0/deactivate",
+    "POST",
+    {
+      onSuccess: (updated) => {
+        queryClient.setQueryData<StandardListResponse>(["standards-admin"], (current) =>
+          current
+            ? {
+                ...current,
+                items: current.items.map((item) => (item.id === updated.id ? updated : item)),
+              }
+            : current
+        );
+      },
+    }
   );
 
   const { data: sections = [], isLoading: sectionsLoading } = useApiQuery<Section[]>(
@@ -424,7 +532,9 @@ export default function StandardsPage() {
             <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" />
             <div>
               <p className="font-semibold">Access denied</p>
-              <p className="mt-1 text-sm">Only admin and platform admin roles can manage standards.</p>
+              <p className="mt-1 text-sm">
+                Only framework admin and platform admin roles can manage standards.
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -491,11 +601,25 @@ export default function StandardsPage() {
                     {selectedStandard.code} • Version {selectedStandard.version ?? "n/a"}
                   </p>
                 </div>
-                <Button variant="outline" asChild>
-                  <Link href={`/settings/standards/${selectedStandard.id}/requirements`}>
-                    Open Requirement Items
-                  </Link>
-                </Button>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <Button variant="outline" onClick={() => setEditStandardOpen(true)}>
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Edit Standard
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => deactivateStandard.mutate()}
+                    disabled={deactivateStandard.isPending || !selectedStandard.is_active}
+                  >
+                    <ArchiveX className="mr-2 h-4 w-4" />
+                    {selectedStandard.is_active ? "Deactivate Standard" : "Standard Inactive"}
+                  </Button>
+                  <Button variant="outline" asChild>
+                    <Link href={`${basePath}/standards/${selectedStandard.id}/requirements`}>
+                      Open Requirement Items
+                    </Link>
+                  </Button>
+                </div>
               </CardHeader>
             </Card>
 
@@ -584,7 +708,7 @@ export default function StandardsPage() {
                           </TableCell>
                             <TableCell>
                               <Button variant="ghost" size="sm" asChild>
-                                <Link href={`/settings/standards/${selectedStandard.id}/requirements?disclosureId=${disclosure.id}`}>
+                                <Link href={`${basePath}/standards/${selectedStandard.id}/requirements?disclosureId=${disclosure.id}`}>
                                   Manage Items
                                 </Link>
                               </Button>
@@ -615,6 +739,11 @@ export default function StandardsPage() {
       />
       {selectedStandard && (
         <>
+          <EditStandardDialog
+            standard={selectedStandard}
+            open={editStandardOpen}
+            onOpenChange={setEditStandardOpen}
+          />
           <AddSectionDialog
             standardId={selectedStandard.id}
             open={sectionDialogOpen}

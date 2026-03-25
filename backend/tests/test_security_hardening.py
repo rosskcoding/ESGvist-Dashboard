@@ -103,6 +103,16 @@ class TestAITimeout:
         source = inspect.getsource(OpenAILLMClient.__init__)
         assert "timeout" in source
 
+    def test_grounded_provider_does_not_build_external_llm_client(self, monkeypatch):
+        from app.infrastructure.llm_client import build_llm_client
+
+        monkeypatch.setattr(settings, "ai_enabled", True)
+        monkeypatch.setattr(settings, "ai_provider", "grounded")
+        monkeypatch.setattr(settings, "ai_model", "grounded-v1")
+        monkeypatch.setattr(settings, "ai_api_key", "test-key")
+
+        assert build_llm_client() is None
+
     def test_timeout_error_raises_runtime_error(self):
         """Timeout should raise RuntimeError (caught by AI fallback)."""
         import inspect

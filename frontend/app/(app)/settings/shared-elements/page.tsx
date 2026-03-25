@@ -491,9 +491,9 @@ export default function SharedElementsPage() {
     roles: Array<{ role: string }>;
   }>(["auth-me"], "/auth/me");
 
-  const role = me?.roles?.[0]?.role ?? "";
-  const canAccess = role === "admin" || role === "platform_admin";
-  const accessDenied = Boolean(role) && !canAccess;
+  const roles = me?.roles?.map((binding) => binding.role) ?? [];
+  const canAccess = roles.some((role) => role === "framework_admin" || role === "platform_admin");
+  const accessDenied = Boolean(me) && !canAccess;
 
   const { data: elementsData, isLoading: elementsLoading } = useApiQuery<SharedElementListResponse>(
     ["shared-elements-admin"],
@@ -530,7 +530,9 @@ export default function SharedElementsPage() {
             <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" />
             <div>
               <p className="font-semibold">Access denied</p>
-              <p className="mt-1 text-sm">Only admin and platform admin roles can manage shared elements.</p>
+              <p className="mt-1 text-sm">
+                Only framework admin and platform admin roles can manage shared elements.
+              </p>
             </div>
           </CardContent>
         </Card>

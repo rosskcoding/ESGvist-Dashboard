@@ -5,7 +5,13 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
 from app.core.csrf import EXEMPT_PATHS, _is_exempt_path
-from app.core.security import create_refresh_token, generate_totp_code, hash_password
+from app.core.security import (
+    create_refresh_token,
+    decode_token,
+    generate_totp_code,
+    hash_password,
+    hash_refresh_token,
+)
 from app.db.models.refresh_token import RefreshToken
 from app.db.models.user import User
 from app.main import app
@@ -181,23 +187,23 @@ async def test_refresh_token_is_hashed_at_rest(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_refresh_lookup_auto_migrates_legacy_raw_token_row():
-    legacy_refresh = create_refresh_token(1, "legacy-refresh@example.com")
+async def test_refresh_lookup_reads_hashed_token_row():
+    refresh_token = create_refresh_token(1, "hashed-refresh@example.com")
 
     async with TestSessionLocal() as session:
         user = User(
             id=1,
-            email="legacy-refresh@example.com",
+            email="hashed-refresh@example.com",
             password_hash=hash_password("password123"),
-            full_name="Legacy Refresh",
+            full_name="Hashed Refresh",
             is_active=True,
         )
         session.add(user)
         session.add(
             RefreshToken(
                 user_id=1,
-                token=legacy_refresh,
-                token_jti=None,
+                token=hash_refresh_token(refresh_token),
+                token_jti=decode_token(refresh_token).jti,
                 expires_at=datetime.now(UTC) + timedelta(days=7),
             )
         )
@@ -205,20 +211,10 @@ async def test_refresh_lookup_auto_migrates_legacy_raw_token_row():
 
     async with TestSessionLocal() as session:
         repo = RefreshTokenRepository(session)
-        refresh_session = await repo.get_active_by_token(legacy_refresh)
+        refresh_session = await repo.get_active_by_token(refresh_token)
         assert refresh_session is not None
-        assert refresh_session.token != legacy_refresh
-        assert len(refresh_session.token) == 64
-        assert refresh_session.token_jti is not None
-        await session.commit()
-
-    async with TestSessionLocal() as session:
-        stored = (
-            await session.execute(select(RefreshToken).where(RefreshToken.user_id == 1))
-        ).scalar_one()
-    assert stored.token != legacy_refresh
-    assert len(stored.token) == 64
-    assert stored.token_jti is not None
+        assert refresh_session.token == hash_refresh_token(refresh_token)
+        assert refresh_session.token_jti == decode_token(refresh_token).jti
 
 
 @pytest.mark.asyncio
@@ -347,6 +343,70 @@ async def test_get_and_update_my_organization_settings(client: AsyncClient):
     assert updated.json()["consolidation_approach"] == "financial_control"
     assert updated.json()["ghg_scope_approach"] == "market_based"
     assert updated.json()["default_boundary_id"] == second_boundary.json()["id"]
+
+
+@pytest.mark.asyncio
+async def test_update_my_organization_settings_rejects_clearing_default_boundary(
+    client: AsyncClient,
+):
+    headers = await _setup_org_context(client, email="settings-clear-boundary@example.com")
+
+    response = await client.patch(
+        "/api/auth/me/organization",
+        json={"default_boundary_id": None},
+        headers=headers,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "DEFAULT_BOUNDARY_REQUIRED"
+
+
+@pytest.mark.asyncio
+async def test_me_omits_organization_name_for_multi_org_user(client: AsyncClient):
+    primary_headers = await _setup_org_context(client, email="multi-org-user@example.com")
+
+    await client.post(
+        "/api/auth/register",
+        json={
+            "email": "second-org-admin@example.com",
+            "password": "password123",
+            "full_name": "Second Org Admin",
+        },
+    )
+    second_login = await client.post(
+        "/api/auth/login",
+        json={"email": "second-org-admin@example.com", "password": "password123"},
+    )
+    second_admin_headers = {"Authorization": f"Bearer {second_login.json()['access_token']}"}
+    second_org = await client.post(
+        "/api/organizations/setup",
+        json={"name": "Second Settings Org", "country": "GB"},
+        headers=second_admin_headers,
+    )
+    second_admin_headers["X-Organization-Id"] = str(second_org.json()["organization_id"])
+
+    invitation = await client.post(
+        "/api/auth/invitations",
+        json={"email": "multi-org-user@example.com", "role": "reviewer"},
+        headers=second_admin_headers,
+    )
+    assert invitation.status_code == 201
+
+    accept = await client.post(
+        "/api/invitations/accept",
+        json={"token": invitation.json()["token"]},
+        headers={"Authorization": primary_headers["Authorization"]},
+    )
+    assert accept.status_code == 200
+
+    me = await client.get(
+        "/api/auth/me",
+        headers={"Authorization": primary_headers["Authorization"]},
+    )
+    assert me.status_code == 200
+    assert me.json()["organization_name"] is None
+    org_roles = [role for role in me.json()["roles"] if role["scope_type"] == "organization"]
+    assert len(org_roles) == 2
 
 
 @pytest.mark.asyncio
@@ -789,6 +849,38 @@ async def test_cookie_authenticated_write_requires_trusted_origin_or_referer(
     )
     assert allowed.status_code == 200
     assert allowed.json()["full_name"] == "Allowed Referer Update"
+
+
+@pytest.mark.asyncio
+async def test_cookie_authenticated_write_allows_trusted_frontend_origin_header(
+    client: AsyncClient,
+):
+    await client.post(
+        "/api/auth/register",
+        json={
+            "email": "forwarded-origin@example.com",
+            "password": "password123",
+            "full_name": "Forwarded Origin User",
+        },
+    )
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": "forwarded-origin@example.com", "password": "password123"},
+    )
+    csrf_token = login.cookies.get("csrf_token")
+    assert csrf_token
+
+    allowed = await client.patch(
+        "/api/auth/me",
+        json={"full_name": "Allowed Proxied Update"},
+        headers={
+            "Sec-Fetch-Site": "same-origin",
+            "X-Frontend-Origin": TRUSTED_TEST_ORIGIN,
+            "X-CSRF-Token": csrf_token,
+        },
+    )
+    assert allowed.status_code == 200
+    assert allowed.json()["full_name"] == "Allowed Proxied Update"
 
 
 @pytest.mark.asyncio

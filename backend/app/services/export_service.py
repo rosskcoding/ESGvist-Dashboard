@@ -606,13 +606,15 @@ class ExportService:
 
         path = f"/api/projects/{project_id}/exports"
         request_fingerprint = self._request_fingerprint(project_id, payload)
+        reserved_record = None
         if idempotency_key:
-            existing_record = await self.idempotency_repo.get_record(
+            existing_record = await self.idempotency_repo.try_reserve(
                 organization_id=ctx.organization_id,
                 user_id=ctx.user_id,
                 method="POST",
                 path=path,
                 idempotency_key=idempotency_key,
+                request_fingerprint=request_fingerprint,
             )
             if existing_record:
                 if existing_record.request_fingerprint != request_fingerprint:
@@ -621,7 +623,27 @@ class ExportService:
                         409,
                         "Idempotency key was already used with a different request payload",
                     )
+                if existing_record.response_status_code == 0 or not existing_record.response_body:
+                    raise AppError(
+                        "IDEMPOTENCY_REQUEST_PENDING",
+                        409,
+                        "A request with this idempotency key is still being processed",
+                    )
                 return ExportJobOut(**existing_record.response_body)
+
+            reserved_record = await self.idempotency_repo.get_record(
+                organization_id=ctx.organization_id,
+                user_id=ctx.user_id,
+                method="POST",
+                path=path,
+                idempotency_key=idempotency_key,
+            )
+            if reserved_record is None:
+                raise AppError(
+                    "IDEMPOTENCY_RESERVATION_FAILED",
+                    500,
+                    "Failed to finalize idempotency reservation",
+                )
 
         context = await self._build_export_gate_context(project_id, ctx)
         gate_result = await self.gate_check_start_export(project_id, ctx)
@@ -653,15 +675,10 @@ class ExportService:
             changes={"export_format": payload.export_format, "report_type": payload.report_type},
         )
         serialized = self._serialize_job(job)
-        if idempotency_key:
-            await self.idempotency_repo.create_record(
-                organization_id=ctx.organization_id,
-                user_id=ctx.user_id,
-                method="POST",
-                path=path,
-                idempotency_key=idempotency_key,
-                request_fingerprint=request_fingerprint,
-                response_status_code=201,
+        if reserved_record is not None:
+            await self.idempotency_repo.finalize_record(
+                reserved_record,
+                status_code=201,
                 response_body=serialized.model_dump(mode="json"),
             )
         return serialized
@@ -1211,29 +1228,19 @@ class ExportService:
             "boundary": boundary_meta,
         }
 
-    async def publish(self, project_id: int, ctx: RequestContext | None = None) -> dict:
-        if ctx:
-            if ctx.role not in ("admin", "esg_manager", "platform_admin"):
-                raise AppError("FORBIDDEN", 403, "Only admin or ESG manager can publish projects")
-            project = await get_project_for_ctx(
-                self.session,
-                project_id,
-                ctx,
-                allow_collectors=False,
-                allow_reviewers=False,
-            )
-        else:
-            proj = await self.session.execute(
-                select(ReportingProject).where(ReportingProject.id == project_id)
-            )
-            project = proj.scalar_one_or_none()
-            if not project:
-                raise AppError("NOT_FOUND", 404, f"Project {project_id} not found")
+    async def publish(self, project_id: int, ctx: RequestContext) -> dict:
+        """Publish a project.
 
-        if project.status == "published":
-            raise AppError("CONFLICT", 409, "Project already published")
+        Delegates to ProjectService.publish_project() which runs full
+        workflow gates, fires events, and invalidates caches.  This
+        avoids having two independent publish paths with divergent
+        invariants.
+        """
+        from app.services.project_service import ProjectService
+        from app.repositories.project_repo import ProjectRepository
 
-        project.status = "published"
-        await self.session.flush()
-
-        return {"project_id": project_id, "status": "published"}
+        project_service = ProjectService(
+            repo=ProjectRepository(self.session),
+            audit_repo=self.audit_repo,
+        )
+        return await project_service.publish_project(project_id, ctx)

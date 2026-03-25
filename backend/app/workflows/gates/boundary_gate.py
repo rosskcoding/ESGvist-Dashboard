@@ -2,42 +2,28 @@ from app.workflows.gates.base import Gate, GateFailure
 
 
 class BoundaryInclusionGate(Gate):
-    """Warns/blocks if entity is not in project boundary."""
+    """Warns if data point's entity is not in the project boundary.
 
-    def __init__(self, boundary_repo=None):
-        self.boundary_repo = boundary_repo
+    Uses ``boundary_entity_included`` (bool | None) from context,
+    which is resolved by ``_build_gate_context()`` in WorkflowService.
+    No repo dependency needed — the service does the lookup.
+    """
 
     def applies_to(self, action: str) -> bool:
         return action in ("submit_data_point",)
 
     async def evaluate(self, context: dict) -> GateFailure | None:
-        dp = context.get("data_point")
-        project = context.get("project")
-
-        if not dp or not project:
+        included = context.get("boundary_entity_included")
+        # None means no entity_id or no boundary — skip
+        if included is None:
             return None
-        if not getattr(dp, "entity_id", None) or not getattr(project, "boundary_definition_id", None):
-            return None
-
-        # If boundary_repo is available, check membership
-        if self.boundary_repo:
-            from sqlalchemy import select
-            from app.db.models.boundary import BoundaryMembership
-
-            membership = await self.boundary_repo.session.execute(
-                select(BoundaryMembership).where(
-                    BoundaryMembership.boundary_definition_id == project.boundary_definition_id,
-                    BoundaryMembership.entity_id == dp.entity_id,
-                    BoundaryMembership.included == True,
-                )
+        if not included:
+            return GateFailure(
+                code="OUT_OF_BOUNDARY",
+                gate_type="boundary",
+                message="Entity is not included in project boundary",
+                severity="warning",
             )
-            if not membership.scalar_one_or_none():
-                return GateFailure(
-                    code="OUT_OF_BOUNDARY",
-                    gate_type="boundary",
-                    message="Entity is not included in project boundary",
-                    severity="warning",
-                )
         return None
 
 

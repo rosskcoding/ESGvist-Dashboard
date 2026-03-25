@@ -299,7 +299,7 @@ export default function WebhooksPage() {
                 <button
                   key={endpoint.id}
                   className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
-                    selectedId === endpoint.id ? "border-blue-200 bg-blue-50" : "border-slate-200 hover:bg-slate-50"
+                    selectedId === endpoint.id ? "border-cyan-200 bg-cyan-50" : "border-slate-200 hover:bg-slate-50"
                   }`}
                   onClick={() => setSelectedId(endpoint.id)}
                 >

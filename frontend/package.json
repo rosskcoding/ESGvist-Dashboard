@@ -9,6 +9,7 @@
     "lint": "next lint",
     "test:e2e:guided-collection": "./node_modules/.bin/playwright test -c playwright.collection-guided.config.ts --grep '(guided|legacy|org-default)'",
     "test:e2e:platform-flows": "./node_modules/.bin/playwright test -c playwright.platform-flows.config.ts",
+    "test:e2e:framework-catalog": "./node_modules/.bin/playwright test -c playwright.framework-catalog.config.ts",
     "test:e2e:form-config-resync": "./node_modules/.bin/playwright test -c playwright.form-config-resync.config.ts",
     "test:e2e:notifications-support-mode": "./node_modules/.bin/playwright test -c playwright.notifications-support-mode.config.ts"
   },

@@ -109,6 +109,7 @@ def ensure_demo_self_registration():
 def register_users():
     step("1. Register users")
     users_to_register = [
+        ("framework@esgvist.com", "Iris Framework"),
         ("manager@greentech.com", "Anna Manager"),
         ("collector1@greentech.com", "Ivan Collector"),
         ("collector2@greentech.com", "Maria Data"),
@@ -136,6 +137,28 @@ def register_users():
                 uid = me["id"] if me else None
                 state["users"][email] = {"id": uid, "token": login["access_token"]}
                 print(f"  Logged in: {email} (id={uid})")
+
+
+def assign_platform_roles():
+    step("1b. Assign platform roles")
+    hdrs = admin_headers()
+    framework_user = state["users"].get("framework@esgvist.com")
+    if not framework_user:
+        print("  WARNING: framework@esgvist.com was not registered")
+        return
+    user_id = framework_user.get("id")
+    if not user_id:
+        print("  WARNING: framework@esgvist.com has no user id")
+        return
+    res = post(
+        f"/api/users/{user_id}/roles",
+        {"role": "framework_admin", "scope_type": "platform", "scope_id": None},
+        hdrs,
+    )
+    if res:
+        print(f"  Assigned framework_admin to framework@esgvist.com (binding={res['id']})")
+    else:
+        print("  WARNING: Could not assign framework_admin")
 
 
 # ── 2. Setup organization ────────────────────────────────────
@@ -642,6 +665,7 @@ def print_summary():
     print("  " + "-" * 56)
     creds = [
         ("admin@esgvist.com", "platform_admin"),
+        ("framework@esgvist.com", "framework_admin"),
         ("manager@greentech.com", "esg_manager"),
         ("collector1@greentech.com", "collector"),
         ("collector2@greentech.com", "collector"),
@@ -680,6 +704,7 @@ def main():
 
     ensure_demo_self_registration()
     register_users()
+    assign_platform_roles()
     setup_organization()
     create_entities()
     create_ownership_links()

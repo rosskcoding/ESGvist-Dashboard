@@ -92,7 +92,7 @@ export function WizardRenderer({
             className={cn(
               "flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors",
               i === currentStep
-                ? "bg-blue-100 text-blue-700"
+                ? "bg-cyan-100 text-cyan-700"
                 : i < currentStep
                   ? "bg-green-50 text-green-700"
                   : "bg-slate-100 text-slate-500"

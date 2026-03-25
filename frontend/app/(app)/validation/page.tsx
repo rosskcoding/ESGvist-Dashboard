@@ -101,7 +101,7 @@ const URGENCY_CONFIG: Record<
 };
 
 const COMMENT_TYPE_CLASSES: Record<string, string> = {
-  question: "border-blue-200 bg-blue-50 text-blue-700",
+  question: "border-cyan-200 bg-cyan-50 text-cyan-700",
   issue: "border-red-200 bg-red-50 text-red-700",
   suggestion: "border-emerald-200 bg-emerald-50 text-emerald-700",
   general: "border-slate-200 bg-slate-50 text-slate-700",
@@ -605,7 +605,7 @@ export default function ValidationPage() {
                     key={item.id}
                     className={cn(
                       "flex w-full flex-col gap-2 border-b border-slate-100 px-4 py-3 text-left transition-colors hover:bg-slate-50",
-                      selected && "bg-blue-50 hover:bg-blue-50"
+                      selected && "bg-cyan-50 hover:bg-cyan-50"
                     )}
                     onClick={() => {
                       setSelectedId(item.id);
@@ -732,7 +732,7 @@ export default function ValidationPage() {
                             {evidence.filename || `Evidence #${evidence.id}`}
                           </span>
                           {evidence.url ? (
-                            <a href={evidence.url} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline">
+                            <a href={evidence.url} target="_blank" rel="noreferrer" className="text-xs text-cyan-600 hover:underline">
                               Open
                             </a>
                           ) : null}
@@ -1009,7 +1009,7 @@ function CommentThread({
           </span>
         </div>
         <p className="text-sm text-slate-700">{comment.content}</p>
-        <button className="mt-1 text-xs text-slate-400 hover:text-blue-600" onClick={() => onReply(comment.id)}>
+        <button className="mt-1 text-xs text-slate-400 hover:text-cyan-600" onClick={() => onReply(comment.id)}>
           Reply
         </button>
       </div>

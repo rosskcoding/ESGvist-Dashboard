@@ -132,6 +132,8 @@ async def get_matching_assignment(
                 MetricAssignment.entity_id.is_(None),
             )
         )
+    else:
+        query = query.where(MetricAssignment.entity_id.is_(None))
     if data_point.facility_id is not None:
         query = query.where(
             or_(
@@ -139,6 +141,8 @@ async def get_matching_assignment(
                 MetricAssignment.facility_id.is_(None),
             )
         )
+    else:
+        query = query.where(MetricAssignment.facility_id.is_(None))
     result = await session.execute(query.order_by(MetricAssignment.id))
     return result.scalars().first()
 
@@ -159,7 +163,11 @@ async def get_data_point_for_ctx(
     if ctx.role == "collector":
         assignment = await get_matching_assignment(session, data_point, ctx.user_id, "collector")
         if data_point.created_by != ctx.user_id and assignment is None:
-            raise AppError("FORBIDDEN", 403, "Collectors can only access their own or assigned data points")
+            raise AppError(
+                "FORBIDDEN",
+                403,
+                "Collectors can only access their own or assigned data points",
+            )
 
     if ctx.role == "reviewer":
         assignment = await get_matching_assignment(session, data_point, ctx.user_id, "reviewer")
