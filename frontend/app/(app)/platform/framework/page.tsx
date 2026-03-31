@@ -37,7 +37,7 @@ export default function FrameworkCatalogPage() {
 
   const { data: standardsData, isLoading: standardsLoading } = useApiQuery<StandardListResponse>(
     ["framework-standards-summary"],
-    "/standards?page_size=100",
+    "/standards?page_size=500",
     { enabled: canAccess }
   );
   const { data: sharedElementsData, isLoading: sharedElementsLoading } =

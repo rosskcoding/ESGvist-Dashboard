@@ -47,6 +47,11 @@ type Standard = {
   name: string;
   version: string | null;
   is_active: boolean;
+  family_code: string;
+  family_name: string;
+  catalog_group_code: string;
+  catalog_group_name: string;
+  is_attachable: boolean;
 };
 
 type Section = {
@@ -69,6 +74,30 @@ type Disclosure = {
 
 type StandardListResponse = { items: Standard[]; total: number };
 type DisclosureListResponse = { items: Disclosure[]; total: number };
+
+const familyDisplayPriority: Record<string, number> = {
+  GRI: 0,
+  SASB: 1,
+  IFRS: 2,
+  ESRS: 3,
+};
+
+const groupDisplayPriority: Record<string, number> = {
+  universal: 0,
+  topic: 1,
+  sector: 2,
+  family: 99,
+};
+
+function getStandardDisplayName(code: string, name: string) {
+  const trimmedName = name.trim();
+  if (!trimmedName || trimmedName === code) return code;
+  if (trimmedName.startsWith(code)) {
+    const remainder = trimmedName.slice(code.length).replace(/^[:\-\s]+/, "").trim();
+    if (remainder) return remainder;
+  }
+  return trimmedName;
+}
 
 function AddStandardDialog({
   open,
@@ -464,10 +493,24 @@ export default function StandardsPage() {
 
   const { data: standardsData, isLoading: standardsLoading } = useApiQuery<StandardListResponse>(
     ["standards-admin"],
-    "/standards?page_size=100",
+    "/standards?page_size=500",
     { enabled: canAccess }
   );
-  const standards = standardsData?.items ?? [];
+  const standards = useMemo(
+    () =>
+      [...(standardsData?.items ?? [])].sort((left, right) => {
+        const leftFamilyPriority = familyDisplayPriority[left.family_code] ?? 100;
+        const rightFamilyPriority = familyDisplayPriority[right.family_code] ?? 100;
+        if (leftFamilyPriority !== rightFamilyPriority) return leftFamilyPriority - rightFamilyPriority;
+
+        const leftGroupPriority = groupDisplayPriority[left.catalog_group_code] ?? 100;
+        const rightGroupPriority = groupDisplayPriority[right.catalog_group_code] ?? 100;
+        if (leftGroupPriority !== rightGroupPriority) return leftGroupPriority - rightGroupPriority;
+
+        return left.code.localeCompare(right.code);
+      }),
+    [standardsData]
+  );
 
   useEffect(() => {
     if (!selectedId && standards.length > 0) {
@@ -579,8 +622,15 @@ export default function StandardsPage() {
                     {standard.is_active ? "active" : "inactive"}
                   </Badge>
                 </div>
-                <p className="mt-2 font-medium text-slate-900">{standard.name}</p>
-                <p className="mt-1 text-sm text-slate-500">Version {standard.version ?? "n/a"}</p>
+                <p className="mt-2 font-medium text-slate-900">
+                  {getStandardDisplayName(standard.code, standard.name)}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Badge variant="outline">{standard.family_name}</Badge>
+                  <Badge variant="outline">{standard.catalog_group_name}</Badge>
+                  {!standard.is_attachable && <Badge variant="secondary">catalog family</Badge>}
+                </div>
+                <p className="mt-2 text-sm text-slate-500">Version {standard.version ?? "n/a"}</p>
               </button>
             ))
           )}
@@ -595,11 +645,16 @@ export default function StandardsPage() {
                 <div>
                   <CardTitle className="flex items-center gap-2">
                     <BookOpen className="h-5 w-5 text-slate-500" />
-                    {selectedStandard.name}
+                    {getStandardDisplayName(selectedStandard.code, selectedStandard.name)}
                   </CardTitle>
                   <p className="mt-1 text-sm text-slate-500">
                     {selectedStandard.code} • Version {selectedStandard.version ?? "n/a"}
                   </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Badge variant="outline">{selectedStandard.family_name}</Badge>
+                    <Badge variant="outline">{selectedStandard.catalog_group_name}</Badge>
+                    {!selectedStandard.is_attachable && <Badge variant="secondary">catalog family</Badge>}
+                  </div>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   <Button variant="outline" onClick={() => setEditStandardOpen(true)}>

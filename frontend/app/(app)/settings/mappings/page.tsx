@@ -143,7 +143,7 @@ export default function MappingHistoryPage() {
     error: standardsError,
   } = useApiQuery<StandardListResponse>(
     ["mapping-standards"],
-    "/standards?page_size=100",
+    "/standards?page_size=500",
     { enabled: canAccess }
   );
 

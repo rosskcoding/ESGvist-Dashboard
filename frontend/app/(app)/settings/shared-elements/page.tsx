@@ -219,7 +219,7 @@ function LinkMappingDialog({
       if (!open) return;
       setLoadingOptions(true);
       try {
-        const standards = await api.get<StandardListResponse>("/standards?page_size=100");
+        const standards = await api.get<StandardListResponse>("/standards?page_size=500");
         const disclosureResults = await Promise.all(
           standards.items.map((standard) =>
             api.get<DisclosureListResponse>(`/standards/${standard.id}/disclosures?page_size=100`).then((result) => ({

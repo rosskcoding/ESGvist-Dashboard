@@ -32,7 +32,7 @@ def _get_service(session: AsyncSession) -> StandardService:
 @router.get("", response_model=StandardListOut)
 async def list_standards(
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=500),
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
@@ -110,7 +110,7 @@ async def create_section(
 async def list_disclosures(
     standard_id: int,
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=100),
+    page_size: int = Query(50, ge=1, le=500),
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):

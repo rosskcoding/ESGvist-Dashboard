@@ -349,28 +349,30 @@ class FormConfigService:
         steps_map: dict[str, list[dict]] = {}
         step_field_by_context: dict[str, dict[str, dict]] = {}
         for item_id, item_code, name_value, item_type, se_id, se_code, se_name in rows:
+            assignment_contexts = assignments_by_element.get(se_id)
+            if not assignment_contexts:
+                continue
+
             step_name = item_type or "general"
             if step_name not in steps_map:
                 steps_map[step_name] = []
                 step_field_by_context[step_name] = {}
 
             help_text = f"{item_code}: {name_value}" if item_code else name_value
-            assignment_contexts = assignments_by_element.get(se_id) or [None]
             for assignment_context in assignment_contexts:
-                if assignment_context is None:
-                    field_key = f"element:{se_id}"
-                else:
-                    assignment_id = assignment_context["assignment_id"]
-                    field_key = f"assignment:{assignment_id}" if assignment_id is not None else f"element:{se_id}"
+                assignment_id = assignment_context["assignment_id"]
+                field_key = (
+                    f"assignment:{assignment_id}" if assignment_id is not None else f"element:{se_id}"
+                )
 
                 existing_field = step_field_by_context[step_name].get(field_key)
                 if existing_field is None:
                     field = {
                         "shared_element_id": se_id,
                         "requirement_item_id": item_id,
-                        "assignment_id": assignment_context["assignment_id"] if assignment_context else None,
-                        "entity_id": assignment_context["entity_id"] if assignment_context else None,
-                        "facility_id": assignment_context["facility_id"] if assignment_context else None,
+                        "assignment_id": assignment_context["assignment_id"],
+                        "entity_id": assignment_context["entity_id"],
+                        "facility_id": assignment_context["facility_id"],
                         "visible": True,
                         "required": True,
                         "help_text": help_text,
@@ -478,7 +480,7 @@ class FormConfigService:
             project,
             created_by=ctx.user_id,
             name=f"Auto-generated config for project #{project_id}",
-            description="Generated from project requirement items",
+            description="Generated from the current live project assignments",
         )
 
     async def resync_project_config(self, project_id: int, ctx: RequestContext) -> FormConfigOut:
@@ -490,5 +492,5 @@ class FormConfigService:
             project,
             created_by=ctx.user_id,
             name=f"Auto-synced config for project #{project_id}",
-            description="Re-synced from the current project assignments and mappings",
+            description="Re-synced from the current live project assignments",
         )

@@ -31,6 +31,11 @@ class StandardOut(BaseModel):
     effective_from: date | None
     effective_to: date | None
     is_active: bool
+    family_code: str
+    family_name: str
+    catalog_group_code: str
+    catalog_group_name: str
+    is_attachable: bool
 
     model_config = {"from_attributes": True}
 

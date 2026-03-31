@@ -98,7 +98,7 @@ async def _prepare_row_aware_project(
     item = await _create_standard_item(
         client,
         ctx["headers"],
-        standard_code="GRI",
+        standard_code="GRI-305",
         disclosure_code="305-1",
         item_code="GRI-305-1",
         item_name="Gross direct GHG emissions",
@@ -254,6 +254,62 @@ async def test_form_config_repo_rejects_non_editable_fields(client: AsyncClient)
 
 
 @pytest.mark.asyncio
+async def test_generate_project_config_without_assignments_creates_empty_steps(
+    client: AsyncClient,
+):
+    ctx = await _setup_project_context(client, email="forms-no-assignments@test.com")
+
+    item = await _create_standard_item(
+        client,
+        ctx["headers"],
+        standard_code="GRI-305",
+        disclosure_code="305-1",
+        item_code="GRI-305-1",
+        item_name="Gross direct GHG emissions",
+    )
+
+    shared_element = await client.post(
+        "/api/shared-elements",
+        json={"code": "GHG_SCOPE_1", "name": "Scope 1 emissions"},
+        headers=ctx["headers"],
+    )
+    assert shared_element.status_code == 201
+
+    mapping = await client.post(
+        "/api/mappings",
+        json={
+            "requirement_item_id": item["item_id"],
+            "shared_element_id": shared_element.json()["id"],
+        },
+        headers=ctx["headers"],
+    )
+    assert mapping.status_code == 201
+
+    attached = await client.post(
+        f"/api/projects/{ctx['project_id']}/standards",
+        json={"standard_id": item["standard_id"], "is_base_standard": True},
+        headers=ctx["headers"],
+    )
+    assert attached.status_code == 200
+
+    generated = await client.post(
+        f"/api/form-configs/projects/{ctx['project_id']}/generate",
+        headers=ctx["headers"],
+    )
+    assert generated.status_code == 200
+    assert generated.json()["config"]["steps"] == []
+    assert generated.json()["description"] == "Generated from the current live project assignments"
+
+    active = await client.get(
+        f"/api/form-configs/projects/{ctx['project_id']}/active",
+        headers=ctx["headers"],
+    )
+    assert active.status_code == 200
+    assert active.json()["id"] == generated.json()["id"]
+    assert active.json()["config"]["steps"] == []
+
+
+@pytest.mark.asyncio
 async def test_generate_default_deduplicates_shared_elements_and_keeps_requirement_metadata(
     client: AsyncClient,
 ):
@@ -262,7 +318,7 @@ async def test_generate_default_deduplicates_shared_elements_and_keeps_requireme
     first_item = await _create_standard_item(
         client,
         ctx["headers"],
-        standard_code="GRI",
+        standard_code="GRI-302",
         disclosure_code="302-1",
         item_code="GRI-302-1A",
         item_name="Energy consumed inside the organization",

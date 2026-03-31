@@ -13,6 +13,7 @@ from app.schemas.standards import (
     StandardOut,
     StandardUpdate,
 )
+from app.services.standard_catalog import build_standard_out
 
 
 class StandardService:
@@ -24,7 +25,7 @@ class StandardService:
     async def list_standards(self, page: int = 1, page_size: int = 20) -> StandardListOut:
         items, total = await self.repo.list_standards(page, page_size)
         return StandardListOut(
-            items=[StandardOut.model_validate(s) for s in items],
+            items=[build_standard_out(s) for s in items],
             total=total,
         )
 
@@ -36,23 +37,23 @@ class StandardService:
             raise AppError("CONFLICT", 409, f"Standard with code '{payload.code}' already exists")
 
         s = await self.repo.create_standard(**payload.model_dump())
-        return StandardOut.model_validate(s)
+        return build_standard_out(s)
 
     async def get_standard(self, standard_id: int) -> StandardOut:
         s = await self.repo.get_or_raise(standard_id)
-        return StandardOut.model_validate(s)
+        return build_standard_out(s)
 
     async def update_standard(
         self, standard_id: int, payload: StandardUpdate, ctx: RequestContext
     ) -> StandardOut:
         self.policy.require_admin(ctx)
         s = await self.repo.update_standard(standard_id, **payload.model_dump(exclude_unset=True))
-        return StandardOut.model_validate(s)
+        return build_standard_out(s)
 
     async def deactivate_standard(self, standard_id: int, ctx: RequestContext) -> StandardOut:
         self.policy.require_admin(ctx)
         s = await self.repo.update_standard(standard_id, is_active=False)
-        return StandardOut.model_validate(s)
+        return build_standard_out(s)
 
     # --- Sections ---
     async def list_sections(self, standard_id: int) -> list[SectionOut]:

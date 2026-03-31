@@ -250,7 +250,7 @@ export default function CollectionPage() {
     {
       onSuccess: async () => {
         setConfigActionError(null);
-        setConfigActionMessage("Guided collection config re-synced from live assignments.");
+        setConfigActionMessage("Guided collection config re-synced from live project assignments.");
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ["active-form-config", projectId] }),
           queryClient.invalidateQueries({ queryKey: ["form-configs"] }),
@@ -281,7 +281,7 @@ export default function CollectionPage() {
     }
 
     if (assignments.length === 0) {
-      return points;
+      return [];
     }
 
     return assignments.map((assignment) => {
@@ -325,6 +325,11 @@ export default function CollectionPage() {
       } satisfies DataPoint;
     });
   }, [assignmentsData?.assignments, data?.items, resolvedDataPointIds]);
+
+  const assignmentCount = assignmentsData?.assignments?.length ?? 0;
+  const hasLiveAssignments = assignmentCount > 0;
+  const hasGuidedSteps = (activeFormConfig?.config?.steps?.length ?? 0) > 0;
+  const guidedConfig = hasGuidedSteps ? activeFormConfig : null;
 
   const accessDenied =
     (Boolean(me) && !canAccess)
@@ -480,6 +485,16 @@ export default function CollectionPage() {
       setSortDir("asc");
     }
   };
+
+  const emptyTableMessage = useMemo(() => {
+    if (!hasLiveAssignments) {
+      return "No launched indicators yet. Launch indicators or assign metrics to start data collection.";
+    }
+    if (search || statusFilter !== "all" || entityFilter || standardFilter) {
+      return "No assigned metrics match the current filters.";
+    }
+    return "No assigned metrics found for this project.";
+  }, [entityFilter, hasLiveAssignments, search, standardFilter, statusFilter]);
 
   const openDataEntry = async (row: DataPoint) => {
     setActionError(null);
@@ -640,38 +655,51 @@ export default function CollectionPage() {
         </Card>
       )}
 
-      {!accessDenied && !assignmentsLoading && !isLoading && !configLoading && activeFormConfig?.config?.steps?.length ? (
+      {!accessDenied && !assignmentsLoading && !isLoading && !configLoading && !configError && !hasLiveAssignments && (
+        <Card className="border-slate-200 bg-slate-50 p-5">
+          <div className="space-y-2">
+            <h3 className="text-base font-semibold text-slate-900">No launched indicators yet</h3>
+            <p className="max-w-3xl text-sm text-slate-600">
+              Data Collection only shows metrics that have been launched and assigned to an
+              entity or facility. Attach the standards you need, launch indicators, and then come
+              back here to collect values.
+            </p>
+          </div>
+        </Card>
+      )}
+
+      {!accessDenied && !assignmentsLoading && !isLoading && !configLoading && guidedConfig ? (
         <Card className="border-cyan-200 bg-gradient-to-br from-white via-cyan-50 to-slate-50 p-4">
           <div className="space-y-4">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <h3 className="text-lg font-semibold text-slate-900">Guided Collection</h3>
                 <p className="mt-1 text-sm text-slate-600">
-                  {activeFormConfig.name}
-                  {activeFormConfig.project_id === null ? " (organization default)" : ""}
+                  {guidedConfig.name}
+                  {guidedConfig.project_id === null ? " (organization default)" : ""}
                 </p>
-                {activeFormConfig.description && (
+                {guidedConfig.description && (
                   <p className="mt-2 max-w-3xl text-sm text-slate-500">
-                    {activeFormConfig.description}
+                    {guidedConfig.description}
                   </p>
                 )}
                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                  {activeFormConfig.resolution_scope === "organization_default" && (
+                  {guidedConfig.resolution_scope === "organization_default" && (
                     <Badge variant="outline">Organization default</Badge>
                   )}
-                  {activeFormConfig.health?.status === "healthy" && (
+                  {guidedConfig.health?.status === "healthy" && (
                     <Badge variant="success">Healthy</Badge>
                   )}
-                  {activeFormConfig.health?.is_stale && (
+                  {guidedConfig.health?.is_stale && (
                     <Badge variant="warning">Stale config</Badge>
                   )}
-                  {activeFormConfig.updated_at && (
+                  {guidedConfig.updated_at && (
                     <span className="text-xs text-slate-500">
                       Last updated{" "}
                       {new Intl.DateTimeFormat(undefined, {
                         dateStyle: "medium",
                         timeStyle: "short",
-                      }).format(new Date(activeFormConfig.updated_at))}
+                      }).format(new Date(guidedConfig.updated_at))}
                     </span>
                   )}
                 </div>
@@ -691,7 +719,7 @@ export default function CollectionPage() {
               )}
             </div>
 
-            {activeFormConfig.health?.is_stale && (
+            {guidedConfig.health?.is_stale && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="space-y-2">
@@ -699,7 +727,7 @@ export default function CollectionPage() {
                       This guided config is out of sync with the current assignments or boundary.
                     </p>
                     <div className="space-y-1 text-sm text-amber-900/90">
-                      {activeFormConfig.health.issues.map((issue) => (
+                      {guidedConfig.health.issues.map((issue) => (
                         <p key={issue.code}>
                           {issue.message}
                           {issue.affected_fields > 0 ? ` (${issue.affected_fields})` : ""}
@@ -707,7 +735,7 @@ export default function CollectionPage() {
                       ))}
                     </div>
                   </div>
-                  {canResyncConfig && activeFormConfig.project_id !== null && (
+                  {canResyncConfig && guidedConfig.project_id !== null && (
                     <Button
                       variant="outline"
                       disabled={resyncConfigMutation.isPending}
@@ -738,7 +766,7 @@ export default function CollectionPage() {
             )}
 
             <WizardRenderer
-              config={activeFormConfig.config}
+              config={guidedConfig.config}
               values={{}}
               elementNames={elementNamesById}
               onSubmit={scrollToTable}
@@ -788,10 +816,10 @@ export default function CollectionPage() {
                             <Badge variant={STATUS_CONFIG[singleMatch.collection_status].variant}>
                               {STATUS_CONFIG[singleMatch.collection_status].label}
                             </Badge>
-                          ) : matches.length === 0 ? (
-                            <Badge variant="secondary">Not assigned</Badge>
-                          ) : (
+                          ) : matches.length > 1 ? (
                             <Badge variant="warning">{matches.length} contexts</Badge>
+                          ) : (
+                            <Badge variant="secondary">Out of sync</Badge>
                           )}
                           {singleMatch?.reused_across_standards && (
                             <Badge variant="secondary" className="text-[10px]">
@@ -825,8 +853,7 @@ export default function CollectionPage() {
                           </p>
                         ) : (
                           <p className="text-xs text-slate-500">
-                            This field is present in the live config, but no matching assignment or data
-                            point context was found in the project.
+                            This config field no longer maps to a live assignment in the project.
                           </p>
                         )}
 
@@ -965,7 +992,7 @@ export default function CollectionPage() {
         {meLoading || assignmentsLoading || isLoading ? (
           <div className="flex min-h-[300px] items-center justify-center p-12 text-gray-400">
             <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-            Loading data points...
+            Loading assigned metrics...
           </div>
         ) : accessDenied ? (
           <div className="flex min-h-[300px] flex-col items-center justify-center p-12">
@@ -1028,7 +1055,7 @@ export default function CollectionPage() {
                       colSpan={8}
                       className="px-4 py-12 text-center text-gray-400"
                     >
-                      No data points found.
+                      {emptyTableMessage}
                     </td>
                   </tr>
                 ) : (
@@ -1124,7 +1151,7 @@ export default function CollectionPage() {
         {/* Footer */}
         {!meLoading && !assignmentsLoading && !isLoading && !error && !assignmentsError && (
           <div className="border-t border-slate-200 px-4 py-3 text-xs text-slate-500">
-            Showing {filtered.length} of {items.length} data points
+            Showing {filtered.length} of {items.length} assigned metrics
           </div>
         )}
       </Card>

@@ -5,7 +5,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CheckCircle2,
-  FileText,
   Loader2,
   Search,
 } from "lucide-react";
@@ -50,6 +49,27 @@ type BoundaryMembershipResponse = {
   memberships: BoundaryMembership[];
 };
 
+type DisclosureContentBlock = {
+  type: string;
+  title: string;
+  body_md?: string | null;
+  paragraphs?: string[];
+  items?: string[];
+  metadata?: Record<string, unknown>;
+};
+
+type DisclosureApplicabilityRule = {
+  source_format?: string;
+  group_key?: string;
+  group_title?: string;
+  sector_ref_code?: string;
+  topic?: {
+    code?: string;
+    title?: string;
+  } | null;
+  content_blocks?: DisclosureContentBlock[];
+};
+
 type LaunchRequirement = {
   section_id: number | null;
   section_code: string | null;
@@ -58,6 +78,7 @@ type LaunchRequirement = {
   disclosure_code: string;
   disclosure_title: string;
   disclosure_description: string | null;
+  disclosure_applicability_rule: DisclosureApplicabilityRule | null;
   requirement_item_id: number;
   requirement_item_code: string | null;
   requirement_item_name: string;
@@ -116,6 +137,7 @@ type DisclosureGroup = {
   disclosure_code: string;
   disclosure_title: string;
   disclosure_description: string | null;
+  disclosure_applicability_rule: DisclosureApplicabilityRule | null;
   section_id: number | null;
   section_code: string | null;
   section_title: string | null;
@@ -147,6 +169,7 @@ type DisclosureGroupBuilder = {
   disclosure_code: string;
   disclosure_title: string;
   disclosure_description: string | null;
+  disclosure_applicability_rule: DisclosureApplicabilityRule | null;
   section_id: number | null;
   section_code: string | null;
   section_title: string | null;
@@ -176,6 +199,104 @@ function pluralize(count: number, singular: string, plural = `${singular}s`) {
 function areNumberListsEqual(left: number[], right: number[]) {
   if (left.length !== right.length) return false;
   return left.every((value, index) => value === right[index]);
+}
+
+function normalizeInlineText(value: string | null | undefined) {
+  return (value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function isDuplicateText(left: string | null | undefined, right: string | null | undefined) {
+  return normalizeInlineText(left).toLowerCase() === normalizeInlineText(right).toLowerCase();
+}
+
+function normalizeLegacyDisclosureDescription(description: string) {
+  return description
+    .replace(/REQUIREMENTS?/g, "\nREQUIREMENTS\n")
+    .replace(/RECOMMENDATIONS/g, "\nRECOMMENDATIONS\n")
+    .replace(/GUIDANCE/g, "\nGUIDANCE\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function splitLegacyDisclosureDescription(description: string): DisclosureContentBlock[] {
+  const normalized = normalizeLegacyDisclosureDescription(description);
+  if (!normalized) {
+    return [];
+  }
+
+  const lines = normalized
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const blocks: DisclosureContentBlock[] = [];
+  let currentType = "requirements";
+  let currentTitle = "Requirements";
+  let currentLines: string[] = [];
+
+  const pushCurrentBlock = () => {
+    if (currentLines.length === 0) return;
+    blocks.push({
+      type: currentType,
+      title: currentTitle,
+      paragraphs: [...currentLines],
+      items: [],
+      body_md: currentLines.join("\n"),
+    });
+    currentLines = [];
+  };
+
+  for (const line of lines) {
+    const normalizedLine = line.toUpperCase();
+    if (normalizedLine === "REQUIREMENTS" || normalizedLine === "REQUIREMENT") {
+      pushCurrentBlock();
+      currentType = "requirements";
+      currentTitle = "Requirements";
+      continue;
+    }
+    if (normalizedLine === "RECOMMENDATIONS") {
+      pushCurrentBlock();
+      currentType = "recommendations";
+      currentTitle = "Recommendations";
+      continue;
+    }
+    if (normalizedLine === "GUIDANCE") {
+      pushCurrentBlock();
+      currentType = "guidance";
+      currentTitle = "Guidance";
+      continue;
+    }
+    currentLines.push(line);
+  }
+
+  pushCurrentBlock();
+
+  if (blocks.length === 0 && normalized) {
+    return [
+      {
+        type: "requirements",
+        title: "Requirements",
+        paragraphs: [normalized],
+        items: [],
+        body_md: normalized,
+      },
+    ];
+  }
+
+  return blocks;
+}
+
+function getDisclosureContentBlocks(disclosure: DisclosureGroup): DisclosureContentBlock[] {
+  const structuredBlocks = (disclosure.disclosure_applicability_rule?.content_blocks ?? []).filter(
+    (block) => block.type !== "data_points" && Boolean(block.body_md || block.paragraphs?.length || block.items?.length)
+  );
+  if (structuredBlocks.length > 0) {
+    return structuredBlocks;
+  }
+  if (disclosure.disclosure_description) {
+    return splitLegacyDisclosureDescription(disclosure.disclosure_description);
+  }
+  return [];
 }
 
 export function StandardLaunchDialog({
@@ -360,6 +481,7 @@ export function StandardLaunchDialog({
             disclosure_code: requirement.disclosure_code,
             disclosure_title: requirement.disclosure_title,
             disclosure_description: requirement.disclosure_description,
+            disclosure_applicability_rule: requirement.disclosure_applicability_rule,
             section_id: requirement.section_id,
             section_code: requirement.section_code,
             section_title: requirement.section_title,
@@ -368,6 +490,10 @@ export function StandardLaunchDialog({
             requirement_groups: new Map(),
           };
           groups.set(requirement.disclosure_id, disclosure);
+        }
+
+        if (!disclosure.disclosure_applicability_rule && requirement.disclosure_applicability_rule) {
+          disclosure.disclosure_applicability_rule = requirement.disclosure_applicability_rule;
         }
 
         disclosure.shared_element_ids.add(option.shared_element_id);
@@ -398,6 +524,7 @@ export function StandardLaunchDialog({
       disclosure_code: group.disclosure_code,
       disclosure_title: group.disclosure_title,
       disclosure_description: group.disclosure_description,
+      disclosure_applicability_rule: group.disclosure_applicability_rule,
       section_id: group.section_id,
       section_code: group.section_code,
       section_title: group.section_title,
@@ -928,83 +1055,138 @@ export function StandardLaunchDialog({
               </DialogHeader>
 
               <div className="space-y-4">
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant="outline">
-                    {detailDisclosure.section_code
-                      ? `${detailDisclosure.section_code} - ${detailDisclosure.section_title ?? standard?.code ?? ""}`
-                      : detailDisclosure.section_title ?? standard?.code ?? ""}
-                  </Badge>
-                  <Badge variant="outline">
-                    {pluralize(detailDisclosure.requirement_groups.length, "requirement")}
-                  </Badge>
-                  <Badge variant="outline">
-                    {pluralize(detailDisclosure.shared_element_ids.length, "data point")}
-                  </Badge>
-                </div>
+                {(() => {
+                  const topic = detailDisclosure.disclosure_applicability_rule?.topic;
+                  const topicLabel =
+                    topic?.code && topic?.title
+                      ? `Topic ${topic.code} - ${topic.title}`
+                      : topic?.title ?? topic?.code ?? null;
+                  const contentBlocks = getDisclosureContentBlocks(detailDisclosure);
 
-                {detailDisclosure.disclosure_description && (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                    <p className="whitespace-pre-line text-sm text-slate-700">
-                      {detailDisclosure.disclosure_description}
-                    </p>
-                  </div>
-                )}
+                  return (
+                    <>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge variant="outline">
+                          {detailDisclosure.section_code
+                            ? `${detailDisclosure.section_code} - ${detailDisclosure.section_title ?? standard?.code ?? ""}`
+                            : detailDisclosure.section_title ?? standard?.code ?? ""}
+                        </Badge>
+                        {topicLabel && <Badge variant="outline">{topicLabel}</Badge>}
+                        <Badge variant="outline">
+                          {pluralize(detailDisclosure.requirement_groups.length, "requirement")}
+                        </Badge>
+                        <Badge variant="outline">
+                          {pluralize(detailDisclosure.shared_element_ids.length, "data point")}
+                        </Badge>
+                      </div>
 
-                <div className="space-y-3">
-                  {detailDisclosure.requirement_groups.map((requirementGroup) => (
-                    <div
-                      key={requirementGroup.requirement_item_id}
-                      className="rounded-xl border border-slate-200 bg-white p-4"
-                    >
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                          <FileText className="h-3.5 w-3.5" />
-                          <span className="font-medium text-slate-700">
-                            {requirementGroup.requirement_item_code || "Requirement"}
-                          </span>
-                          {requirementGroup.mapping_types.map((mappingType) => (
-                            <Badge key={mappingType} variant="outline">
-                              {mappingType}
-                            </Badge>
+                      {contentBlocks.length > 0 && (
+                        <div className="space-y-3">
+                          {contentBlocks.map((block, index) => (
+                            <div
+                              key={`${detailDisclosure.disclosure_id}-${block.type}-${index}`}
+                              className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+                            >
+                              <p className="text-sm font-semibold text-slate-900">{block.title}</p>
+                              {block.paragraphs && block.paragraphs.length > 0 && (
+                                <div className="mt-2 space-y-2">
+                                  {block.paragraphs.map((paragraph, paragraphIndex) => (
+                                    <p
+                                      key={`${detailDisclosure.disclosure_id}-${block.type}-${index}-paragraph-${paragraphIndex}`}
+                                      className="whitespace-pre-line text-sm text-slate-700"
+                                    >
+                                      {paragraph}
+                                    </p>
+                                  ))}
+                                </div>
+                              )}
+                              {block.items && block.items.length > 0 && (
+                                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+                                  {block.items.map((item, itemIndex) => (
+                                    <li
+                                      key={`${detailDisclosure.disclosure_id}-${block.type}-${index}-item-${itemIndex}`}
+                                    >
+                                      {item}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                              {!block.paragraphs?.length && !block.items?.length && block.body_md && (
+                                <p className="mt-2 whitespace-pre-line text-sm text-slate-700">
+                                  {block.body_md}
+                                </p>
+                              )}
+                            </div>
                           ))}
                         </div>
-                        <p className="text-sm font-medium text-slate-900">
-                          {requirementGroup.requirement_item_name}
-                        </p>
-                        {requirementGroup.requirement_item_description && (
-                          <p className="whitespace-pre-line text-sm text-slate-600">
-                            {requirementGroup.requirement_item_description}
+                      )}
+
+                      {contentBlocks.length === 0 && detailDisclosure.disclosure_description && (
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                          <p className="whitespace-pre-line text-sm text-slate-700">
+                            {detailDisclosure.disclosure_description}
                           </p>
-                        )}
-                      </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
 
-                      <div className="mt-3 space-y-2">
-                        {requirementGroup.metrics.map((metric) => {
-                          const metricMetadata = [
-                            metric.shared_element_code,
-                            metric.default_value_type,
-                            metric.default_unit_code,
-                          ]
-                            .filter(Boolean)
-                            .join(" · ");
-
-                          return (
-                            <div
-                              key={`${requirementGroup.requirement_item_id}-${metric.shared_element_id}`}
-                              className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2"
-                            >
-                              <p className="text-sm font-medium text-slate-900">
-                                {metric.shared_element_name}
-                              </p>
-                              <p className="mt-1 text-xs text-slate-500">
-                                {metricMetadata || "Mapped data point"}
-                              </p>
-                            </div>
-                          );
-                        })}
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">Data points</p>
+                        <p className="mt-1 text-sm text-slate-500">
+                          Structured data items that will launch together with this disclosure.
+                        </p>
                       </div>
+                      <Badge variant="outline">
+                        {pluralize(detailDisclosure.requirement_groups.length, "data point")}
+                      </Badge>
                     </div>
-                  ))}
+                    <ul className="mt-3 list-disc space-y-3 pl-5">
+                      {detailDisclosure.requirement_groups.map((requirementGroup) => {
+                        const metricMetadata = Array.from(
+                          new Set(
+                            requirementGroup.metrics.map((metric) =>
+                              [
+                                metric.shared_element_code,
+                                metric.default_value_type,
+                                metric.default_unit_code,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")
+                            )
+                          )
+                        ).filter(Boolean);
+                        const itemMetadata = [
+                          requirementGroup.requirement_item_code,
+                          ...metricMetadata,
+                        ].filter(Boolean);
+
+                        return (
+                          <li key={requirementGroup.requirement_item_id} className="space-y-1 text-sm">
+                            <p className="font-medium text-slate-900">
+                              {requirementGroup.requirement_item_name}
+                            </p>
+                            {requirementGroup.requirement_item_description &&
+                              !isDuplicateText(
+                                requirementGroup.requirement_item_description,
+                                requirementGroup.requirement_item_name
+                              ) && (
+                              <p className="whitespace-pre-line text-slate-600">
+                                {requirementGroup.requirement_item_description}
+                              </p>
+                            )}
+                            {itemMetadata.length > 0 && (
+                              <p className="text-xs text-slate-500">{itemMetadata.join(" · ")}</p>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
                 </div>
               </div>
             </>

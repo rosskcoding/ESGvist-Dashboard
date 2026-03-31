@@ -62,6 +62,7 @@ from app.schemas.projects import (
     ProjectStandardSummaryOut,
     ProjectStandardAdd,
 )
+from app.services.standard_catalog import resolve_standard_catalog_meta
 from app.workflows.gates.base import GateEngine
 from app.workflows.gates.boundary_gate import BoundaryNotDefinedGate, BoundaryNotLockedGate
 from app.workflows.gates.completeness_gate import ProjectIncompleteGate
@@ -348,6 +349,7 @@ class ProjectService:
                     DisclosureRequirement.code,
                     DisclosureRequirement.title,
                     DisclosureRequirement.description,
+                    DisclosureRequirement.applicability_rule,
                     StandardSection.id,
                     StandardSection.code,
                     StandardSection.title,
@@ -410,18 +412,19 @@ class ProjectService:
 
             option.linked_requirements.append(
                 ProjectStandardLaunchRequirementOut(
-                    section_id=row[14],
-                    section_code=row[15],
-                    section_title=row[16],
+                    section_id=row[15],
+                    section_code=row[16],
+                    section_title=row[17],
                     disclosure_id=row[10],
                     disclosure_code=row[11],
                     disclosure_title=row[12],
                     disclosure_description=row[13],
+                    disclosure_applicability_rule=row[14],
                     requirement_item_id=row[6],
                     requirement_item_code=row[7],
                     requirement_item_name=row[8],
                     requirement_item_description=row[9],
-                    mapping_type=row[17],
+                    mapping_type=row[18],
                 )
             )
 
@@ -869,6 +872,21 @@ class ProjectService:
     async def add_standard(self, project_id: int, payload: ProjectStandardAdd, ctx: RequestContext):
         self._require_manager(ctx)
         await get_project_for_ctx(self.repo.session, project_id, ctx)
+        standard_result = await self.repo.session.execute(
+            select(Standard).where(Standard.id == payload.standard_id)
+        )
+        standard = standard_result.scalar_one_or_none()
+        if not standard:
+            raise AppError("NOT_FOUND", 404, f"Standard {payload.standard_id} not found")
+
+        catalog_meta = resolve_standard_catalog_meta(standard.code, standard.name)
+        if not catalog_meta.is_attachable:
+            raise AppError(
+                "STANDARD_NOT_ATTACHABLE",
+                422,
+                f"Standard {standard.code} is a catalog family and cannot be attached directly",
+            )
+
         await self.repo.add_standard(project_id, payload.standard_id, payload.is_base_standard)
         await invalidate_dashboard_project(project_id)
         await self._audit(

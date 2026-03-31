@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -76,6 +76,11 @@ interface AvailableStandard {
   id: number;
   name: string;
   code: string;
+  family_code: string;
+  family_name: string;
+  catalog_group_code: string;
+  catalog_group_name: string;
+  is_attachable: boolean;
 }
 
 interface BoundaryOption {
@@ -137,12 +142,38 @@ const statusConfig: Record<
   published: { label: "Published", variant: "success" },
 };
 
-const standardDisplayPriority: Record<string, number> = {
+const familyDisplayPriority: Record<string, number> = {
   GRI: 0,
-  "IFRS-S1": 1,
-  "IFRS-S2": 2,
+  SASB: 1,
+  IFRS: 2,
   ESRS: 3,
 };
+
+const groupDisplayPriority: Record<string, number> = {
+  universal: 0,
+  topic: 1,
+  sector: 2,
+  family: 99,
+};
+
+function getStandardDisplayName(code: string, name: string) {
+  const trimmedName = name.trim();
+  if (!trimmedName) return code;
+
+  if (trimmedName === code) return code;
+
+  if (trimmedName.startsWith(code)) {
+    const remainder = trimmedName.slice(code.length).replace(/^[:\-\s]+/, "").trim();
+    if (remainder) return remainder;
+  }
+
+  return trimmedName;
+}
+
+function formatStandardLabel(standard: Pick<AvailableStandard, "code" | "name">) {
+  const displayName = getStandardDisplayName(standard.code, standard.name);
+  return displayName === standard.code ? standard.code : `${standard.code} - ${displayName}`;
+}
 
 function isFixtureStandard(standard: AvailableStandard) {
   return /^PAG_/i.test(standard.code) || /^JOURNEY_/i.test(standard.code);
@@ -161,6 +192,8 @@ export default function ProjectSettingsPage() {
 
   const [addStandardDialogOpen, setAddStandardDialogOpen] = useState(false);
   const [selectedStandardId, setSelectedStandardId] = useState("");
+  const [selectedFamilyCode, setSelectedFamilyCode] = useState("");
+  const [selectedGroupCode, setSelectedGroupCode] = useState("");
   const [standardSearch, setStandardSearch] = useState("");
   const [gateBlockers, setGateBlockers] = useState<string[]>([]);
   const [gateDialogOpen, setGateDialogOpen] = useState(false);
@@ -245,7 +278,7 @@ export default function ProjectSettingsPage() {
 
   const { data: availableStandards } = useApiQuery<{
     items: AvailableStandard[];
-  }>(["available-standards"], "/standards?page_size=100");
+  }>(["available-standards"], "/standards?page_size=500");
 
   const { data: teamData } = useApiQuery<{ items: AssignmentSummary[] }>(
     ["project-team", projectId],
@@ -435,6 +468,69 @@ export default function ProjectSettingsPage() {
     }
   };
 
+  const standards = standardsData?.items ?? [];
+  const allStandards = availableStandards?.items ?? [];
+  const normalizedStandardSearch = standardSearch.trim().toLowerCase();
+  const baseSelectableStandards = allStandards
+    .filter((standard) => !standards.some((projectStandard) => projectStandard.standard_id === standard.id))
+    .filter((standard) => standard.is_attachable)
+    .filter((standard) => !isFixtureStandard(standard))
+    .sort((left, right) => {
+      const leftFamilyPriority = familyDisplayPriority[left.family_code] ?? 100;
+      const rightFamilyPriority = familyDisplayPriority[right.family_code] ?? 100;
+      if (leftFamilyPriority !== rightFamilyPriority) return leftFamilyPriority - rightFamilyPriority;
+
+      const leftGroupPriority = groupDisplayPriority[left.catalog_group_code] ?? 100;
+      const rightGroupPriority = groupDisplayPriority[right.catalog_group_code] ?? 100;
+      if (leftGroupPriority !== rightGroupPriority) return leftGroupPriority - rightGroupPriority;
+
+      return left.code.localeCompare(right.code);
+    });
+  const familyOptions = Array.from(
+    new Map(
+      baseSelectableStandards.map((standard) => [
+        standard.family_code,
+        { value: standard.family_code, label: standard.family_name },
+      ])
+    ).values()
+  ).sort((left, right) => {
+    const leftPriority = familyDisplayPriority[left.value] ?? 100;
+    const rightPriority = familyDisplayPriority[right.value] ?? 100;
+    if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+    return left.label.localeCompare(right.label);
+  });
+  const groupOptions = Array.from(
+    new Map(
+      baseSelectableStandards
+        .filter((standard) => !selectedFamilyCode || standard.family_code === selectedFamilyCode)
+        .map((standard) => [
+          `${standard.family_code}:${standard.catalog_group_code}`,
+          {
+            value: standard.catalog_group_code,
+            label: standard.catalog_group_name,
+          },
+        ])
+    ).values()
+  ).sort((left, right) => {
+    const leftPriority = groupDisplayPriority[left.value] ?? 100;
+    const rightPriority = groupDisplayPriority[right.value] ?? 100;
+    if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+    return left.label.localeCompare(right.label);
+  });
+  const selectableStandards = baseSelectableStandards
+    .filter((standard) => !selectedFamilyCode || standard.family_code === selectedFamilyCode)
+    .filter((standard) => !selectedGroupCode || standard.catalog_group_code === selectedGroupCode)
+    .filter((standard) => {
+      if (!normalizedStandardSearch) return true;
+      return `${standard.code} ${standard.name}`.toLowerCase().includes(normalizedStandardSearch);
+    });
+
+  useEffect(() => {
+    if (selectedStandardId && !selectableStandards.some((standard) => String(standard.id) === selectedStandardId)) {
+      setSelectedStandardId("");
+    }
+  }, [selectedStandardId, selectableStandards]);
+
   if (projectLoading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
@@ -477,7 +573,6 @@ export default function ProjectSettingsPage() {
   }
 
   const status = statusConfig[project.status];
-  const standards = standardsData?.items ?? [];
   const boundary = boundaryData ?? {
     boundary_id: null,
     boundary_name: "Not selected",
@@ -492,24 +587,9 @@ export default function ProjectSettingsPage() {
   const boundaries = Array.isArray(boundaryOptionsData)
     ? boundaryOptionsData
     : (boundaryOptionsData?.items ?? []);
-  const allStandards = availableStandards?.items ?? [];
   const attachedStandardLabels = standards.map(
-    (standard) => `${standard.code} - ${standard.standard_name}`
+    (standard) => formatStandardLabel({ code: standard.code, name: standard.standard_name })
   );
-  const normalizedStandardSearch = standardSearch.trim().toLowerCase();
-  const selectableStandards = allStandards
-    .filter((standard) => !standards.some((projectStandard) => projectStandard.standard_id === standard.id))
-    .filter((standard) => !isFixtureStandard(standard))
-    .filter((standard) => {
-      if (!normalizedStandardSearch) return true;
-      return `${standard.code} ${standard.name}`.toLowerCase().includes(normalizedStandardSearch);
-    })
-    .sort((left, right) => {
-      const leftPriority = standardDisplayPriority[left.code] ?? 100;
-      const rightPriority = standardDisplayPriority[right.code] ?? 100;
-      if (leftPriority !== rightPriority) return leftPriority - rightPriority;
-      return left.code.localeCompare(right.code);
-    });
 
   const isWorkflowBusy =
     activateMutation.isPending ||
@@ -723,9 +803,11 @@ export default function ProjectSettingsPage() {
                         <div className="flex items-center gap-2">
                           <Shield className="h-4 w-4 text-slate-500" />
                           <span className="font-medium">{std.code}</span>
-                          <span className="text-sm text-slate-500">
-                            {std.standard_name}
-                          </span>
+                          {getStandardDisplayName(std.code, std.standard_name) !== std.code && (
+                            <span className="text-sm text-slate-500">
+                              {getStandardDisplayName(std.code, std.standard_name)}
+                            </span>
+                          )}
                         </div>
                         <p className="text-xs text-slate-400">
                           {std.disclosure_count} disclosures
@@ -981,10 +1063,29 @@ export default function ProjectSettingsPage() {
               onChange={(e) => setStandardSearch(e.target.value)}
             />
             <Select
+              label="Family"
+              options={[{ value: "", label: "All families" }, ...familyOptions]}
+              value={selectedFamilyCode}
+              onChange={(val) => {
+                setSelectedFamilyCode(val);
+                setSelectedGroupCode("");
+                setSelectedStandardId("");
+              }}
+            />
+            <Select
+              label="Group"
+              options={[{ value: "", label: "All groups" }, ...groupOptions]}
+              value={selectedGroupCode}
+              onChange={(val) => {
+                setSelectedGroupCode(val);
+                setSelectedStandardId("");
+              }}
+            />
+            <Select
               label="Standard"
               options={selectableStandards.map((s) => ({
                   value: String(s.id),
-                  label: `${s.code} - ${s.name}`,
+                  label: formatStandardLabel(s),
                 }))}
               placeholder="Select a standard..."
               value={selectedStandardId}
@@ -992,7 +1093,7 @@ export default function ProjectSettingsPage() {
             />
             {selectableStandards.length === 0 && (
               <p className="text-sm text-slate-500">
-                No visible standards match this search.
+                No visible standards match the current family, group, and search filters.
               </p>
             )}
             {addStandardMutation.error && (
@@ -1007,6 +1108,8 @@ export default function ProjectSettingsPage() {
               onClick={() => {
                 setAddStandardDialogOpen(false);
                 setSelectedStandardId("");
+                setSelectedFamilyCode("");
+                setSelectedGroupCode("");
                 setStandardSearch("");
               }}
             >

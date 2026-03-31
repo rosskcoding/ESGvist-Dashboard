@@ -269,6 +269,22 @@ function patchEntitiesCacheWithControlLink(
   };
 }
 
+function getOwnershipLinkKey(
+  link: OwnershipLink,
+  scope: "parent" | "child",
+  index: number
+): string {
+  return `ownership-${scope}-${link.id}-${link.parent_entity_id}-${link.child_entity_id}-${index}`;
+}
+
+function getControlLinkKey(
+  link: ControlLink,
+  scope: "controlling" | "controlled",
+  index: number
+): string {
+  return `control-${scope}-${link.id}-${link.controlling_entity_id}-${link.controlled_entity_id}-${index}`;
+}
+
 // ---------------------------------------------------------------------------
 // Custom Node
 // ---------------------------------------------------------------------------
@@ -1170,9 +1186,9 @@ function EntityDetailPanel({
             </p>
           ) : (
             <div className="space-y-2">
-              {parentLinks.map((l) => (
+              {parentLinks.map((l, index) => (
                 <div
-                  key={l.id}
+                  key={getOwnershipLinkKey(l, "parent", index)}
                   className="flex items-center justify-between rounded bg-slate-50 px-2.5 py-1.5 text-xs"
                 >
                   <div className="flex items-center gap-1.5">
@@ -1186,9 +1202,9 @@ function EntityDetailPanel({
                   </Badge>
                 </div>
               ))}
-              {childLinks.map((l) => (
+              {childLinks.map((l, index) => (
                 <div
-                  key={l.id}
+                  key={getOwnershipLinkKey(l, "child", index)}
                   className="flex items-center justify-between rounded bg-slate-50 px-2.5 py-1.5 text-xs"
                 >
                   <div className="flex items-center gap-1.5">
@@ -1227,9 +1243,9 @@ function EntityDetailPanel({
             </p>
           ) : (
             <div className="space-y-2">
-              {controllingLinks.map((l) => (
+              {controllingLinks.map((l, index) => (
                 <div
-                  key={l.id}
+                  key={getControlLinkKey(l, "controlling", index)}
                   className="flex items-center justify-between rounded bg-slate-50 px-2.5 py-1.5 text-xs"
                 >
                   <div className="flex items-center gap-1.5">
@@ -1244,9 +1260,9 @@ function EntityDetailPanel({
                   </Badge>
                 </div>
               ))}
-              {controlledLinks.map((l) => (
+              {controlledLinks.map((l, index) => (
                 <div
-                  key={l.id}
+                  key={getControlLinkKey(l, "controlled", index)}
                   className="flex items-center justify-between rounded bg-slate-50 px-2.5 py-1.5 text-xs"
                 >
                   <div className="flex items-center gap-1.5">
@@ -1376,16 +1392,19 @@ export default function CompanyStructurePage() {
   const tree = Array.isArray(treeData) ? treeData : (treeData as { tree?: EntityTreeNode[] })?.tree ?? [];
 
   // Extract ownership links from tree data (each entity has .ownership array)
-  const treeOwnershipLinks = tree.flatMap((node) =>
-    (node.ownership ?? []).map((o: { parent_id: number; percent: number; type: string }, idx: number) => ({
-      id: idx,
-      parent_entity_id: o.parent_id,
-      child_entity_id: node.id,
-      ownership_percent: o.percent,
-      ownership_type: o.type as "direct" | "indirect" | "beneficial",
-    }))
-  );
-  const allOwnershipLinks = ownershipLinks.length > 0 ? ownershipLinks : treeOwnershipLinks as unknown as OwnershipLink[];
+  const treeOwnershipLinks = useMemo(() => {
+    let syntheticLinkId = -1;
+    return tree.flatMap((node) =>
+      (node.ownership ?? []).map((o: { parent_id: number; percent: number; type: string }) => ({
+        id: syntheticLinkId--,
+        parent_entity_id: o.parent_id,
+        child_entity_id: node.id,
+        ownership_percent: o.percent,
+        ownership_type: o.type,
+      }))
+    );
+  }, [tree]);
+  const allOwnershipLinks = ownershipLinks.length > 0 ? ownershipLinks : treeOwnershipLinks;
 
   // Build edges based on view mode
   // Build nested tree from flat list using ownership

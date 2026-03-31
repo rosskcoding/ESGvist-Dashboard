@@ -222,6 +222,7 @@ class ProjectStandardLaunchRequirementOut(BaseModel):
     disclosure_code: str
     disclosure_title: str
     disclosure_description: str | None = None
+    disclosure_applicability_rule: dict | None = None
     requirement_item_id: int
     requirement_item_code: str | None = None
     requirement_item_name: str
