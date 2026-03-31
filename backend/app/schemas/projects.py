@@ -214,6 +214,62 @@ class ProjectStandardSummaryListOut(BaseModel):
     items: list[ProjectStandardSummaryOut]
 
 
+class ProjectStandardLaunchRequirementOut(BaseModel):
+    section_id: int | None = None
+    section_code: str | None = None
+    section_title: str | None = None
+    disclosure_id: int
+    disclosure_code: str
+    disclosure_title: str
+    disclosure_description: str | None = None
+    requirement_item_id: int
+    requirement_item_code: str | None = None
+    requirement_item_name: str
+    requirement_item_description: str | None = None
+    mapping_type: str
+
+
+class ProjectStandardLaunchOptionOut(BaseModel):
+    shared_element_id: int
+    shared_element_code: str
+    shared_element_name: str
+    concept_domain: str | None = None
+    default_value_type: str | None = None
+    default_unit_code: str | None = None
+    existing_assignment_count: int = 0
+    assigned_entity_ids: list[int] = Field(default_factory=list)
+    linked_requirements: list[ProjectStandardLaunchRequirementOut] = Field(default_factory=list)
+
+
+class ProjectStandardLaunchOptionsOut(BaseModel):
+    standard_id: int
+    standard_code: str
+    standard_name: str
+    option_count: int = 0
+    options: list[ProjectStandardLaunchOptionOut] = Field(default_factory=list)
+
+
+class ProjectStandardLaunchRequest(BaseModel):
+    shared_element_ids: list[int] = Field(min_length=1)
+    entity_id: int
+    collector_id: int | None = None
+    reviewer_id: int | None = None
+    backup_collector_id: int | None = None
+    deadline: date | None = None
+    escalation_after_days: int = Field(default=3, ge=1, le=365)
+
+
+class ProjectStandardLaunchResultOut(BaseModel):
+    project_id: int
+    standard_id: int
+    entity_id: int
+    created_count: int
+    skipped_count: int
+    created_assignment_ids: list[int] = Field(default_factory=list)
+    created_shared_element_ids: list[int] = Field(default_factory=list)
+    skipped_shared_element_ids: list[int] = Field(default_factory=list)
+
+
 class ProjectAssignmentSummaryOut(BaseModel):
     id: int
     user_name: str

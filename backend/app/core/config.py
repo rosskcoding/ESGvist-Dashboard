@@ -183,6 +183,12 @@ class LocalSettings(Settings):
     debug: bool = True
     jwt_secret: str = "local-dev-insecure-jwt-secret"
     allow_self_registration: bool | None = True
+    cors_origins: list[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+    ]
     email_from: str = "no-reply@esgvist.local"
     email_fail_silently: bool = True
     minio_access_key: str = "minioadmin"

@@ -123,13 +123,36 @@ interface ActiveFormConfig {
 
 /* ---------- Helpers ---------- */
 
+const COLLECTION_FLOW = [
+  {
+    label: "Standard",
+    description: "Reporting framework such as GRI or IFRS.",
+  },
+  {
+    label: "Requirement",
+    description: "The disclosure requirement that asks for a specific metric.",
+  },
+  {
+    label: "Metric",
+    description: "The shared metric used across one or more standards.",
+  },
+  {
+    label: "Assignment",
+    description: "Who needs to collect the metric, for which entity, and by when.",
+  },
+  {
+    label: "Data point",
+    description: "The actual value entered for that assigned metric.",
+  },
+] as const;
+
 const STATUS_CONFIG: Record<
   DataPointStatus,
   { label: string; variant: "destructive" | "warning" | "success" }
 > = {
-  missing: { label: "Missing", variant: "destructive" },
-  partial: { label: "Partial", variant: "warning" },
-  complete: { label: "Complete", variant: "success" },
+  missing: { label: "Not started", variant: "destructive" },
+  partial: { label: "In progress", variant: "warning" },
+  complete: { label: "Approved", variant: "success" },
 };
 
 const BOUNDARY_CONFIG: Record<
@@ -138,7 +161,7 @@ const BOUNDARY_CONFIG: Record<
 > = {
   included: { label: "Included", variant: "success" },
   excluded: { label: "Excluded", variant: "secondary" },
-  partial: { label: "Partial", variant: "warning" },
+  partial: { label: "Partially included", variant: "warning" },
 };
 
 function buildContextKey(
@@ -517,9 +540,43 @@ export default function CollectionPage() {
       <div>
         <h2 className="text-2xl font-bold text-gray-900">Data Collection</h2>
         <p className="mt-1 text-sm text-gray-500">
-          Manage and enter ESG data points for the current reporting period.
+          Track assigned metrics, open data entry, and submit values for the current reporting period.
         </p>
       </div>
+
+      <Card className="border-slate-200 bg-slate-50/80 p-4">
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold text-slate-900">How this screen works</h3>
+            <p className="text-sm text-slate-600">
+              This is not a Jira-style task board. Each row is one assigned metric for one
+              reporting entity or facility in the current reporting period.
+            </p>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-5">
+            {COLLECTION_FLOW.map((step, index) => (
+              <div
+                key={step.label}
+                className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
+                    {index + 1}
+                  </span>
+                  <p className="text-sm font-semibold text-slate-900">{step.label}</p>
+                </div>
+                <p className="mt-2 text-xs leading-5 text-slate-600">{step.description}</p>
+              </div>
+            ))}
+          </div>
+
+          <p className="text-xs text-slate-500">
+            Metric code is the system identifier. Metric is the readable name. Assignment is the
+            work to collect it. Data point is the actual reported value.
+          </p>
+        </div>
+      </Card>
 
       {actionError && (
         <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
@@ -837,7 +894,7 @@ export default function CollectionPage() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <Input
-                placeholder="Search by code or name..."
+                placeholder="Search by metric code or name..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9"
@@ -859,9 +916,9 @@ export default function CollectionPage() {
               className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-950"
             >
               <option value="all">All statuses</option>
-              <option value="missing">Missing</option>
-              <option value="partial">Partial</option>
-              <option value="complete">Complete</option>
+              <option value="missing">Not started</option>
+              <option value="partial">In progress</option>
+              <option value="complete">Approved</option>
             </select>
           </div>
 
@@ -935,7 +992,7 @@ export default function CollectionPage() {
                       onClick={() => toggleSort("element_code")}
                       className="inline-flex items-center gap-1 hover:text-slate-900"
                     >
-                      Element Code
+                      Metric Code
                       <ArrowUpDown className="h-3 w-3" />
                     </button>
                   </th>
@@ -944,7 +1001,7 @@ export default function CollectionPage() {
                       onClick={() => toggleSort("element_name")}
                       className="inline-flex items-center gap-1 hover:text-slate-900"
                     >
-                      Element Name
+                      Metric
                       <ArrowUpDown className="h-3 w-3" />
                     </button>
                   </th>
@@ -953,14 +1010,14 @@ export default function CollectionPage() {
                       onClick={() => toggleSort("collection_status")}
                       className="inline-flex items-center gap-1 hover:text-slate-900"
                     >
-                      Status
+                      Progress
                       <ArrowUpDown className="h-3 w-3" />
                     </button>
                   </th>
                   <th className="px-4 py-3">Entity</th>
                   <th className="px-4 py-3">Facility</th>
-                  <th className="px-4 py-3">Boundary</th>
-                  <th className="px-4 py-3">Consolidation</th>
+                  <th className="px-4 py-3">Reporting Boundary</th>
+                  <th className="px-4 py-3">Consolidation Method</th>
                   <th className="px-4 py-3">Actions</th>
                 </tr>
               </thead>
@@ -989,15 +1046,30 @@ export default function CollectionPage() {
                           {dp.element_code}
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-slate-900">
-                              {dp.element_name}
-                            </span>
-                            {dp.reused_across_standards && (
-                              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                                <Repeat2 className="mr-0.5 h-3 w-3" />
-                                Reused
-                              </Badge>
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-slate-900">
+                                {dp.element_name}
+                              </span>
+                              {dp.reused_across_standards && (
+                                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                                  <Repeat2 className="mr-0.5 h-3 w-3" />
+                                  Reused
+                                </Badge>
+                              )}
+                            </div>
+                            {dp.standards.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5">
+                                {dp.standards.map((standard) => (
+                                  <Badge
+                                    key={`${dp.id}-${standard}`}
+                                    variant="outline"
+                                    className="text-[10px] uppercase tracking-wide"
+                                  >
+                                    {standard}
+                                  </Badge>
+                                ))}
+                              </div>
                             )}
                           </div>
                         </td>

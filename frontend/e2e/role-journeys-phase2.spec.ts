@@ -62,7 +62,7 @@ test("collector revision cycle ends in reviewer approval and auditor-visible aud
   try {
     const page = collectorSession.page;
     await page.goto("/collection");
-    await page.getByPlaceholder("Search by code or name...").fill(journey.code);
+    await page.getByPlaceholder("Search by metric code or name...").fill(journey.code);
     await expect(collectionRow(page, journey.code)).toBeVisible();
     await collectionRow(page, journey.code).getByRole("button", { name: "Enter Data" }).click();
 
@@ -350,7 +350,7 @@ test("admin rolls out a custom disclosure and collector sees the new collection 
   try {
     const page = collectorSession.page;
     await page.goto("/collection");
-    await page.getByPlaceholder("Search by code or name...").fill(elementCode);
+    await page.getByPlaceholder("Search by metric code or name...").fill(elementCode);
     const row = collectionRow(page, elementCode);
     await expect(row).toBeVisible();
     await expect(row).toContainText(elementName);

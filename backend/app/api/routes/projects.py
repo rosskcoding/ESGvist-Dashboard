@@ -24,6 +24,9 @@ from app.schemas.projects import (
     ProjectAssignmentSummaryListOut,
     ProjectListOut,
     ProjectOut,
+    ProjectStandardLaunchOptionsOut,
+    ProjectStandardLaunchRequest,
+    ProjectStandardLaunchResultOut,
     ProjectStandardSummaryListOut,
     ProjectStandardAdd,
 )
@@ -99,6 +102,35 @@ async def list_project_standards(
     session: AsyncSession = Depends(get_session),
 ):
     return await _get_service(session).list_project_standards(project_id, ctx)
+
+
+@router.get(
+    "/api/projects/{project_id}/standards/{standard_id}/launch-options",
+    response_model=ProjectStandardLaunchOptionsOut,
+)
+async def get_project_standard_launch_options(
+    project_id: int,
+    standard_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _get_service(session).get_project_standard_launch_options(project_id, standard_id, ctx)
+
+
+@router.post(
+    "/api/projects/{project_id}/standards/{standard_id}/launch",
+    response_model=ProjectStandardLaunchResultOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def launch_project_standard_indicators(
+    project_id: int,
+    standard_id: int,
+    payload: ProjectStandardLaunchRequest,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    AuthPolicy.auditor_read_only(ctx)
+    return await _get_service(session).launch_project_standard_indicators(project_id, standard_id, payload, ctx)
 
 
 # --- Assignments ---

@@ -12,15 +12,17 @@ from app.core.dashboard_cache import invalidate_dashboard_project
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError, GateBlockedError
 from app.db.models.boundary import BoundaryDefinition, BoundaryMembership
+from app.db.models.boundary_snapshot import BoundarySnapshot
 from app.db.models.company_entity import CompanyEntity
 from app.db.models.completeness import RequirementItemStatus
 from app.db.models.data_point import DataPoint
-from app.db.models.boundary_snapshot import BoundarySnapshot
+from app.db.models.mapping import RequirementItemSharedElement
 from app.db.models.organization import Organization
 from app.db.models.project import MetricAssignment, ReportingProject, ReportingProjectStandard
+from app.db.models.requirement_item import RequirementItem
 from app.db.models.role_binding import RoleBinding
 from app.db.models.shared_element import SharedElement
-from app.db.models.standard import DisclosureRequirement, Standard
+from app.db.models.standard import DisclosureRequirement, Standard, StandardSection
 from app.db.models.user import User
 from app.events.bus import (
     AssignmentCreated,
@@ -51,6 +53,11 @@ from app.schemas.projects import (
     ProjectCreate,
     ProjectListOut,
     ProjectOut,
+    ProjectStandardLaunchOptionOut,
+    ProjectStandardLaunchOptionsOut,
+    ProjectStandardLaunchRequest,
+    ProjectStandardLaunchRequirementOut,
+    ProjectStandardLaunchResultOut,
     ProjectStandardSummaryListOut,
     ProjectStandardSummaryOut,
     ProjectStandardAdd,
@@ -300,6 +307,149 @@ class ProjectService:
                 422,
                 f"User {user_id} does not have a compatible {readable} role",
             )
+
+    async def _get_project_standard_or_raise(self, project_id: int, standard_id: int) -> Standard:
+        standard_result = await self.repo.session.execute(
+            select(Standard)
+            .join(ReportingProjectStandard, ReportingProjectStandard.standard_id == Standard.id)
+            .where(
+                ReportingProjectStandard.reporting_project_id == project_id,
+                Standard.id == standard_id,
+            )
+        )
+        standard = standard_result.scalar_one_or_none()
+        if not standard:
+            raise AppError(
+                "NOT_FOUND",
+                404,
+                f"Standard {standard_id} is not attached to project {project_id}",
+            )
+        return standard
+
+    async def _build_standard_launch_options(
+        self,
+        project_id: int,
+        standard_id: int,
+    ) -> list[ProjectStandardLaunchOptionOut]:
+        rows = (
+            await self.repo.session.execute(
+                select(
+                    SharedElement.id,
+                    SharedElement.code,
+                    SharedElement.name,
+                    SharedElement.concept_domain,
+                    SharedElement.default_value_type,
+                    SharedElement.default_unit_code,
+                    RequirementItem.id,
+                    RequirementItem.item_code,
+                    RequirementItem.name,
+                    RequirementItem.description,
+                    DisclosureRequirement.id,
+                    DisclosureRequirement.code,
+                    DisclosureRequirement.title,
+                    DisclosureRequirement.description,
+                    StandardSection.id,
+                    StandardSection.code,
+                    StandardSection.title,
+                    RequirementItemSharedElement.mapping_type,
+                )
+                .join(
+                    RequirementItemSharedElement,
+                    RequirementItemSharedElement.shared_element_id == SharedElement.id,
+                )
+                .join(
+                    RequirementItem,
+                    RequirementItem.id == RequirementItemSharedElement.requirement_item_id,
+                )
+                .join(
+                    DisclosureRequirement,
+                    DisclosureRequirement.id == RequirementItem.disclosure_requirement_id,
+                )
+                .outerjoin(
+                    StandardSection,
+                    StandardSection.id == DisclosureRequirement.section_id,
+                )
+                .join(
+                    ReportingProjectStandard,
+                    ReportingProjectStandard.standard_id == DisclosureRequirement.standard_id,
+                )
+                .where(
+                    ReportingProjectStandard.reporting_project_id == project_id,
+                    DisclosureRequirement.standard_id == standard_id,
+                    RequirementItem.is_required == True,
+                    RequirementItemSharedElement.is_current == True,
+                    SharedElement.is_current == True,
+                )
+                .order_by(
+                    DisclosureRequirement.sort_order,
+                    DisclosureRequirement.id,
+                    RequirementItem.sort_order,
+                    RequirementItem.id,
+                    SharedElement.name,
+                )
+            )
+        ).all()
+
+        if not rows:
+            return []
+
+        options_by_element: dict[int, ProjectStandardLaunchOptionOut] = {}
+        for row in rows:
+            shared_element_id = row[0]
+            option = options_by_element.get(shared_element_id)
+            if option is None:
+                option = ProjectStandardLaunchOptionOut(
+                    shared_element_id=shared_element_id,
+                    shared_element_code=row[1],
+                    shared_element_name=row[2],
+                    concept_domain=row[3],
+                    default_value_type=row[4],
+                    default_unit_code=row[5],
+                )
+                options_by_element[shared_element_id] = option
+
+            option.linked_requirements.append(
+                ProjectStandardLaunchRequirementOut(
+                    section_id=row[14],
+                    section_code=row[15],
+                    section_title=row[16],
+                    disclosure_id=row[10],
+                    disclosure_code=row[11],
+                    disclosure_title=row[12],
+                    disclosure_description=row[13],
+                    requirement_item_id=row[6],
+                    requirement_item_code=row[7],
+                    requirement_item_name=row[8],
+                    requirement_item_description=row[9],
+                    mapping_type=row[17],
+                )
+            )
+
+        assignment_result = await self.repo.session.execute(
+            select(MetricAssignment).where(
+                MetricAssignment.reporting_project_id == project_id,
+                MetricAssignment.shared_element_id.in_(list(options_by_element)),
+            )
+        )
+        assignments = list(assignment_result.scalars().all())
+        for assignment in assignments:
+            option = options_by_element.get(assignment.shared_element_id)
+            if option is None:
+                continue
+            option.existing_assignment_count += 1
+            if assignment.entity_id is not None and assignment.facility_id is None:
+                option.assigned_entity_ids.append(assignment.entity_id)
+
+        for option in options_by_element.values():
+            option.assigned_entity_ids = sorted(set(option.assigned_entity_ids))
+
+        return sorted(
+            options_by_element.values(),
+            key=lambda option: (
+                option.shared_element_name.lower(),
+                option.shared_element_code.lower(),
+            ),
+        )
 
     async def _build_assignment_matrix(
         self,
@@ -788,6 +938,146 @@ class ProjectService:
             )
 
         return ProjectStandardSummaryListOut(items=items)
+
+    async def get_project_standard_launch_options(
+        self,
+        project_id: int,
+        standard_id: int,
+        ctx: RequestContext,
+    ) -> ProjectStandardLaunchOptionsOut:
+        self._require_manager(ctx)
+        await get_project_for_ctx(
+            self.repo.session, project_id, ctx, allow_collectors=False, allow_reviewers=False
+        )
+        standard = await self._get_project_standard_or_raise(project_id, standard_id)
+        options = await self._build_standard_launch_options(project_id, standard_id)
+        return ProjectStandardLaunchOptionsOut(
+            standard_id=standard.id,
+            standard_code=standard.code,
+            standard_name=standard.name,
+            option_count=len(options),
+            options=options,
+        )
+
+    async def launch_project_standard_indicators(
+        self,
+        project_id: int,
+        standard_id: int,
+        payload: ProjectStandardLaunchRequest,
+        ctx: RequestContext,
+    ) -> ProjectStandardLaunchResultOut:
+        self._require_manager(ctx)
+        self._validate_assignment_role_conflicts(
+            payload.collector_id,
+            payload.reviewer_id,
+            payload.backup_collector_id,
+        )
+
+        project = await get_project_for_ctx(
+            self.repo.session, project_id, ctx, allow_collectors=False, allow_reviewers=False
+        )
+        await self._get_project_standard_or_raise(project_id, standard_id)
+        await self._validate_entity_in_org(payload.entity_id, project.organization_id, "Entity")
+        await self._validate_assignment_scope_in_boundary(
+            project,
+            entity_id=payload.entity_id,
+            facility_id=None,
+        )
+        await self._validate_assignment_user(payload.collector_id, project.organization_id, "collector_id")
+        await self._validate_assignment_user(payload.reviewer_id, project.organization_id, "reviewer_id")
+        await self._validate_assignment_user(
+            payload.backup_collector_id,
+            project.organization_id,
+            "backup_collector_id",
+        )
+
+        options = await self._build_standard_launch_options(project_id, standard_id)
+        available_ids = {option.shared_element_id for option in options}
+        selected_ids = sorted(set(payload.shared_element_ids))
+        invalid_ids = [shared_element_id for shared_element_id in selected_ids if shared_element_id not in available_ids]
+        if invalid_ids:
+            raise AppError(
+                "INVALID_STANDARD_LAUNCH_SELECTION",
+                422,
+                f"Selected shared elements are not mapped to standard {standard_id}: {', '.join(map(str, invalid_ids))}",
+            )
+
+        existing_assignments_result = await self.repo.session.execute(
+            select(MetricAssignment).where(
+                MetricAssignment.reporting_project_id == project_id,
+                MetricAssignment.shared_element_id.in_(selected_ids),
+            )
+        )
+        existing_assignments = list(existing_assignments_result.scalars().all())
+        existing_pairs = {
+            (assignment.shared_element_id, assignment.entity_id)
+            for assignment in existing_assignments
+            if assignment.entity_id is not None and assignment.facility_id is None
+        }
+
+        created_assignment_ids: list[int] = []
+        created_shared_element_ids: list[int] = []
+        skipped_shared_element_ids: list[int] = []
+        for shared_element_id in selected_ids:
+            if (shared_element_id, payload.entity_id) in existing_pairs:
+                skipped_shared_element_ids.append(shared_element_id)
+                continue
+
+            assignment = await self.repo.create_assignment(
+                project_id,
+                shared_element_id=shared_element_id,
+                entity_id=payload.entity_id,
+                collector_id=payload.collector_id,
+                reviewer_id=payload.reviewer_id,
+                backup_collector_id=payload.backup_collector_id,
+                deadline=payload.deadline,
+                escalation_after_days=payload.escalation_after_days,
+            )
+            created_assignment_ids.append(assignment.id)
+            created_shared_element_ids.append(shared_element_id)
+
+            await self._audit(
+                "MetricAssignment",
+                "assignment_created",
+                ctx,
+                entity_id=assignment.id,
+                changes={
+                    "shared_element_id": shared_element_id,
+                    "entity_id": payload.entity_id,
+                    "collector_id": payload.collector_id,
+                    "reviewer_id": payload.reviewer_id,
+                    "backup_collector_id": payload.backup_collector_id,
+                    "deadline": payload.deadline.isoformat() if payload.deadline else None,
+                    "escalation_after_days": payload.escalation_after_days,
+                    "source": "project_standard_launch",
+                    "standard_id": standard_id,
+                },
+            )
+            await get_event_bus().publish(
+                AssignmentCreated(
+                    assignment_id=assignment.id,
+                    project_id=project_id,
+                    organization_id=project.organization_id,
+                    collector_id=payload.collector_id,
+                    reviewer_id=payload.reviewer_id,
+                    shared_element_id=shared_element_id,
+                    assigned_by=ctx.user_id,
+                )
+            )
+
+        if created_assignment_ids:
+            await invalidate_dashboard_project(project_id)
+
+        return ProjectStandardLaunchResultOut(
+            project_id=project_id,
+            standard_id=standard_id,
+            entity_id=payload.entity_id,
+            created_count=len(created_assignment_ids),
+            skipped_count=len(skipped_shared_element_ids),
+            created_assignment_ids=created_assignment_ids,
+            created_shared_element_ids=created_shared_element_ids,
+            skipped_shared_element_ids=skipped_shared_element_ids,
+        )
 
     async def get_assignment_summary(
         self, project_id: int, ctx: RequestContext

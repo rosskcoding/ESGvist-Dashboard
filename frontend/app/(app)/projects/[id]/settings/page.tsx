@@ -51,6 +51,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { StandardLaunchDialog } from "@/components/projects/standard-launch-dialog";
 
 interface ProjectDetail {
   id: number;
@@ -104,6 +105,23 @@ interface AssignmentSummary {
   completed: number;
 }
 
+interface AssignmentOptionUser {
+  id: number;
+  name: string;
+  email: string;
+}
+
+interface AssignmentOptionEntity {
+  id: number;
+  name: string;
+  code: string | null;
+}
+
+interface AssignmentOptionsData {
+  users: AssignmentOptionUser[];
+  entities: AssignmentOptionEntity[];
+}
+
 interface GateCheckResult {
   passed: boolean;
   blockers: string[];
@@ -119,6 +137,17 @@ const statusConfig: Record<
   published: { label: "Published", variant: "success" },
 };
 
+const standardDisplayPriority: Record<string, number> = {
+  GRI: 0,
+  "IFRS-S1": 1,
+  "IFRS-S2": 2,
+  ESRS: 3,
+};
+
+function isFixtureStandard(standard: AvailableStandard) {
+  return /^PAG_/i.test(standard.code) || /^JOURNEY_/i.test(standard.code);
+}
+
 function isForbidden(error: Error | null) {
   const code = (error as Error & { code?: string } | null)?.code;
   return code === "FORBIDDEN" || /not allowed|access denied|forbidden/i.test(error?.message || "");
@@ -132,9 +161,11 @@ export default function ProjectSettingsPage() {
 
   const [addStandardDialogOpen, setAddStandardDialogOpen] = useState(false);
   const [selectedStandardId, setSelectedStandardId] = useState("");
+  const [standardSearch, setStandardSearch] = useState("");
   const [gateBlockers, setGateBlockers] = useState<string[]>([]);
   const [gateDialogOpen, setGateDialogOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [launchStandard, setLaunchStandard] = useState<ProjectStandard | null>(null);
 
   const syncProjectDetail = (updates: Partial<ProjectDetail>) => {
     queryClient.setQueryData<ProjectDetail>(["project", projectId], (current) =>
@@ -219,6 +250,11 @@ export default function ProjectSettingsPage() {
   const { data: teamData } = useApiQuery<{ items: AssignmentSummary[] }>(
     ["project-team", projectId],
     `/projects/${projectId}/assignments/summary`
+  );
+
+  const { data: assignmentOptionsData } = useApiQuery<AssignmentOptionsData>(
+    ["project-assignment-options", projectId],
+    `/projects/${projectId}/assignments`
   );
 
   // Mutations
@@ -312,6 +348,7 @@ export default function ProjectSettingsPage() {
       }
       setAddStandardDialogOpen(false);
       setSelectedStandardId("");
+      setStandardSearch("");
       await invalidateDerivedProjectViews();
     },
     onError: (error) => {
@@ -450,10 +487,29 @@ export default function ProjectSettingsPage() {
     snapshot_created_at: null,
   };
   const team = teamData?.items ?? [];
+  const assignmentUsers = assignmentOptionsData?.users ?? [];
+  const assignmentEntities = assignmentOptionsData?.entities ?? [];
   const boundaries = Array.isArray(boundaryOptionsData)
     ? boundaryOptionsData
     : (boundaryOptionsData?.items ?? []);
   const allStandards = availableStandards?.items ?? [];
+  const attachedStandardLabels = standards.map(
+    (standard) => `${standard.code} - ${standard.standard_name}`
+  );
+  const normalizedStandardSearch = standardSearch.trim().toLowerCase();
+  const selectableStandards = allStandards
+    .filter((standard) => !standards.some((projectStandard) => projectStandard.standard_id === standard.id))
+    .filter((standard) => !isFixtureStandard(standard))
+    .filter((standard) => {
+      if (!normalizedStandardSearch) return true;
+      return `${standard.code} ${standard.name}`.toLowerCase().includes(normalizedStandardSearch);
+    })
+    .sort((left, right) => {
+      const leftPriority = standardDisplayPriority[left.code] ?? 100;
+      const rightPriority = standardDisplayPriority[right.code] ?? 100;
+      if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+      return left.code.localeCompare(right.code);
+    });
 
   const isWorkflowBusy =
     activateMutation.isPending ||
@@ -690,6 +746,16 @@ export default function ProjectSettingsPage() {
                         <span className="text-sm font-semibold">
                           {Math.round(std.completion_percentage)}%
                         </span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setActionError(null);
+                            setLaunchStandard(std);
+                          }}
+                        >
+                          Launch Indicators
+                        </Button>
                       </div>
                     </div>
                   ))}
@@ -900,13 +966,23 @@ export default function ProjectSettingsPage() {
             <DialogTitle>Add Standard</DialogTitle>
           </DialogHeader>
           <div className="mt-4 space-y-4">
+            <div className="space-y-1 text-sm text-slate-500">
+              <p>Only standards that are not yet attached to this project appear here.</p>
+              {attachedStandardLabels.length > 0 && (
+                <p>
+                  Already attached: {attachedStandardLabels.join(", ")}.
+                </p>
+              )}
+            </div>
+            <Input
+              label="Search"
+              placeholder="Find standard by code or name"
+              value={standardSearch}
+              onChange={(e) => setStandardSearch(e.target.value)}
+            />
             <Select
               label="Standard"
-              options={allStandards
-                .filter(
-                  (s) => !standards.some((ps) => ps.standard_id === s.id)
-                )
-                .map((s) => ({
+              options={selectableStandards.map((s) => ({
                   value: String(s.id),
                   label: `${s.code} - ${s.name}`,
                 }))}
@@ -914,6 +990,11 @@ export default function ProjectSettingsPage() {
               value={selectedStandardId}
               onChange={(val) => setSelectedStandardId(val)}
             />
+            {selectableStandards.length === 0 && (
+              <p className="text-sm text-slate-500">
+                No visible standards match this search.
+              </p>
+            )}
             {addStandardMutation.error && (
               <p className="text-sm text-red-500">
                 {addStandardMutation.error.message}
@@ -926,6 +1007,7 @@ export default function ProjectSettingsPage() {
               onClick={() => {
                 setAddStandardDialogOpen(false);
                 setSelectedStandardId("");
+                setStandardSearch("");
               }}
             >
               Cancel
@@ -948,6 +1030,29 @@ export default function ProjectSettingsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <StandardLaunchDialog
+        open={!!launchStandard}
+        onOpenChange={(open) => {
+          if (!open) {
+            setLaunchStandard(null);
+          }
+        }}
+        projectId={projectId}
+        standard={
+          launchStandard
+            ? {
+                standard_id: launchStandard.standard_id,
+                code: launchStandard.code,
+                standard_name: launchStandard.standard_name,
+              }
+            : null
+        }
+        users={assignmentUsers}
+        entities={assignmentEntities}
+        boundaryId={boundary.boundary_id}
+        onError={setActionError}
+      />
 
       {/* Gate Check Blockers Dialog */}
       <Dialog open={gateDialogOpen} onOpenChange={setGateDialogOpen}>

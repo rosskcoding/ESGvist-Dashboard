@@ -27,11 +27,14 @@ test.describe("Screen 13 - Collection Table", () => {
 
       await expect(page.getByRole("heading", { name: "Data Collection" })).toBeVisible();
       await expect(
-        page.getByText("Manage and enter ESG data points for the current reporting period.")
+        page.getByText("Track assigned metrics, open data entry, and submit values for the current reporting period.")
       ).toBeVisible();
-      await expect(page.getByPlaceholder("Search by code or name...")).toBeVisible();
-      await expect(page.getByRole("columnheader", { name: "Element Code" })).toBeVisible();
-      await expect(page.getByRole("columnheader", { name: "Boundary" })).toBeVisible();
+      await expect(
+        page.getByText("This is not a Jira-style task board. Each row is one assigned metric")
+      ).toBeVisible();
+      await expect(page.getByPlaceholder("Search by metric code or name...")).toBeVisible();
+      await expect(page.getByRole("columnheader", { name: "Metric Code" })).toBeVisible();
+      await expect(page.getByRole("columnheader", { name: "Reporting Boundary" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Enter Data" }).first()).toBeVisible();
     });
   }
@@ -40,7 +43,7 @@ test.describe("Screen 13 - Collection Table", () => {
     await loginThroughUi(page, demoState.users.esg_manager.email, demoState.password);
     await page.goto("/collection");
 
-    await page.getByPlaceholder("Search by code or name...").fill("SCOPE1");
+    await page.getByPlaceholder("Search by metric code or name...").fill("SCOPE1");
     await expect(page.getByText("SCOPE1_TCO2E")).toBeVisible();
     await expect(page.getByText("ENERGY_TOTAL_MWH")).toHaveCount(0);
   });
@@ -197,7 +200,7 @@ test.describe("Screen 13 - Collection Table", () => {
     await expect(guidedCard.getByText("2 contexts")).toBeVisible();
     await guidedCard.getByRole("button", { name: "Show rows" }).click();
 
-    await expect(page.getByPlaceholder("Search by code or name...")).toHaveValue(code);
+    await expect(page.getByPlaceholder("Search by metric code or name...")).toHaveValue(code);
     const matchingRows = page.locator("#collection-table tbody tr").filter({ hasText: code });
     await expect(matchingRows).toHaveCount(2);
   });
@@ -306,7 +309,7 @@ test.describe("Screen 13 - Collection Table", () => {
     });
 
     await page.goto(`/collection?projectId=${demoState.project.id}`);
-    await page.getByPlaceholder("Search by code or name...").fill(code);
+    await page.getByPlaceholder("Search by metric code or name...").fill(code);
     const row = page.getByRole("row", { name: new RegExp(code) });
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.getByRole("button", { name: "Enter Data" }).click();

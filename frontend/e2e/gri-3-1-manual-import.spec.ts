@@ -128,7 +128,7 @@ async function submitNarrativeDataPoint(
 ) {
   await page.goto(`/collection?projectId=${projectId}`);
   await expect(page.getByRole("heading", { name: "Data Collection" })).toBeVisible();
-  await page.getByPlaceholder("Search by code or name...").fill(item.elementCode);
+  await page.getByPlaceholder("Search by metric code or name...").fill(item.elementCode);
   const row = tableRowByText(page, item.elementCode);
   await expect(row).toBeVisible({ timeout: 15_000 });
   await row.getByRole("button", { name: "Enter Data" }).click();

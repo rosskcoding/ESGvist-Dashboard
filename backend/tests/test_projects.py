@@ -35,6 +35,127 @@ async def org_ctx(client: AsyncClient) -> dict:
     }
 
 
+async def _setup_standard_launch_fixture(client: AsyncClient, headers: dict) -> dict:
+    standard = await client.post(
+        "/api/standards",
+        json={"code": "GRI-LAUNCH", "name": "GRI Launch"},
+        headers=headers,
+    )
+    assert standard.status_code == 201
+    standard_id = standard.json()["id"]
+
+    energy_disclosure = await client.post(
+        f"/api/standards/{standard_id}/disclosures",
+        json={
+            "code": "GRI 302-1",
+            "title": "Energy consumption",
+            "requirement_type": "quantitative",
+            "mandatory_level": "mandatory",
+        },
+        headers=headers,
+    )
+    climate_disclosure = await client.post(
+        f"/api/standards/{standard_id}/disclosures",
+        json={
+            "code": "GRI 305-1",
+            "title": "Scope 1 emissions",
+            "requirement_type": "quantitative",
+            "mandatory_level": "mandatory",
+        },
+        headers=headers,
+    )
+    assert energy_disclosure.status_code == 201
+    assert climate_disclosure.status_code == 201
+
+    energy_item = await client.post(
+        f"/api/disclosures/{energy_disclosure.json()['id']}/items",
+        json={
+            "item_code": "ENERGY_TOTAL",
+            "name": "Total energy consumption",
+            "item_type": "metric",
+            "value_type": "number",
+            "unit_code": "MWh",
+        },
+        headers=headers,
+    )
+    intensity_item = await client.post(
+        f"/api/disclosures/{climate_disclosure.json()['id']}/items",
+        json={
+            "item_code": "ENERGY_INTENSITY",
+            "name": "Energy intensity input",
+            "item_type": "metric",
+            "value_type": "number",
+            "unit_code": "MWh",
+        },
+        headers=headers,
+    )
+    scope1_item = await client.post(
+        f"/api/disclosures/{climate_disclosure.json()['id']}/items",
+        json={
+            "item_code": "SCOPE1_TOTAL",
+            "name": "Scope 1 total emissions",
+            "item_type": "metric",
+            "value_type": "number",
+            "unit_code": "tCO2e",
+        },
+        headers=headers,
+    )
+    assert energy_item.status_code == 201
+    assert intensity_item.status_code == 201
+    assert scope1_item.status_code == 201
+
+    energy_element = await client.post(
+        "/api/shared-elements",
+        json={"code": "SE-ENERGY-TOTAL", "name": "Total energy", "default_unit_code": "MWh"},
+        headers=headers,
+    )
+    emissions_element = await client.post(
+        "/api/shared-elements",
+        json={"code": "SE-GHG-SCOPE1", "name": "Scope 1 emissions", "default_unit_code": "tCO2e"},
+        headers=headers,
+    )
+    assert energy_element.status_code == 201
+    assert emissions_element.status_code == 201
+
+    for item_id, element_id, mapping_type in (
+        (energy_item.json()["id"], energy_element.json()["id"], "full"),
+        (intensity_item.json()["id"], energy_element.json()["id"], "partial"),
+        (scope1_item.json()["id"], emissions_element.json()["id"], "full"),
+    ):
+        mapping = await client.post(
+            "/api/mappings",
+            json={
+                "requirement_item_id": item_id,
+                "shared_element_id": element_id,
+                "mapping_type": mapping_type,
+            },
+            headers=headers,
+        )
+        assert mapping.status_code == 201
+
+    project = await client.post(
+        "/api/projects",
+        json={"name": "Launch Project"},
+        headers=headers,
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    attached = await client.post(
+        f"/api/projects/{project_id}/standards",
+        json={"standard_id": standard_id, "is_base_standard": True},
+        headers=headers,
+    )
+    assert attached.status_code == 200
+
+    return {
+        "project_id": project_id,
+        "standard_id": standard_id,
+        "energy_element_id": energy_element.json()["id"],
+        "emissions_element_id": emissions_element.json()["id"],
+    }
+
+
 # --- Projects ---
 @pytest.mark.asyncio
 async def test_create_project(client: AsyncClient, org_ctx: dict):
@@ -151,6 +272,91 @@ async def test_add_standard_to_project(client: AsyncClient, org_ctx: dict):
         headers=org_ctx["headers"],
     )
     assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_project_standard_launch_options_group_mapped_indicators(client: AsyncClient, org_ctx: dict):
+    fixture = await _setup_standard_launch_fixture(client, org_ctx["headers"])
+
+    resp = await client.get(
+        f"/api/projects/{fixture['project_id']}/standards/{fixture['standard_id']}/launch-options",
+        headers=org_ctx["headers"],
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["standard_code"] == "GRI-LAUNCH"
+    assert data["option_count"] == 2
+
+    options_by_id = {item["shared_element_id"]: item for item in data["options"]}
+    energy_option = options_by_id[fixture["energy_element_id"]]
+    assert energy_option["shared_element_code"] == "SE-ENERGY-TOTAL"
+    assert energy_option["existing_assignment_count"] == 0
+    assert energy_option["assigned_entity_ids"] == []
+    assert len(energy_option["linked_requirements"]) == 2
+    assert {item["disclosure_code"] for item in energy_option["linked_requirements"]} == {
+        "GRI 302-1",
+        "GRI 305-1",
+    }
+
+
+@pytest.mark.asyncio
+async def test_launch_project_standard_indicators_creates_assignments_and_skips_duplicates(
+    client: AsyncClient,
+    org_ctx: dict,
+):
+    fixture = await _setup_standard_launch_fixture(client, org_ctx["headers"])
+
+    launch = await client.post(
+        f"/api/projects/{fixture['project_id']}/standards/{fixture['standard_id']}/launch",
+        json={
+            "shared_element_ids": [
+                fixture["energy_element_id"],
+                fixture["emissions_element_id"],
+            ],
+            "entity_id": org_ctx["root_entity_id"],
+            "deadline": "2026-12-31",
+        },
+        headers=org_ctx["headers"],
+    )
+    assert launch.status_code == 201
+    launch_data = launch.json()
+    assert launch_data["created_count"] == 2
+    assert launch_data["skipped_count"] == 0
+
+    assignments = await client.get(
+        f"/api/projects/{fixture['project_id']}/assignments",
+        headers=org_ctx["headers"],
+    )
+    assert assignments.status_code == 200
+    assignment_rows = assignments.json()["assignments"]
+    assert len(assignment_rows) == 2
+    assert {
+        item["shared_element_id"] for item in assignment_rows
+    } == {fixture["energy_element_id"], fixture["emissions_element_id"]}
+
+    launch_again = await client.post(
+        f"/api/projects/{fixture['project_id']}/standards/{fixture['standard_id']}/launch",
+        json={
+            "shared_element_ids": [
+                fixture["energy_element_id"],
+                fixture["emissions_element_id"],
+            ],
+            "entity_id": org_ctx["root_entity_id"],
+        },
+        headers=org_ctx["headers"],
+    )
+    assert launch_again.status_code == 201
+    second_data = launch_again.json()
+    assert second_data["created_count"] == 0
+    assert second_data["skipped_count"] == 2
+
+    options = await client.get(
+        f"/api/projects/{fixture['project_id']}/standards/{fixture['standard_id']}/launch-options",
+        headers=org_ctx["headers"],
+    )
+    assert options.status_code == 200
+    options_by_id = {item["shared_element_id"]: item for item in options.json()["options"]}
+    assert options_by_id[fixture["energy_element_id"]]["assigned_entity_ids"] == [org_ctx["root_entity_id"]]
 
 
 # --- Assignments ---

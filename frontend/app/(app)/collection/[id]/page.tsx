@@ -466,10 +466,13 @@ export default function DataEntryWizardPage() {
             <CardTitle>Context</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
+            <p className="text-sm text-slate-600">
+              This entry is the reported value for one assigned metric in one reporting context.
+            </p>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-xs font-medium uppercase text-slate-400">
-                  Element Name
+                  Metric Name
                 </p>
                 <p className="mt-1 text-sm font-semibold text-slate-900">
                   {dp.element_name}
@@ -477,7 +480,7 @@ export default function DataEntryWizardPage() {
               </div>
               <div>
                 <p className="text-xs font-medium uppercase text-slate-400">
-                  Element Code
+                  Metric Code
                 </p>
                 <p className="mt-1 font-mono text-sm text-slate-700">
                   {dp.element_code}
@@ -499,7 +502,7 @@ export default function DataEntryWizardPage() {
               </div>
               <div>
                 <p className="text-xs font-medium uppercase text-slate-400">
-                  Boundary Status
+                  Reporting Boundary
                 </p>
                 <p className="mt-1 text-sm text-slate-700">
                   {dp.boundary_status}
