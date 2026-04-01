@@ -86,12 +86,43 @@ def resolve_standard_catalog_meta(code: str, name: str) -> StandardCatalogMeta:
             is_attachable=True,
         )
 
-    if normalized_code.startswith("ESRS"):
+    if normalized_code == "ESRS":
         return StandardCatalogMeta(
             family_code="ESRS",
             family_name="ESRS",
-            catalog_group_code="standards",
-            catalog_group_name="Standards",
+            catalog_group_code="family",
+            catalog_group_name="Family",
+            is_attachable=False,
+        )
+
+    esrs_cross_cutting_match = re.fullmatch(r"ESRS\s+([12])", normalized_code)
+    if esrs_cross_cutting_match:
+        return StandardCatalogMeta(
+            family_code="ESRS",
+            family_name="ESRS",
+            catalog_group_code="cross-cutting",
+            catalog_group_name="Cross-cutting Standards",
+            is_attachable=True,
+        )
+
+    esrs_match = re.fullmatch(r"ESRS\s+([ESG])(\d+)", normalized_code)
+    if esrs_match:
+        domain_code = esrs_match.group(1)
+        if domain_code == "E":
+            group_code = "environmental"
+            group_name = "Environmental Standards"
+        elif domain_code == "S":
+            group_code = "social"
+            group_name = "Social Standards"
+        else:
+            group_code = "governance"
+            group_name = "Governance Standards"
+
+        return StandardCatalogMeta(
+            family_code="ESRS",
+            family_name="ESRS",
+            catalog_group_code=group_code,
+            catalog_group_name=group_name,
             is_attachable=True,
         )
 

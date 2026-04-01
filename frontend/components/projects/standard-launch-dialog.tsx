@@ -55,7 +55,22 @@ type DisclosureContentBlock = {
   body_md?: string | null;
   paragraphs?: string[];
   items?: string[];
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, unknown> & {
+    rows?: DisclosureContentRow[];
+  };
+};
+
+type DisclosureContentRow = {
+  ref?: string;
+  clause_ref?: string;
+  source?: string | null;
+  standardised_requirement?: string | null;
+  interpretation?: string | null;
+  data_points?: string[];
+  evidence?: string | null;
+  owner?: string | null;
+  frequency?: string | null;
+  row_kind?: string | null;
 };
 
 type DisclosureApplicabilityRule = {
@@ -1088,7 +1103,59 @@ export function StandardLaunchDialog({
                               className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
                             >
                               <p className="text-sm font-semibold text-slate-900">{block.title}</p>
-                              {block.paragraphs && block.paragraphs.length > 0 && (
+                              {block.metadata?.rows && block.metadata.rows.length > 0 && (
+                                <div className="mt-3 space-y-3">
+                                  {block.metadata.rows.map((row, rowIndex) => (
+                                    <div
+                                      key={`${detailDisclosure.disclosure_id}-${block.type}-${index}-row-${row.ref ?? rowIndex}`}
+                                      className="rounded-lg border border-slate-200 bg-white px-3 py-3"
+                                    >
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        {row.ref && <Badge variant="outline">{row.ref}</Badge>}
+                                        {row.source && (
+                                          <span className="text-xs font-medium text-slate-500">
+                                            {row.source}
+                                          </span>
+                                        )}
+                                      </div>
+                                      {row.standardised_requirement && (
+                                        <p className="mt-2 text-sm font-medium text-slate-900">
+                                          {row.standardised_requirement}
+                                        </p>
+                                      )}
+                                      {row.interpretation && (
+                                        <p className="mt-2 text-sm text-slate-600">
+                                          {row.interpretation}
+                                        </p>
+                                      )}
+                                      {row.data_points && row.data_points.length > 0 && (
+                                        <div className="mt-3">
+                                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                            Data points
+                                          </p>
+                                          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+                                            {row.data_points.map((item, itemIndex) => (
+                                              <li
+                                                key={`${detailDisclosure.disclosure_id}-${block.type}-${index}-row-${row.ref ?? rowIndex}-item-${itemIndex}`}
+                                              >
+                                                {item}
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
+                                      {row.evidence && (
+                                        <p className="mt-3 text-xs text-slate-500">
+                                          Evidence: {row.evidence}
+                                        </p>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {!block.metadata?.rows?.length &&
+                                block.paragraphs &&
+                                block.paragraphs.length > 0 && (
                                 <div className="mt-2 space-y-2">
                                   {block.paragraphs.map((paragraph, paragraphIndex) => (
                                     <p
@@ -1100,7 +1167,7 @@ export function StandardLaunchDialog({
                                   ))}
                                 </div>
                               )}
-                              {block.items && block.items.length > 0 && (
+                              {!block.metadata?.rows?.length && block.items && block.items.length > 0 && (
                                 <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
                                   {block.items.map((item, itemIndex) => (
                                     <li
@@ -1111,7 +1178,10 @@ export function StandardLaunchDialog({
                                   ))}
                                 </ul>
                               )}
-                              {!block.paragraphs?.length && !block.items?.length && block.body_md && (
+                              {!block.metadata?.rows?.length &&
+                                !block.paragraphs?.length &&
+                                !block.items?.length &&
+                                block.body_md && (
                                 <p className="mt-2 whitespace-pre-line text-sm text-slate-700">
                                   {block.body_md}
                                 </p>
