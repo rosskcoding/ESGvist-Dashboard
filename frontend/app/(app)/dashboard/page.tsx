@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { useActiveProject } from "@/lib/hooks/use-active-project";
 import { useApiQuery } from "@/lib/hooks/use-api";
 import {
   BarChart3,
@@ -24,18 +25,6 @@ import {
   Globe,
   Loader2,
 } from "lucide-react";
-
-interface ProjectSummary {
-  id: number;
-  name: string;
-  status: "draft" | "active" | "review" | "published";
-  reporting_year?: number | null;
-}
-
-interface ProjectsResponse {
-  items: ProjectSummary[];
-  total: number;
-}
 
 interface StandardProgress {
   standard_id: number;
@@ -106,13 +95,11 @@ export default function DashboardPage() {
   }, []);
 
   const {
-    data: projectsData,
+    activeProject,
+    projectId,
     isLoading: projectsLoading,
     error: projectsError,
-  } = useApiQuery<ProjectsResponse>(["projects", "dashboard"], "/projects?page_size=100");
-  const projects = projectsData?.items ?? [];
-  const projectId = projects[0]?.id ?? null;
-  const activeProject = projects[0] ?? null;
+  } = useActiveProject("dashboard");
 
   const {
     data,
@@ -254,6 +241,13 @@ export default function DashboardPage() {
   const upcomingTasks = (progress.priority_tasks || []).filter(
     (task) => task.status === "upcoming"
   );
+  const approvedDataPointCount = progress.data_point_statuses?.approved || 0;
+  const pendingReviewCount =
+    (progress.data_point_statuses?.submitted || 0) + (progress.data_point_statuses?.in_review || 0);
+  const openWorkflowCount =
+    (progress.data_point_statuses?.draft || 0) +
+    (progress.data_point_statuses?.needs_revision || 0) +
+    (progress.data_point_statuses?.rejected || 0);
 
   return (
     <div className="space-y-6">
@@ -287,19 +281,19 @@ export default function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardDescription className="text-sm font-medium">
-              Data Points
+              Approved Data Points
             </CardDescription>
             <CheckCircle2 className="h-4 w-4 text-slate-500" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">
-              {progress.data_point_statuses?.submitted || 0}
+              {approvedDataPointCount}
               <span className="text-lg font-normal text-slate-400">
                 {" "}
                 / {progress.item_statuses?.total || 0}
               </span>
             </div>
-            <p className="mt-1 text-xs text-slate-500">submitted</p>
+            <p className="mt-1 text-xs text-slate-500">approved and complete</p>
           </CardContent>
         </Card>
 
@@ -339,9 +333,13 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">
-              {progress.data_point_statuses?.submitted || 0}
+              {pendingReviewCount}
             </div>
-            <p className="mt-1 text-xs text-slate-500">awaiting review</p>
+            <p className="mt-1 text-xs text-slate-500">
+              {openWorkflowCount > 0
+                ? `${openWorkflowCount} still in edit or revision`
+                : "awaiting review"}
+            </p>
           </CardContent>
         </Card>
       </div>

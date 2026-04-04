@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { logout } from "@/lib/auth";
 import { api, isAppApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useApiQuery } from "@/lib/hooks/use-api";
+import { isProjectScopedPath, parseProjectId, withProjectId } from "@/lib/project-routing";
 import { Providers } from "./providers";
 import { Button } from "@/components/ui/button";
 import {
@@ -247,6 +248,8 @@ function routeRequiresTenantContext(pathname: string): boolean {
 function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentProjectId = parseProjectId(searchParams.get("projectId"));
   const loginRedirect = useCallback(
     (reason: "session-expired" | "auth-required") => {
       const params = new URLSearchParams({ reason, next: pathname || "/dashboard" });
@@ -520,7 +523,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
       {/* Sidebar */}
       <aside className="flex w-64 flex-col border-r border-gray-200 bg-white">
         <div className="flex h-16 items-center border-b border-gray-200 px-4">
-          <Link href="/dashboard" prefetch={false}>
+          <Link href={withProjectId("/dashboard", currentProjectId)} prefetch={false}>
             <Image
               src="/brand/logo-esgvist.png"
               alt="ESGvist"
@@ -548,11 +551,14 @@ function AppShell({ children }: { children: React.ReactNode }) {
                       pathname === item.href ||
                       (item.href !== "/settings" && pathname.startsWith(item.href + "/"));
                     const Icon = item.icon;
+                    const href = isProjectScopedPath(item.href)
+                      ? withProjectId(item.href, currentProjectId)
+                      : item.href;
 
                     return (
                       <Link
                         key={item.href}
-                        href={item.href}
+                        href={href}
                         prefetch={false}
                         className={cn(
                           "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",

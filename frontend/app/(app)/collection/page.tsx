@@ -1,31 +1,40 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import {
-  Search,
-  Filter,
-  ArrowUpDown,
-  Repeat2,
-  RefreshCcw,
   AlertTriangle,
+  ArrowRight,
+  ArrowUpDown,
+  CheckCircle2,
+  Circle,
+  Filter,
   Loader2,
+  Repeat2,
+  Rows3,
+  Search,
   ShieldAlert,
+  Sparkles,
+  Table2,
+  TriangleAlert,
 } from "lucide-react";
-import { api } from "@/lib/api";
-import { useApiMutation, useApiQuery } from "@/lib/hooks/use-api";
+
+import { api, type AppApiError } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { useActiveProject } from "@/lib/hooks/use-active-project";
+import { useApiQuery } from "@/lib/hooks/use-api";
 import { GuidedEntryDialog } from "./components/guided-entry-dialog";
-import { WizardRenderer } from "./components/wizard-renderer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-
-/* ---------- Types ---------- */
+import { Input } from "@/components/ui/input";
 
 type DataPointStatus = "missing" | "partial" | "complete";
 type BoundaryStatus = "included" | "excluded" | "partial";
+type FeedSection = "action" | "blocked" | "done" | "all";
+type ViewMode = "feed" | "table";
+type ReadinessTone = "done" | "pending" | "warning";
 
 interface DataPoint {
   id: number;
@@ -43,12 +52,29 @@ interface DataPoint {
   consolidation_method: string;
   reused_across_standards: boolean;
   standards: string[];
+  status?: string | null;
+  numeric_value?: number | null;
+  text_value?: string | null;
+  unit_code?: string | null;
+  methodology?: string | null;
+  evidence_required?: boolean;
+  evidence_count?: number;
+  element_type?: "numeric" | "text" | "boolean" | null;
 }
 
 interface DataPointsResponse {
   items: DataPoint[];
   total: number;
 }
+
+interface MethodologyReference {
+  id: number;
+  code: string;
+  name: string;
+  description?: string | null;
+}
+
+const DATA_POINT_PAGE_SIZE = 100;
 
 interface AssignmentRow {
   id: number;
@@ -121,30 +147,26 @@ interface ActiveFormConfig {
   };
 }
 
-/* ---------- Helpers ---------- */
+interface DataPointDetail {
+  id: number;
+  status: string;
+  element_type: "numeric" | "text" | "boolean";
+  numeric_value?: number | null;
+  text_value?: string | null;
+  unit_code?: string | null;
+  methodology?: string | null;
+  boundary_status: string;
+  consolidation_method: string;
+  related_standards: Array<{ code: string; name: string }>;
+  evidence_required: boolean;
+  evidence_count: number;
+  methodology_options?: string[];
+}
 
-const COLLECTION_FLOW = [
-  {
-    label: "Standard",
-    description: "Reporting framework such as GRI or IFRS.",
-  },
-  {
-    label: "Requirement",
-    description: "The disclosure requirement that asks for a specific metric.",
-  },
-  {
-    label: "Metric",
-    description: "The shared metric used across one or more standards.",
-  },
-  {
-    label: "Assignment",
-    description: "Who needs to collect the metric, for which entity, and by when.",
-  },
-  {
-    label: "Data point",
-    description: "The actual value entered for that assigned metric.",
-  },
-] as const;
+interface ReadinessItem {
+  label: string;
+  tone: ReadinessTone;
+}
 
 const STATUS_CONFIG: Record<
   DataPointStatus,
@@ -152,7 +174,7 @@ const STATUS_CONFIG: Record<
 > = {
   missing: { label: "Not started", variant: "destructive" },
   partial: { label: "In progress", variant: "warning" },
-  complete: { label: "Approved", variant: "success" },
+  complete: { label: "Complete", variant: "success" },
 };
 
 const BOUNDARY_CONFIG: Record<
@@ -164,6 +186,34 @@ const BOUNDARY_CONFIG: Record<
   partial: { label: "Partially included", variant: "warning" },
 };
 
+const FEED_SECTION_CONFIG: Record<
+  FeedSection,
+  { label: string; dotClassName: string; emptyState: string }
+> = {
+  action: {
+    label: "Needs action",
+    dotClassName: "bg-red-500",
+    emptyState: "No open collection tasks match the current filters.",
+  },
+  blocked: {
+    label: "Blocked",
+    dotClassName: "bg-amber-500",
+    emptyState: "No blocked contexts match the current filters.",
+  },
+  done: {
+    label: "Completed",
+    dotClassName: "bg-green-500",
+    emptyState: "No completed collection rows match the current filters.",
+  },
+  all: {
+    label: "All tasks",
+    dotClassName: "bg-slate-400",
+    emptyState: "No collection rows match the current filters.",
+  },
+};
+
+const FEED_SECTION_ORDER: FeedSection[] = ["action", "blocked", "done", "all"];
+
 function buildContextKey(
   sharedElementId?: number | null,
   entityId?: number | null,
@@ -172,35 +222,254 @@ function buildContextKey(
   return [sharedElementId ?? 0, entityId ?? 0, facilityId ?? 0].join(":");
 }
 
-/* ---------- Component ---------- */
+async function fetchAllProjectDataPoints(projectId: number): Promise<DataPointsResponse> {
+  const items: DataPoint[] = [];
+  let page = 1;
+  let total = 0;
+
+  while (true) {
+    const response = await api.get<DataPointsResponse>(
+      `/projects/${projectId}/data-points?page=${page}&page_size=${DATA_POINT_PAGE_SIZE}`
+    );
+    items.push(...response.items);
+    total = response.total;
+
+    if (response.items.length === 0 || items.length >= total) {
+      break;
+    }
+
+    page += 1;
+  }
+
+  return { items, total };
+}
+
+function buildRowKey(row: Pick<DataPoint, "shared_element_id" | "entity_id" | "facility_id">) {
+  return buildContextKey(row.shared_element_id ?? 0, row.entity_id ?? 0, row.facility_id ?? 0);
+}
+
+function formatMetricValue(value: number) {
+  return new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function getResolvedDataPointId(row: DataPoint) {
+  if (row.data_point_id != null) return row.data_point_id;
+  if (row.assignment_id == null && row.id > 0) return row.id;
+  return null;
+}
+
+function getValuePreview(row: DataPoint, detail?: DataPointDetail | null) {
+  if (detail?.element_type === "numeric") {
+    if (detail.numeric_value == null) return "No value yet";
+    return [formatMetricValue(detail.numeric_value), detail.unit_code].filter(Boolean).join(" ");
+  }
+
+  if (detail) {
+    const detailValue = detail.text_value?.trim();
+    return detailValue
+      ? [detailValue, detail.unit_code].filter(Boolean).join(" ")
+      : "No value yet";
+  }
+
+  if (row.numeric_value != null) {
+    return [formatMetricValue(row.numeric_value), row.unit_code].filter(Boolean).join(" ");
+  }
+
+  const textValue = row.text_value?.trim();
+  if (textValue) {
+    return [textValue, row.unit_code].filter(Boolean).join(" ");
+  }
+
+  return "No value yet";
+}
+
+function getDataPointScore(row: DataPoint) {
+  const statusScore =
+    row.status === "approved"
+      ? 50
+      : row.status === "in_review"
+        ? 40
+        : row.status === "submitted"
+          ? 35
+          : row.status === "needs_revision"
+            ? 25
+            : row.status === "rejected"
+              ? 20
+              : row.status === "draft"
+                ? 10
+                : 0;
+
+  let score = statusScore;
+  if (row.numeric_value != null || row.text_value?.trim()) score += 40;
+  if (row.unit_code) score += 5;
+  if (row.evidence_count && row.evidence_count > 0) score += 10;
+  if (row.methodology?.trim()) score += 5;
+  return score;
+}
+
+function choosePreferredDataPoint(points: DataPoint[]) {
+  return points.reduce((best, candidate) => {
+    if (!best) return candidate;
+
+    const candidateScore = getDataPointScore(candidate);
+    const bestScore = getDataPointScore(best);
+
+    if (candidateScore !== bestScore) {
+      return candidateScore > bestScore ? candidate : best;
+    }
+
+    return candidate.id > best.id ? candidate : best;
+  }, points[0]);
+}
 
 function isForbidden(error: Error | null) {
-  const code = (error as Error & { code?: string } | null)?.code;
+  const code = (error as (Error & { code?: string }) | null)?.code;
   return code === "FORBIDDEN" || /not allowed|access denied|forbidden/i.test(error?.message || "");
+}
+
+function getFeedSection(row: DataPoint): FeedSection {
+  if (row.boundary_status !== "included") return "blocked";
+  if (row.collection_status === "complete") return "done";
+  return "action";
+}
+
+function getRoleLabel(roles: string[]) {
+  if (roles.includes("collector")) return "Collector";
+  if (roles.includes("esg_manager")) return "ESG Manager";
+  if (roles.includes("admin")) return "Admin";
+  if (roles.includes("platform_admin")) return "Platform Admin";
+  return "Workspace";
+}
+
+function hasCreatedEntry(row: DataPoint) {
+  return Boolean(getResolvedDataPointId(row));
+}
+
+function hasValue(detail: DataPointDetail | null | undefined, row: DataPoint) {
+  if (detail) {
+    if (detail.element_type === "numeric") return detail.numeric_value != null;
+    return Boolean(detail.text_value?.trim());
+  }
+  if (row.numeric_value != null) return true;
+  return Boolean(row.text_value?.trim());
+}
+
+function methodologySelectionRequired(
+  detail: DataPointDetail | null | undefined,
+  hasMethodologyCatalog = true
+) {
+  if (detail) {
+    return (detail.methodology_options?.length ?? 0) > 0;
+  }
+  return hasMethodologyCatalog;
+}
+
+function hasMethodology(
+  detail: DataPointDetail | null | undefined,
+  row: DataPoint,
+  hasMethodologyCatalog = true
+) {
+  if (detail) {
+    return (
+      !methodologySelectionRequired(detail, hasMethodologyCatalog) ||
+      Boolean(detail.methodology?.trim())
+    );
+  }
+  return !hasMethodologyCatalog || row.collection_status === "complete";
+}
+
+function hasEvidence(detail: DataPointDetail | null | undefined, row: DataPoint) {
+  if (detail) return !detail.evidence_required || detail.evidence_count > 0;
+  return !row.evidence_required || (row.evidence_count ?? 0) > 0;
+}
+
+function getNeedsText(
+  row: DataPoint,
+  detail?: DataPointDetail | null,
+  hasMethodologyCatalog = true
+) {
+  if (row.boundary_status === "excluded") {
+    return "Excluded from reporting boundary";
+  }
+  if (row.boundary_status === "partial") {
+    return "Boundary review recommended";
+  }
+
+  const missing: string[] = [];
+  if (!hasCreatedEntry(row)) missing.push("Draft");
+  if (!hasValue(detail, row)) missing.push("Value");
+  if (detail && !hasMethodology(detail, row, hasMethodologyCatalog)) {
+    missing.push("Methodology");
+  }
+  if (!hasEvidence(detail, row)) missing.push("Evidence");
+  if (missing.length > 0) return missing.join(", ");
+  if (!detail && row.collection_status !== "complete") return "Continue entry";
+  return "All required inputs look complete";
+}
+
+function getProgressCount(row: DataPoint, detail?: DataPointDetail | null) {
+  let count = 0;
+  if (hasCreatedEntry(row)) count += 1;
+  if (row.boundary_status === "included") count += 1;
+  if (hasValue(detail, row)) count += 1;
+  if (hasEvidence(detail, row)) count += 1;
+  return count;
+}
+
+function formatContext(row: Pick<DataPoint, "entity_name" | "facility_name">) {
+  return row.facility_name ? `${row.entity_name} / ${row.facility_name}` : row.entity_name;
+}
+
+function ReadinessIcon({ tone }: { tone: ReadinessTone }) {
+  if (tone === "done") {
+    return (
+      <span className="flex h-5 w-5 items-center justify-center rounded-md bg-green-500 text-white">
+        <CheckCircle2 className="h-3.5 w-3.5" />
+      </span>
+    );
+  }
+
+  if (tone === "warning") {
+    return (
+      <span className="flex h-5 w-5 items-center justify-center rounded-md border border-amber-300 bg-amber-50 text-amber-700">
+        <TriangleAlert className="h-3.5 w-3.5" />
+      </span>
+    );
+  }
+
+  return (
+    <span className="flex h-5 w-5 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-400">
+      <Circle className="h-3.5 w-3.5" />
+    </span>
+  );
 }
 
 export default function CollectionPage() {
   const queryClient = useQueryClient();
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const projectId = useMemo(() => {
-    const raw = searchParams.get("projectId");
-    const parsed = Number(raw ?? "1");
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
-  }, [searchParams]);
+  const {
+    activeProject,
+    projectId,
+    isLoading: projectsLoading,
+    error: projectsError,
+  } = useActiveProject("collection");
+
   const [openingRowId, setOpeningRowId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [guidedField, setGuidedField] = useState<FormConfigField | null>(null);
   const [guidedRowKey, setGuidedRowKey] = useState<string | null>(null);
   const [resolvedDataPointIds, setResolvedDataPointIds] = useState<Record<string, number>>({});
   const [configActionMessage, setConfigActionMessage] = useState<string | null>(null);
-  const [configActionError, setConfigActionError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("feed");
+  const [feedSection, setFeedSection] = useState<FeedSection>("action");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
 
-  /* Filters */
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | DataPointStatus>(
-    "all"
-  );
+  const [statusFilter, setStatusFilter] = useState<"all" | DataPointStatus>("all");
+  const [boundaryFilter, setBoundaryFilter] = useState<"all" | BoundaryStatus>("all");
   const [entityFilter, setEntityFilter] = useState("");
   const [standardFilter, setStandardFilter] = useState("");
   const [sortField, setSortField] = useState<
@@ -211,15 +480,12 @@ export default function CollectionPage() {
   const { data: me, isLoading: meLoading } = useApiQuery<{
     roles: Array<{ role: string }>;
   }>(["auth-me"], "/auth/me");
+
   const roles = me?.roles?.map((binding) => binding.role) ?? [];
   const canAccess = roles.some((role) =>
     ["collector", "esg_manager", "admin", "platform_admin"].includes(role)
   );
-  const canResyncConfig = roles.some((role) =>
-    ["esg_manager", "admin", "platform_admin"].includes(role)
-  );
 
-  /* Data */
   const {
     data: assignmentsData,
     isLoading: assignmentsLoading,
@@ -227,14 +493,24 @@ export default function CollectionPage() {
   } = useApiQuery<AssignmentMatrixResponse>(
     ["collection-assignments", projectId],
     `/projects/${projectId}/assignments`,
-    { enabled: canAccess }
+    { enabled: canAccess && projectId !== null }
   );
 
-  const { data, isLoading, error } = useApiQuery<DataPointsResponse>(
-    ["data-points", projectId],
-    `/projects/${projectId}/data-points`,
-    { enabled: canAccess }
-  );
+  const {
+    data,
+    isLoading,
+    error,
+  } = useQuery<DataPointsResponse, AppApiError>({
+    queryKey: ["data-points", projectId, "all"],
+    queryFn: () => {
+      if (projectId == null) {
+        throw new Error("Project context is not ready yet.");
+      }
+      return fetchAllProjectDataPoints(projectId);
+    },
+    enabled: canAccess && projectId !== null,
+  });
+
   const {
     data: activeFormConfig,
     isLoading: configLoading,
@@ -242,46 +518,43 @@ export default function CollectionPage() {
   } = useApiQuery<ActiveFormConfig | null>(
     ["active-form-config", projectId],
     `/form-configs/projects/${projectId}/active`,
+    { enabled: canAccess && projectId !== null }
+  );
+
+  const { data: methodologies } = useApiQuery<MethodologyReference[]>(
+    ["reference-methodologies"],
+    "/references/methodologies",
     { enabled: canAccess }
   );
-  const resyncConfigMutation = useApiMutation<ActiveFormConfig, undefined>(
-    `/form-configs/projects/${projectId}/resync`,
-    "POST",
-    {
-      onSuccess: async () => {
-        setConfigActionError(null);
-        setConfigActionMessage("Guided collection config re-synced from live project assignments.");
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ["active-form-config", projectId] }),
-          queryClient.invalidateQueries({ queryKey: ["form-configs"] }),
-          queryClient.invalidateQueries({ queryKey: ["collection-assignments", projectId] }),
-        ]);
-      },
-      onError: (error) => {
-        setConfigActionMessage(null);
-        setConfigActionError(error.message);
-      },
-    }
-  );
+
+  const hasMethodologyCatalog = (methodologies?.length ?? 0) > 0;
 
   const items = useMemo(() => {
     const points = data?.items ?? [];
     const assignments = assignmentsData?.assignments ?? [];
 
-    const pointsByKey = new Map<string, DataPoint>();
+    const pointGroups = new Map<string, DataPoint[]>();
     for (const point of points) {
       const key = buildContextKey(
         point.shared_element_id ?? 0,
         point.entity_id ?? 0,
         point.facility_id ?? 0
       );
-      if (!pointsByKey.has(key)) {
-        pointsByKey.set(key, point);
-      }
+      const existing = pointGroups.get(key) ?? [];
+      existing.push(point);
+      pointGroups.set(key, existing);
+    }
+
+    const pointsByKey = new Map<string, DataPoint>();
+    for (const [key, groupedPoints] of pointGroups.entries()) {
+      pointsByKey.set(key, choosePreferredDataPoint(groupedPoints));
     }
 
     if (assignments.length === 0) {
-      return [];
+      return Array.from(pointsByKey.values()).map((point) => ({
+        ...point,
+        data_point_id: point.id,
+      }));
     }
 
     return assignments.map((assignment) => {
@@ -293,11 +566,9 @@ export default function CollectionPage() {
       const point = pointsByKey.get(key);
       const resolvedDataPointId = point?.id ?? resolvedDataPointIds[key] ?? null;
       const collectionStatus =
-        point?.collection_status
-        ?? (resolvedDataPointId
-          ? "partial"
-          : undefined)
-        ?? (assignment.status === "completed"
+        point?.collection_status ??
+        (resolvedDataPointId ? "partial" : undefined) ??
+        (assignment.status === "completed"
           ? "complete"
           : assignment.status === "in_progress"
             ? "partial"
@@ -316,25 +587,29 @@ export default function CollectionPage() {
         entity_name: point?.entity_name ?? assignment.entity_name ?? "Organization",
         facility_name: point?.facility_name ?? assignment.facility_name ?? null,
         boundary_status:
-          point?.boundary_status
-          ?? (assignment.boundary_included ? "included" : "excluded"),
+          point?.boundary_status ??
+          (assignment.boundary_included ? "included" : "excluded"),
         consolidation_method:
           point?.consolidation_method ?? assignment.consolidation_method ?? "full",
         reused_across_standards: point?.reused_across_standards ?? false,
         standards: point?.standards ?? [],
+        status: point?.status ?? null,
+        numeric_value: point?.numeric_value ?? null,
+        text_value: point?.text_value ?? null,
+        unit_code: point?.unit_code ?? null,
+        methodology: point?.methodology ?? null,
+        evidence_required: point?.evidence_required ?? false,
+        evidence_count: point?.evidence_count ?? 0,
+        element_type: point?.element_type ?? null,
       } satisfies DataPoint;
     });
   }, [assignmentsData?.assignments, data?.items, resolvedDataPointIds]);
 
-  const assignmentCount = assignmentsData?.assignments?.length ?? 0;
-  const hasLiveAssignments = assignmentCount > 0;
-  const hasGuidedSteps = (activeFormConfig?.config?.steps?.length ?? 0) > 0;
-  const guidedConfig = hasGuidedSteps ? activeFormConfig : null;
-
   const accessDenied =
-    (Boolean(me) && !canAccess)
-    || (!!assignmentsError && isForbidden(assignmentsError))
-    || (!!error && isForbidden(error));
+    (Boolean(me) && !canAccess) ||
+    (!!projectsError && isForbidden(projectsError)) ||
+    (!!assignmentsError && isForbidden(assignmentsError)) ||
+    (!!error && isForbidden(error));
 
   const rowsByElement = useMemo(() => {
     const map = new Map<number, DataPoint[]>();
@@ -372,134 +647,271 @@ export default function CollectionPage() {
     return map;
   }, [items]);
 
-  const elementNamesById = useMemo(() => {
-    const entries = items
-      .filter((item) => item.shared_element_id)
-      .map((item) => [item.shared_element_id as number, item.element_name] as const);
-    return Object.fromEntries(entries);
-  }, [items]);
-
-  const resolveFieldMatches = (field: FormConfigField) => {
-    if (field.assignment_id) {
-      const match = rowsByAssignment.get(field.assignment_id);
-      return match ? [match] : [];
-    }
-    if (field.entity_id != null || field.facility_id != null) {
-      return (
-        rowsByContext.get(
-          buildContextKey(
-            field.shared_element_id,
-            field.entity_id ?? 0,
-            field.facility_id ?? 0
-          )
-        ) ?? []
-      );
-    }
-    return rowsByElement.get(field.shared_element_id) ?? [];
-  };
-
-  const guidedSummary = useMemo(() => {
-    const steps = activeFormConfig?.config?.steps ?? [];
-    if (steps.length === 0) return null;
-
-    let total = 0;
-    let complete = 0;
-    let missing = 0;
-    let ambiguous = 0;
-
-    for (const step of steps) {
-      for (const field of step.fields.filter((entry) => entry.visible)) {
-        total += 1;
-        const matches = resolveFieldMatches(field);
-        if (matches.length === 0) {
-          missing += 1;
-          continue;
-        }
-        if (matches.length > 1) {
-          ambiguous += 1;
-          continue;
-        }
-        if (matches[0].collection_status === "complete") {
-          complete += 1;
-        }
+  const resolveFieldMatches = useCallback(
+    (field: FormConfigField) => {
+      if (field.assignment_id) {
+        const match = rowsByAssignment.get(field.assignment_id);
+        return match ? [match] : [];
       }
-    }
+      if (field.entity_id != null || field.facility_id != null) {
+        return (
+          rowsByContext.get(
+            buildContextKey(
+              field.shared_element_id,
+              field.entity_id ?? 0,
+              field.facility_id ?? 0
+            )
+          ) ?? []
+        );
+      }
+      return rowsByElement.get(field.shared_element_id) ?? [];
+    },
+    [rowsByAssignment, rowsByContext, rowsByElement]
+  );
 
-    return { total, complete, missing, ambiguous };
-  }, [activeFormConfig, rowsByAssignment, rowsByContext, rowsByElement]);
-
-  const guidedRow = useMemo(() => {
-    if (!guidedField) return null;
-    const matches = resolveFieldMatches(guidedField);
-    return matches.length === 1 ? matches[0] : null;
-  }, [guidedField, rowsByAssignment, rowsByContext, rowsByElement]);
-
-  /* Derived entity / standard lists for filter dropdowns */
   const entities = useMemo(
-    () => Array.from(new Set(items.map((d) => d.entity_name))).sort(),
+    () => Array.from(new Set(items.map((item) => item.entity_name))).sort(),
     [items]
   );
   const standards = useMemo(
-    () =>
-      Array.from(new Set(items.flatMap((d) => d.standards ?? []))).sort(),
+    () => Array.from(new Set(items.flatMap((item) => item.standards ?? []))).sort(),
     [items]
   );
 
-  /* Filtered + sorted */
   const filtered = useMemo(() => {
     let result = items;
 
     if (statusFilter !== "all") {
-      result = result.filter((d) => d.collection_status === statusFilter);
+      result = result.filter((item) => item.collection_status === statusFilter);
+    }
+    if (boundaryFilter !== "all") {
+      result = result.filter((item) => item.boundary_status === boundaryFilter);
     }
     if (entityFilter) {
-      result = result.filter((d) => d.entity_name === entityFilter);
+      result = result.filter((item) => item.entity_name === entityFilter);
     }
     if (standardFilter) {
-      result = result.filter((d) => d.standards?.includes(standardFilter));
+      result = result.filter((item) => item.standards.includes(standardFilter));
     }
-    if (search) {
-      const q = search.toLowerCase();
-      result = result.filter(
-        (d) =>
-          d.element_code.toLowerCase().includes(q) ||
-          d.element_name.toLowerCase().includes(q)
+    if (search.trim()) {
+      const query = search.trim().toLowerCase();
+      result = result.filter((item) =>
+        [item.element_code, item.element_name, item.entity_name, item.facility_name ?? ""]
+          .join(" ")
+          .toLowerCase()
+          .includes(query)
       );
     }
 
-    result = [...result].sort((a, b) => {
-      const aVal = a[sortField];
-      const bVal = b[sortField];
-      const cmp = String(aVal).localeCompare(String(bVal));
-      return sortDir === "asc" ? cmp : -cmp;
+    return [...result].sort((left, right) => {
+      const leftValue = String(left[sortField] ?? "");
+      const rightValue = String(right[sortField] ?? "");
+      const comparison = leftValue.localeCompare(rightValue);
+      return sortDir === "asc" ? comparison : -comparison;
     });
+  }, [
+    items,
+    statusFilter,
+    boundaryFilter,
+    entityFilter,
+    standardFilter,
+    search,
+    sortField,
+    sortDir,
+  ]);
 
-    return result;
-  }, [items, statusFilter, entityFilter, standardFilter, search, sortField, sortDir]);
+  const orderedFeedItems = useMemo(() => {
+    const priority: Record<FeedSection, number> = {
+      action: 0,
+      blocked: 1,
+      done: 2,
+      all: 3,
+    };
+
+    return [...filtered].sort((left, right) => {
+      const sectionCompare = priority[getFeedSection(left)] - priority[getFeedSection(right)];
+      if (sectionCompare !== 0) return sectionCompare;
+
+      const leftValue = String(left[sortField] ?? "");
+      const rightValue = String(right[sortField] ?? "");
+      const comparison = leftValue.localeCompare(rightValue);
+      return sortDir === "asc" ? comparison : -comparison;
+    });
+  }, [filtered, sortField, sortDir]);
+
+  const feedCounts = useMemo(() => {
+    return orderedFeedItems.reduce(
+      (current, item) => {
+        current[getFeedSection(item)] += 1;
+        current.all += 1;
+        return current;
+      },
+      { action: 0, blocked: 0, done: 0, all: 0 } satisfies Record<FeedSection, number>
+    );
+  }, [orderedFeedItems]);
+
+  useEffect(() => {
+    if (feedCounts[feedSection] > 0 || feedCounts.all === 0) return;
+    const next = FEED_SECTION_ORDER.find((section) => feedCounts[section] > 0) ?? "all";
+    setFeedSection(next);
+  }, [feedCounts, feedSection]);
+
+  const visibleFeedItems = useMemo(() => {
+    if (feedSection === "all") return orderedFeedItems;
+    return orderedFeedItems.filter((item) => getFeedSection(item) === feedSection);
+  }, [feedSection, orderedFeedItems]);
+
+  const visibleFeedRowKeys = useMemo(
+    () => new Set(visibleFeedItems.map((item) => buildRowKey(item))),
+    [visibleFeedItems]
+  );
+
+  const rowsByKey = useMemo(() => {
+    const map = new Map<string, DataPoint>();
+    for (const item of items) {
+      map.set(buildRowKey(item), item);
+    }
+    return map;
+  }, [items]);
+
+  const filteredRowKeys = useMemo(() => new Set(filtered.map((item) => buildRowKey(item))), [filtered]);
+
+  useEffect(() => {
+    if (!selectedRowKey) return;
+    if (!filteredRowKeys.has(selectedRowKey)) {
+      setSelectedRowKey(null);
+    }
+  }, [filteredRowKeys, selectedRowKey]);
+
+  useEffect(() => {
+    if (viewMode !== "feed" || !selectedRowKey) return;
+    if (!visibleFeedRowKeys.has(selectedRowKey)) {
+      setSelectedRowKey(null);
+    }
+  }, [selectedRowKey, viewMode, visibleFeedRowKeys]);
+
+  const selectedRow = selectedRowKey ? rowsByKey.get(selectedRowKey) ?? null : null;
+  const selectedDataPointId = selectedRow ? getResolvedDataPointId(selectedRow) : null;
+
+  const {
+    data: selectedDetail,
+    isLoading: selectedDetailLoading,
+    error: selectedDetailError,
+  } = useApiQuery<DataPointDetail>(
+    ["collection-selected-detail", selectedDataPointId],
+    `/data-points/${selectedDataPointId}`,
+    { enabled: canAccess && Boolean(selectedDataPointId) }
+  );
+
+  const readinessItems = useMemo<ReadinessItem[]>(() => {
+    if (!selectedRow) return [];
+
+    const contextTone: ReadinessTone =
+      selectedRow.boundary_status === "included"
+        ? "done"
+        : selectedRow.boundary_status === "partial"
+          ? "warning"
+          : "warning";
+
+    return [
+      { label: "Draft created", tone: hasCreatedEntry(selectedRow) ? "done" : "pending" },
+      { label: "Value entered", tone: hasValue(selectedDetail, selectedRow) ? "done" : "pending" },
+      {
+        label: "Methodology selected",
+        tone: hasMethodology(selectedDetail, selectedRow, hasMethodologyCatalog)
+          ? "done"
+          : "pending",
+      },
+      {
+        label: "Evidence attached",
+        tone: hasEvidence(selectedDetail, selectedRow) ? "done" : "pending",
+      },
+      {
+        label:
+          selectedRow.boundary_status === "included"
+            ? "Context in boundary"
+            : selectedRow.boundary_status === "partial"
+              ? "Boundary needs review"
+              : "Outside reporting boundary",
+        tone: contextTone,
+      },
+    ];
+  }, [hasMethodologyCatalog, selectedDetail, selectedRow]);
+
+  const missingReadinessCount = readinessItems.filter((item) => item.tone !== "done").length;
+  const hasActiveFilters =
+    Boolean(search.trim()) ||
+    statusFilter !== "all" ||
+    boundaryFilter !== "all" ||
+    Boolean(entityFilter) ||
+    Boolean(standardFilter);
+  const roleLabel = getRoleLabel(roles);
 
   const toggleSort = (field: typeof sortField) => {
     if (sortField === field) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortField(field);
-      setSortDir("asc");
+      setSortDir((current) => (current === "asc" ? "desc" : "asc"));
+      return;
     }
+    setSortField(field);
+    setSortDir("asc");
   };
 
-  const emptyTableMessage = useMemo(() => {
-    if (!hasLiveAssignments) {
-      return "No launched indicators yet. Launch indicators or assign metrics to start data collection.";
+  const scrollToTable = useCallback(() => {
+    if (typeof window === "undefined") return;
+    window.setTimeout(() => {
+      document.getElementById("collection-table")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 50);
+  }, []);
+
+  const showFieldInTable = useCallback(
+    (sharedElementId?: number) => {
+      const firstMatch = sharedElementId ? rowsByElement.get(sharedElementId)?.[0] : undefined;
+      if (firstMatch) {
+        setSearch(firstMatch.element_code || firstMatch.element_name);
+        setSelectedRowKey(buildRowKey(firstMatch));
+      }
+      setViewMode("table");
+      scrollToTable();
+    },
+    [rowsByElement, scrollToTable]
+  );
+
+  const openQuickEntry = useCallback((row: DataPoint, helpText?: string | null) => {
+    if (!row.shared_element_id) {
+      setActionError("This assignment is missing its shared element binding and cannot be opened.");
+      return;
     }
-    if (search || statusFilter !== "all" || entityFilter || standardFilter) {
-      return "No assigned metrics match the current filters.";
-    }
-    return "No assigned metrics found for this project.";
-  }, [entityFilter, hasLiveAssignments, search, standardFilter, statusFilter]);
+
+    setActionError(null);
+    setGuidedField({
+      shared_element_id: row.shared_element_id,
+      assignment_id: row.assignment_id ?? undefined,
+      entity_id: row.entity_id ?? undefined,
+      facility_id: row.facility_id ?? undefined,
+      visible: true,
+      required: row.collection_status !== "complete",
+      help_text: helpText ?? null,
+      order: 0,
+    });
+    const rowKey = buildRowKey(row);
+    setGuidedRowKey(rowKey);
+    setSelectedRowKey(rowKey);
+  }, []);
 
   const openDataEntry = async (row: DataPoint) => {
     setActionError(null);
+
     if (row.data_point_id) {
       router.push(`/collection/${row.data_point_id}?projectId=${projectId}`);
+      return;
+    }
+
+    const resolvedDataPointId = getResolvedDataPointId(row);
+    if (resolvedDataPointId) {
+      router.push(`/collection/${resolvedDataPointId}?projectId=${projectId}`);
       return;
     }
     if (!row.shared_element_id) {
@@ -515,10 +927,10 @@ export default function CollectionPage() {
         facility_id: row.facility_id ?? undefined,
       });
       router.push(`/collection/${created.id}?projectId=${projectId}`);
-    } catch (error) {
+    } catch (openError) {
       setActionError(
-        error instanceof Error
-          ? error.message
+        openError instanceof Error
+          ? openError.message
           : "Unable to open data entry for this row. Please try again."
       );
     } finally {
@@ -526,84 +938,118 @@ export default function CollectionPage() {
     }
   };
 
-  const scrollToTable = () => {
-    if (typeof window !== "undefined") {
-      window.requestAnimationFrame(() => {
-        document.getElementById("collection-table")?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
-      });
+  const resumeGuidedSession = useCallback(() => {
+    const steps = activeFormConfig?.config?.steps ?? [];
+    if (steps.length === 0) return;
+
+    setConfigActionMessage(null);
+
+    for (const step of steps) {
+      for (const field of step.fields.filter((entry) => entry.visible)) {
+        const matches = resolveFieldMatches(field);
+        if (matches.length === 1 && matches[0].collection_status !== "complete") {
+          openQuickEntry(matches[0], field.help_text);
+          return;
+        }
+        if (matches.length > 1) {
+          showFieldInTable(field.shared_element_id);
+          setConfigActionMessage(
+            "This guided field maps to multiple contexts, so the table view was opened for a precise selection."
+          );
+          return;
+        }
+      }
     }
+
+    setConfigActionMessage("All guided collection fields currently look complete.");
+  }, [activeFormConfig, openQuickEntry, resolveFieldMatches, showFieldInTable]);
+
+  const resetFilters = () => {
+    setSearch("");
+    setStatusFilter("all");
+    setBoundaryFilter("all");
+    setEntityFilter("");
+    setStandardFilter("");
+    setSortField("element_code");
+    setSortDir("asc");
   };
 
-  const showFieldInTable = (sharedElementId?: number) => {
-    const firstMatch = sharedElementId
-      ? rowsByElement.get(sharedElementId)?.[0]
-      : undefined;
-    if (firstMatch) {
-      setSearch(firstMatch.element_code || firstMatch.element_name);
-    }
-    scrollToTable();
-  };
+  const emptyTableMessage = hasActiveFilters
+    ? "No data points match the current filters."
+    : "No data points found.";
 
-  /* ---------- Render ---------- */
+  if (projectsLoading || projectId === null) {
+    return (
+      <div className="flex min-h-[400px] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Data Collection</h2>
-        <p className="mt-1 text-sm text-gray-500">
-          Track assigned metrics, open data entry, and submit values for the current reporting period.
-        </p>
-      </div>
+      <GuidedEntryDialog
+        open={Boolean(guidedField && guidedRowKey)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setGuidedField(null);
+            setGuidedRowKey(null);
+            if (selectedDataPointId) {
+              void queryClient.invalidateQueries({
+                queryKey: ["collection-selected-detail", selectedDataPointId],
+              });
+            }
+          }
+        }}
+        projectId={projectId}
+        row={guidedRowKey ? rowsByKey.get(guidedRowKey) ?? null : null}
+        field={guidedField}
+        rowKey={guidedRowKey}
+        onDataPointResolved={(rowKey, dataPointId) => {
+          setResolvedDataPointIds((current) =>
+            current[rowKey] === dataPointId ? current : { ...current, [rowKey]: dataPointId }
+          );
+        }}
+      />
 
-      <Card className="border-slate-200 bg-slate-50/80 p-4">
-        <div className="space-y-4">
-          <div className="space-y-1">
-            <h3 className="text-sm font-semibold text-slate-900">How this screen works</h3>
-            <p className="text-sm text-slate-600">
-              This is not a Jira-style task board. Each row is one assigned metric for one
-              reporting entity or facility in the current reporting period.
-            </p>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-5">
-            {COLLECTION_FLOW.map((step, index) => (
-              <div
-                key={step.label}
-                className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
-                    {index + 1}
-                  </span>
-                  <p className="text-sm font-semibold text-slate-900">{step.label}</p>
-                </div>
-                <p className="mt-2 text-xs leading-5 text-slate-600">{step.description}</p>
-              </div>
-            ))}
-          </div>
-
-          <p className="text-xs text-slate-500">
-            Metric code is the system identifier. Metric is the readable name. Assignment is the
-            work to collect it. Data point is the actual reported value.
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Data Collection</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            {activeProject?.name ?? `Project #${projectId}`} · {roleLabel}
           </p>
         </div>
-      </Card>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {!configLoading && !configError && activeFormConfig?.config?.steps?.length ? (
+            <Button size="sm" variant="outline" onClick={() => resumeGuidedSession()}>
+              <Sparkles className="h-4 w-4" />
+              Guided mode
+            </Button>
+          ) : null}
+          <Button
+            size="sm"
+            variant={viewMode === "feed" ? "secondary" : "outline"}
+            onClick={() => setViewMode("feed")}
+          >
+            <Rows3 className="h-4 w-4" />
+            Task feed
+          </Button>
+          <Button
+            size="sm"
+            variant={viewMode === "table" ? "secondary" : "outline"}
+            onClick={() => setViewMode("table")}
+          >
+            <Table2 className="h-4 w-4" />
+            Table view
+          </Button>
+        </div>
+      </div>
 
       {actionError && (
         <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           {actionError}
-        </div>
-      )}
-
-      {configActionError && (
-        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          {configActionError}
         </div>
       )}
 
@@ -613,215 +1059,257 @@ export default function CollectionPage() {
         </div>
       )}
 
-      <GuidedEntryDialog
-        open={Boolean(guidedField && guidedRow && guidedRowKey)}
-        onOpenChange={(open) => {
-          if (!open) {
-            setGuidedField(null);
-            setGuidedRowKey(null);
-          }
-        }}
-        projectId={projectId}
-        row={guidedRow}
-        field={guidedField}
-        rowKey={guidedRowKey}
-        onDataPointResolved={(rowKey, dataPointId) => {
-          setResolvedDataPointIds((current) =>
-            current[rowKey] === dataPointId
-              ? current
-              : { ...current, [rowKey]: dataPointId }
-          );
-        }}
-      />
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div className="relative max-w-xl flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search metrics, codes, entities, or facilities..."
+            className="pl-9"
+          />
+        </div>
 
-      {!accessDenied && !assignmentsLoading && !isLoading && configLoading && !meLoading && (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600">
+            {roles.includes("collector") ? "Your assigned work" : "Project-wide collection"}
+          </div>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setFiltersOpen((current) => !current)}
+            aria-label="Toggle advanced filters"
+          >
+            <Filter className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      {(filtersOpen || hasActiveFilters) && (
         <Card className="border-slate-200 p-4">
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Loading guided collection configuration...
-          </div>
-        </Card>
-      )}
+          <div className="grid gap-4 xl:grid-cols-6">
+            <div className="grid gap-1.5">
+              <label className="text-sm font-medium text-slate-700">Status</label>
+              <select
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
+                className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-950"
+              >
+                <option value="all">All statuses</option>
+                <option value="missing">Not started</option>
+                <option value="partial">In progress</option>
+                <option value="complete">Complete</option>
+              </select>
+            </div>
 
-      {!accessDenied && !assignmentsLoading && !isLoading && !configLoading && configError && (
-        <Card className="border-red-200 bg-red-50 p-4">
-          <div className="flex items-start gap-2 text-sm text-red-700">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <div>
-              <p className="font-medium">Guided collection is unavailable.</p>
-              <p className="mt-1">{configError.message}</p>
+            <div className="grid gap-1.5">
+              <label className="text-sm font-medium text-slate-700">Boundary</label>
+              <select
+                value={boundaryFilter}
+                onChange={(event) => setBoundaryFilter(event.target.value as typeof boundaryFilter)}
+                className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-950"
+              >
+                <option value="all">All contexts</option>
+                <option value="included">Included</option>
+                <option value="partial">Partial</option>
+                <option value="excluded">Excluded</option>
+              </select>
+            </div>
+
+            <div className="grid gap-1.5">
+              <label className="text-sm font-medium text-slate-700">Entity</label>
+              <select
+                value={entityFilter}
+                onChange={(event) => setEntityFilter(event.target.value)}
+                className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-950"
+              >
+                <option value="">All entities</option>
+                {entities.map((entity) => (
+                  <option key={entity} value={entity}>
+                    {entity}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid gap-1.5">
+              <label className="text-sm font-medium text-slate-700">Standard</label>
+              <select
+                value={standardFilter}
+                onChange={(event) => setStandardFilter(event.target.value)}
+                className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-950"
+              >
+                <option value="">All standards</option>
+                {standards.map((standard) => (
+                  <option key={standard} value={standard}>
+                    {standard}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid gap-1.5">
+              <label className="text-sm font-medium text-slate-700">Sort by</label>
+              <select
+                value={sortField}
+                onChange={(event) => setSortField(event.target.value as typeof sortField)}
+                className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-950"
+              >
+                <option value="element_code">Metric code</option>
+                <option value="element_name">Metric name</option>
+                <option value="collection_status">Progress</option>
+              </select>
+            </div>
+
+            <div className="grid gap-1.5">
+              <label className="text-sm font-medium text-slate-700">Order</label>
+              <div className="flex items-center gap-2">
+                <select
+                  value={sortDir}
+                  onChange={(event) => setSortDir(event.target.value as typeof sortDir)}
+                  className="h-9 flex-1 rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-950"
+                >
+                  <option value="asc">Ascending</option>
+                  <option value="desc">Descending</option>
+                </select>
+                <Button variant="ghost" size="sm" onClick={resetFilters}>
+                  Reset
+                </Button>
+              </div>
             </div>
           </div>
         </Card>
       )}
 
-      {!accessDenied && !assignmentsLoading && !isLoading && !configLoading && !configError && !hasLiveAssignments && (
-        <Card className="border-slate-200 bg-slate-50 p-5">
-          <div className="space-y-2">
-            <h3 className="text-base font-semibold text-slate-900">No launched indicators yet</h3>
-            <p className="max-w-3xl text-sm text-slate-600">
-              Data Collection only shows metrics that have been launched and assigned to an
-              entity or facility. Attach the standards you need, launch indicators, and then come
-              back here to collect values.
-            </p>
-          </div>
+      {meLoading || assignmentsLoading || isLoading ? (
+        <Card className="flex min-h-[320px] items-center justify-center border-slate-200 p-12 text-slate-500">
+          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+          Loading collection data...
         </Card>
-      )}
-
-      {!accessDenied && !assignmentsLoading && !isLoading && !configLoading && guidedConfig ? (
-        <Card className="border-cyan-200 bg-gradient-to-br from-white via-cyan-50 to-slate-50 p-4">
+      ) : accessDenied ? (
+        <Card className="flex min-h-[320px] flex-col items-center justify-center p-12">
+          <ShieldAlert className="mb-3 h-10 w-10 text-red-500" />
+          <p className="text-sm font-medium text-slate-900">Access denied</p>
+          <p className="mt-1 text-sm text-slate-500">
+            Only collectors and ESG managers can access data collection.
+          </p>
+        </Card>
+      ) : error || assignmentsError ? (
+        <Card className="flex min-h-[320px] flex-col items-center justify-center p-12">
+          <AlertTriangle className="mb-3 h-10 w-10 text-amber-500" />
+          <p className="text-sm text-slate-500">
+            Failed to load collection data. Please try again.
+          </p>
+        </Card>
+      ) : viewMode === "feed" ? (
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
           <div className="space-y-4">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <h3 className="text-lg font-semibold text-slate-900">Guided Collection</h3>
-                <p className="mt-1 text-sm text-slate-600">
-                  {guidedConfig.name}
-                  {guidedConfig.project_id === null ? " (organization default)" : ""}
-                </p>
-                {guidedConfig.description && (
-                  <p className="mt-2 max-w-3xl text-sm text-slate-500">
-                    {guidedConfig.description}
-                  </p>
-                )}
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  {guidedConfig.resolution_scope === "organization_default" && (
-                    <Badge variant="outline">Organization default</Badge>
-                  )}
-                  {guidedConfig.health?.status === "healthy" && (
-                    <Badge variant="success">Healthy</Badge>
-                  )}
-                  {guidedConfig.health?.is_stale && (
-                    <Badge variant="warning">Stale config</Badge>
-                  )}
-                  {guidedConfig.updated_at && (
-                    <span className="text-xs text-slate-500">
-                      Last updated{" "}
-                      {new Intl.DateTimeFormat(undefined, {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                      }).format(new Date(guidedConfig.updated_at))}
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <div className="grid grid-cols-2 sm:grid-cols-4">
+                {FEED_SECTION_ORDER.map((section) => (
+                  <button
+                    key={section}
+                    type="button"
+                    className={cn(
+                      "flex items-center justify-center gap-2 border-r border-slate-200 px-4 py-3 text-sm font-medium text-slate-500 transition-colors last:border-r-0 hover:bg-slate-50",
+                      feedSection === section && "bg-slate-900 text-white hover:bg-slate-900"
+                    )}
+                    onClick={() => setFeedSection(section)}
+                  >
+                    <span
+                      className={cn(
+                        "h-2.5 w-2.5 rounded-full",
+                        FEED_SECTION_CONFIG[section].dotClassName,
+                        feedSection === section && "opacity-80"
+                      )}
+                    />
+                    <span>{FEED_SECTION_CONFIG[section].label}</span>
+                    <span
+                      className={cn(
+                        "rounded-full px-2 py-0.5 text-xs font-semibold",
+                        feedSection === section ? "bg-white/15 text-white" : "bg-slate-100 text-slate-700"
+                      )}
+                    >
+                      {feedCounts[section]}
                     </span>
-                  )}
-                </div>
+                  </button>
+                ))}
               </div>
-              {guidedSummary && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="outline">
-                    {guidedSummary.complete}/{guidedSummary.total} complete
-                  </Badge>
-                  {guidedSummary.missing > 0 && (
-                    <Badge variant="secondary">{guidedSummary.missing} not assigned</Badge>
-                  )}
-                  {guidedSummary.ambiguous > 0 && (
-                    <Badge variant="warning">{guidedSummary.ambiguous} multi-context</Badge>
-                  )}
-                </div>
-              )}
             </div>
 
-            {guidedConfig.health?.is_stale && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="space-y-2">
-                    <p className="font-medium">
-                      This guided config is out of sync with the current assignments or boundary.
-                    </p>
-                    <div className="space-y-1 text-sm text-amber-900/90">
-                      {guidedConfig.health.issues.map((issue) => (
-                        <p key={issue.code}>
-                          {issue.message}
-                          {issue.affected_fields > 0 ? ` (${issue.affected_fields})` : ""}
-                        </p>
-                      ))}
-                    </div>
-                  </div>
-                  {canResyncConfig && guidedConfig.project_id !== null && (
-                    <Button
-                      variant="outline"
-                      disabled={resyncConfigMutation.isPending}
-                      onClick={() => {
-                        setConfigActionMessage(null);
-                        setConfigActionError(null);
-                        void resyncConfigMutation.mutateAsync(undefined);
-                      }}
-                    >
-                      {resyncConfigMutation.isPending ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <RefreshCcw className="mr-2 h-4 w-4" />
+            {visibleFeedItems.length === 0 ? (
+              <Card className="border-dashed border-slate-300 p-10 text-center text-sm text-slate-500">
+                {FEED_SECTION_CONFIG[feedSection].emptyState}
+              </Card>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+                {visibleFeedItems.map((row) => {
+                  const rowKey = buildRowKey(row);
+                  const statusConfig = STATUS_CONFIG[row.collection_status];
+                  const boundaryConfig = BOUNDARY_CONFIG[row.boundary_status];
+                  const cardSection = getFeedSection(row);
+                  const progressCount = getProgressCount(row);
+                  const needsText = getNeedsText(row, undefined, hasMethodologyCatalog);
+                  const isSelected = selectedRowKey === rowKey;
+                  const valuePreview = getValuePreview(row);
+                  const actionLabel =
+                    cardSection === "blocked"
+                      ? "Review"
+                      : row.collection_status === "complete"
+                        ? "Open"
+                        : hasCreatedEntry(row)
+                          ? "Continue"
+                          : "Start";
+
+                  return (
+                    <Card
+                      key={rowKey}
+                      className={cn(
+                        "flex h-full cursor-pointer flex-col justify-between border-slate-200 p-5 transition-all hover:border-cyan-300 hover:shadow-md",
+                        isSelected && "border-cyan-400 shadow-md ring-2 ring-cyan-100"
                       )}
-                      Re-sync Config
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )}
+                      onClick={() => setSelectedRowKey(rowKey)}
+                    >
+                      <div className="space-y-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <h3 className="line-clamp-2 text-base font-semibold text-slate-900">
+                              {row.element_name}
+                            </h3>
+                            <p className="mt-1 truncate font-mono text-[11px] text-slate-500">
+                              {row.element_code}
+                            </p>
+                          </div>
+                          <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>
+                        </div>
 
-            {guidedSummary && guidedSummary.ambiguous > 0 && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                Some configured fields resolve to multiple entity or facility contexts. Those entries
-                stay actionable through the collection table below so the collector keeps explicit
-                boundary context.
-              </div>
-            )}
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                            Reported value
+                          </p>
+                          <p
+                            className={cn(
+                              "mt-2 text-xl font-semibold text-slate-900",
+                              !hasValue(undefined, row) && "text-slate-400"
+                            )}
+                          >
+                            {valuePreview}
+                          </p>
+                          <p className="mt-2 text-sm text-slate-500">{formatContext(row)}</p>
+                        </div>
 
-            <WizardRenderer
-              config={guidedConfig.config}
-              values={{}}
-              elementNames={elementNamesById}
-              onSubmit={scrollToTable}
-              submitLabel="Open Table View"
-              renderField={(field) => {
-                const matches = resolveFieldMatches(field);
-                const singleMatch = matches.length === 1 ? matches[0] : null;
-                const firstMatch = matches[0] ?? null;
-                const elementName =
-                  singleMatch?.element_name
-                  ?? firstMatch?.element_name
-                  ?? field.tooltip?.split(": ").slice(1).join(": ")
-                  ?? `Element #${field.shared_element_id}`;
-                const elementCode = singleMatch?.element_code ?? firstMatch?.element_code ?? null;
-                const contextPreview = Array.from(
-                  new Set(
-                    matches
-                      .map((row) =>
-                        row.facility_name
-                          ? `${row.entity_name} / ${row.facility_name}`
-                          : row.entity_name
-                      )
-                      .filter(Boolean)
-                  )
-                );
-                const standards = Array.from(
-                  new Set(matches.flatMap((row) => row.standards ?? []))
-                );
-
-                return (
-                  <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                      <div className="min-w-0 flex-1 space-y-2">
                         <div className="flex flex-wrap items-center gap-2">
-                          {elementCode && (
-                            <span className="rounded-md bg-slate-100 px-2 py-1 font-mono text-[11px] text-slate-600">
-                              {elementCode}
-                            </span>
-                          )}
-                          <p className="font-medium text-slate-900">{elementName}</p>
-                          {field.required && (
-                            <Badge variant="outline" className="text-[10px]">
-                              Required
+                          {row.standards.map((standard) => (
+                            <Badge
+                              key={`${rowKey}-${standard}`}
+                              variant="outline"
+                              className="text-[10px] uppercase tracking-wide"
+                            >
+                              {standard}
                             </Badge>
-                          )}
-                          {singleMatch ? (
-                            <Badge variant={STATUS_CONFIG[singleMatch.collection_status].variant}>
-                              {STATUS_CONFIG[singleMatch.collection_status].label}
-                            </Badge>
-                          ) : matches.length > 1 ? (
-                            <Badge variant="warning">{matches.length} contexts</Badge>
-                          ) : (
-                            <Badge variant="secondary">Out of sync</Badge>
-                          )}
-                          {singleMatch?.reused_across_standards && (
+                          ))}
+                          <Badge variant={boundaryConfig.variant}>{boundaryConfig.label}</Badge>
+                          {row.reused_across_standards && (
                             <Badge variant="secondary" className="text-[10px]">
                               <Repeat2 className="mr-1 h-3 w-3" />
                               Reused
@@ -829,187 +1317,210 @@ export default function CollectionPage() {
                           )}
                         </div>
 
-                        {field.help_text && (
-                          <p className="whitespace-pre-line text-xs text-slate-500">
-                            {field.help_text}
-                          </p>
-                        )}
-
-                        {singleMatch ? (
-                          <div className="flex flex-wrap gap-3 text-xs text-slate-500">
-                            <span>Entity: {singleMatch.entity_name}</span>
-                            {singleMatch.facility_name && (
-                              <span>Facility: {singleMatch.facility_name}</span>
-                            )}
-                            <span>
-                              Boundary: {BOUNDARY_CONFIG[singleMatch.boundary_status].label}
-                            </span>
-                            <span>Consolidation: {singleMatch.consolidation_method}</span>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div className="rounded-lg border border-slate-200 px-3 py-2">
+                            <p className="text-slate-500">Draft</p>
+                            <p className="mt-1 font-medium text-slate-900">
+                              {hasCreatedEntry(row) ? "Created" : "Missing"}
+                            </p>
                           </div>
-                        ) : matches.length > 1 ? (
-                          <p className="text-xs text-slate-500">
-                            Multiple contexts found: {contextPreview.slice(0, 3).join(", ")}
-                            {contextPreview.length > 3 ? ` +${contextPreview.length - 3} more` : ""}
-                          </p>
-                        ) : (
-                          <p className="text-xs text-slate-500">
-                            This config field no longer maps to a live assignment in the project.
-                          </p>
-                        )}
-
-                        {standards.length > 0 && (
-                          <div className="flex flex-wrap gap-1">
-                            {standards.map((standard) => (
-                              <Badge key={standard} variant="outline" className="text-[10px]">
-                                {standard}
-                              </Badge>
-                            ))}
+                          <div className="rounded-lg border border-slate-200 px-3 py-2">
+                            <p className="text-slate-500">Evidence</p>
+                            <p className="mt-1 font-medium text-slate-900">
+                              {row.evidence_required
+                                ? `${row.evidence_count ?? 0} attached`
+                                : "Not required"}
+                            </p>
                           </div>
-                        )}
+                        </div>
+
+                        <div
+                          className={cn(
+                            "flex items-center gap-2 text-xs font-medium",
+                            cardSection === "blocked" ? "text-red-700" : "text-amber-700"
+                          )}
+                        >
+                          <TriangleAlert className="h-4 w-4 shrink-0" />
+                          <span>{needsText}</span>
+                        </div>
                       </div>
 
-                      <div className="flex shrink-0 flex-col items-end gap-2">
-                        {singleMatch && (
-                          <Badge variant={BOUNDARY_CONFIG[singleMatch.boundary_status].variant}>
-                            {BOUNDARY_CONFIG[singleMatch.boundary_status].label}
-                          </Badge>
-                        )}
+                      <div className="mt-5 flex items-center justify-between gap-3 border-t border-slate-100 pt-4">
+                        <div className="flex items-center gap-1">
+                          {Array.from({ length: 4 }).map((_, index) => (
+                            <span
+                              key={index}
+                              className={cn(
+                                "h-2.5 w-2.5 rounded-full",
+                                index < progressCount ? "bg-green-500" : "bg-slate-200"
+                              )}
+                            />
+                          ))}
+                          <span className="ml-1 text-xs font-medium text-slate-500">
+                            {progressCount}/4
+                          </span>
+                        </div>
+
                         <Button
                           size="sm"
-                          variant="outline"
-                          disabled={matches.length === 0}
-                          onClick={() => {
-                            if (singleMatch) {
-                              setGuidedField(field);
-                              setGuidedRowKey(
-                                buildContextKey(
-                                  singleMatch.shared_element_id,
-                                  singleMatch.entity_id,
-                                  singleMatch.facility_id
-                                )
-                              );
+                          variant={cardSection === "blocked" ? "outline" : "default"}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setSelectedRowKey(rowKey);
+                            if (cardSection === "blocked") return;
+                            if (row.collection_status === "complete") {
+                              void openDataEntry(row);
                               return;
                             }
-                            if (matches.length > 1) {
-                              showFieldInTable(field.shared_element_id);
-                            }
+                            openQuickEntry(row);
                           }}
                         >
-                          {singleMatch ? (
-                            singleMatch.data_point_id ? "Continue entry" : "Quick entry"
-                          ) : matches.length > 1 ? (
-                            "Show rows"
-                          ) : (
-                            "Unavailable"
-                          )}
+                          {actionLabel}
                         </Button>
                       </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <aside className="xl:sticky xl:top-6 xl:self-start">
+            <Card className="overflow-hidden border-slate-200">
+              {!selectedRow ? (
+                <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 p-6 text-center text-sm text-slate-500">
+                  <Rows3 className="h-8 w-8 text-slate-300" />
+                  Click any task to see readiness and next actions.
+                </div>
+              ) : (
+                <div className="space-y-5 p-5">
+                  <div className="space-y-1">
+                    <h3 className="text-base font-semibold text-slate-900">
+                      {selectedRow.element_name}
+                    </h3>
+                    <p className="font-mono text-xs text-slate-500">{selectedRow.element_code}</p>
+                  </div>
+
+                  <p className="text-sm text-slate-600">{formatContext(selectedRow)}</p>
+
+                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                      Current value
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold text-slate-900">
+                      {getValuePreview(selectedRow, selectedDetail)}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {(selectedDetail?.related_standards?.length
+                      ? selectedDetail.related_standards.map((standard) => standard.code)
+                      : selectedRow.standards
+                    ).map((standard) => (
+                      <Badge key={`${selectedRowKey}-${standard}`} variant="outline" className="text-[10px] uppercase tracking-wide">
+                        {standard}
+                      </Badge>
+                    ))}
+                    <Badge variant={BOUNDARY_CONFIG[selectedRow.boundary_status].variant}>
+                      {BOUNDARY_CONFIG[selectedRow.boundary_status].label}
+                    </Badge>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        Readiness
+                      </p>
+                      {selectedDetailLoading && (
+                        <div className="flex items-center gap-1 text-xs text-slate-400">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Loading
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-3">
+                      {readinessItems.map((item) => (
+                        <div
+                          key={item.label}
+                          className="flex items-center gap-3 border-b border-slate-200/80 pb-3 last:border-b-0 last:pb-0"
+                        >
+                          <ReadinessIcon tone={item.tone} />
+                          <span className="text-sm text-slate-700">{item.label}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-3">
+                      <span className="text-xs text-slate-500">Missing</span>
+                      <span className="text-sm font-semibold text-amber-700">
+                        {missingReadinessCount}
+                      </span>
                     </div>
                   </div>
-                );
-              }}
-            />
-          </div>
-        </Card>
-      ) : null}
 
-      {/* Filters row */}
-      <Card className="p-4">
-        <div className="flex flex-wrap items-end gap-4">
-          {/* Search */}
-          <div className="min-w-[240px] flex-1">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <Input
-                placeholder="Search by metric code or name..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-          </div>
+                  {selectedRow.boundary_status !== "included" && (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                      This row is not fully inside the reporting boundary, so it should be reviewed before submission.
+                    </div>
+                  )}
 
-          {/* Status filter */}
-          <div className="grid gap-1.5">
-            <label className="text-sm font-medium text-slate-700">
-              <Filter className="mr-1 inline h-3.5 w-3.5" />
-              Status
-            </label>
-            <select
-              value={statusFilter}
-              onChange={(e) =>
-                setStatusFilter(e.target.value as typeof statusFilter)
-              }
-              className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-950"
-            >
-              <option value="all">All statuses</option>
-              <option value="missing">Not started</option>
-              <option value="partial">In progress</option>
-              <option value="complete">Approved</option>
-            </select>
-          </div>
+                  {selectedDetailError && (
+                    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                      {selectedDetailError.message}
+                    </div>
+                  )}
 
-          {/* Entity filter */}
-          <div className="grid gap-1.5">
-            <label className="text-sm font-medium text-slate-700">Entity</label>
-            <select
-              value={entityFilter}
-              onChange={(e) => setEntityFilter(e.target.value)}
-              className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-950"
-            >
-              <option value="">All entities</option>
-              {entities.map((e) => (
-                <option key={e} value={e}>
-                  {e}
-                </option>
-              ))}
-            </select>
-          </div>
+                  <div className="space-y-2">
+                    <Button
+                      className="w-full"
+                      disabled={selectedRow.boundary_status === "excluded"}
+                      onClick={() => {
+                        if (selectedRow.collection_status === "complete") {
+                          void openDataEntry(selectedRow);
+                          return;
+                        }
+                        openQuickEntry(selectedRow);
+                      }}
+                    >
+                      {selectedRow.collection_status === "complete"
+                        ? "Open entry"
+                        : hasCreatedEntry(selectedRow)
+                          ? "Continue quick entry"
+                          : "Start quick entry"}
+                    </Button>
 
-          {/* Standard filter */}
-          <div className="grid gap-1.5">
-            <label className="text-sm font-medium text-slate-700">
-              Standard
-            </label>
-            <select
-              value={standardFilter}
-              onChange={(e) => setStandardFilter(e.target.value)}
-              className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-950"
-            >
-              <option value="">All standards</option>
-              {standards.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
+                    <Button
+                      className="w-full"
+                      variant="ghost"
+                      disabled={
+                        selectedRow.boundary_status === "excluded" &&
+                        !getResolvedDataPointId(selectedRow)
+                      }
+                      onClick={() => void openDataEntry(selectedRow)}
+                    >
+                      Open full wizard
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+
+                    <Button
+                      className="w-full"
+                      variant="ghost"
+                      onClick={() => {
+                        setViewMode("table");
+                        scrollToTable();
+                      }}
+                    >
+                      Show in table
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </Card>
+          </aside>
         </div>
-      </Card>
-
-      {/* Table */}
-      <Card id="collection-table">
-        {meLoading || assignmentsLoading || isLoading ? (
-          <div className="flex min-h-[300px] items-center justify-center p-12 text-gray-400">
-            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-            Loading assigned metrics...
-          </div>
-        ) : accessDenied ? (
-          <div className="flex min-h-[300px] flex-col items-center justify-center p-12">
-            <ShieldAlert className="mb-3 h-10 w-10 text-red-500" />
-            <p className="text-sm font-medium text-slate-900">Access denied</p>
-            <p className="mt-1 text-sm text-slate-500">
-              Only collectors and ESG managers can access data collection.
-            </p>
-          </div>
-        ) : error ? (
-          <div className="flex min-h-[300px] flex-col items-center justify-center p-12">
-            <AlertTriangle className="mb-3 h-10 w-10 text-amber-500" />
-            <p className="text-sm text-slate-500">
-              Failed to load data points. Please try again.
-            </p>
-          </div>
-        ) : (
+      ) : (
+        <Card id="collection-table" className="border-slate-200">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -1044,52 +1555,52 @@ export default function CollectionPage() {
                   <th className="px-4 py-3">Entity</th>
                   <th className="px-4 py-3">Facility</th>
                   <th className="px-4 py-3">Reporting Boundary</th>
-                  <th className="px-4 py-3">Consolidation Method</th>
+                  <th className="px-4 py-3">Consolidation</th>
                   <th className="px-4 py-3">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filtered.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan={8}
-                      className="px-4 py-12 text-center text-gray-400"
-                    >
+                    <td colSpan={8} className="px-4 py-12 text-center text-slate-400">
                       {emptyTableMessage}
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((dp) => {
-                    const statusCfg = STATUS_CONFIG[dp.collection_status];
-                    const boundaryCfg = BOUNDARY_CONFIG[dp.boundary_status];
+                  filtered.map((row) => {
+                    const rowKey = buildRowKey(row);
+                    const statusConfig = STATUS_CONFIG[row.collection_status];
+                    const boundaryConfig = BOUNDARY_CONFIG[row.boundary_status];
+                    const isRowOpening = openingRowId === (row.assignment_id ?? row.id);
 
                     return (
                       <tr
-                        key={`${dp.assignment_id ?? "dp"}-${dp.id}`}
-                        onClick={() => void openDataEntry(dp)}
-                        className="cursor-pointer hover:bg-slate-50 transition-colors"
+                        key={rowKey}
+                        className="cursor-pointer transition-colors hover:bg-slate-50"
+                        onClick={() => {
+                          setSelectedRowKey(rowKey);
+                          void openDataEntry(row);
+                        }}
                       >
                         <td className="whitespace-nowrap px-4 py-3 font-mono text-xs">
-                          {dp.element_code}
+                          {row.element_code}
                         </td>
                         <td className="px-4 py-3">
                           <div className="space-y-2">
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium text-slate-900">
-                                {dp.element_name}
-                              </span>
-                              {dp.reused_across_standards && (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-medium text-slate-900">{row.element_name}</span>
+                              {row.reused_across_standards && (
                                 <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
                                   <Repeat2 className="mr-0.5 h-3 w-3" />
                                   Reused
                                 </Badge>
                               )}
                             </div>
-                            {dp.standards.length > 0 && (
+                            {row.standards.length > 0 && (
                               <div className="flex flex-wrap gap-1.5">
-                                {dp.standards.map((standard) => (
+                                {row.standards.map((standard) => (
                                   <Badge
-                                    key={`${dp.id}-${standard}`}
+                                    key={`${rowKey}-${standard}`}
                                     variant="outline"
                                     className="text-[10px] uppercase tracking-wide"
                                   >
@@ -1101,41 +1612,32 @@ export default function CollectionPage() {
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          <Badge variant={statusCfg.variant}>
-                            {statusCfg.label}
-                          </Badge>
+                          <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>
                         </td>
-                        <td className="px-4 py-3 text-slate-600">
-                          {dp.entity_name}
-                        </td>
-                        <td className="px-4 py-3 text-slate-600">
-                          {dp.facility_name}
-                        </td>
+                        <td className="px-4 py-3 text-slate-600">{row.entity_name}</td>
+                        <td className="px-4 py-3 text-slate-600">{row.facility_name ?? "—"}</td>
                         <td className="px-4 py-3">
-                          <Badge variant={boundaryCfg.variant}>
-                            {boundaryCfg.label}
-                          </Badge>
+                          <Badge variant={boundaryConfig.variant}>{boundaryConfig.label}</Badge>
                         </td>
-                        <td className="px-4 py-3 text-slate-600">
-                          {dp.consolidation_method}
-                        </td>
+                        <td className="px-4 py-3 text-slate-600">{row.consolidation_method}</td>
                         <td className="px-4 py-3">
                           <Button
                             size="sm"
                             variant="outline"
-                            disabled={openingRowId === (dp.assignment_id ?? dp.id)}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void openDataEntry(dp);
+                            disabled={isRowOpening}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setSelectedRowKey(rowKey);
+                              void openDataEntry(row);
                             }}
                           >
-                            {openingRowId === (dp.assignment_id ?? dp.id) ? (
+                            {isRowOpening ? (
                               <>
-                                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                 Opening...
                               </>
                             ) : (
-                              "Enter Data"
+                              "Enter data"
                             )}
                           </Button>
                         </td>
@@ -1146,15 +1648,12 @@ export default function CollectionPage() {
               </tbody>
             </table>
           </div>
-        )}
 
-        {/* Footer */}
-        {!meLoading && !assignmentsLoading && !isLoading && !error && !assignmentsError && (
           <div className="border-t border-slate-200 px-4 py-3 text-xs text-slate-500">
-            Showing {filtered.length} of {items.length} assigned metrics
+            Showing {filtered.length} of {items.length} data points
           </div>
-        )}
-      </Card>
+        </Card>
+      )}
     </div>
   );
 }
