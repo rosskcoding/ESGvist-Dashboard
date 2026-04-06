@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass
 
 from sqlalchemy import select
 
@@ -24,6 +25,13 @@ from app.repositories.data_point_repo import DataPointRepository
 from app.repositories.evidence_repo import EvidenceRepository
 from app.repositories.project_repo import ProjectRepository
 from app.schemas.evidence import EvidenceCreate, EvidenceListOut, EvidenceOut
+
+
+@dataclass
+class EvidenceDownloadPayload:
+    data: bytes
+    file_name: str
+    mime_type: str | None
 
 
 class EvidenceService:
@@ -177,19 +185,28 @@ class EvidenceService:
             "linked_requirement_items": [],
         })
 
-    async def get_download_url(self, evidence_id: int, ctx: RequestContext) -> str:
+    async def get_download_file(self, evidence_id: int, ctx: RequestContext) -> EvidenceDownloadPayload:
         ev = await self.repo.get_or_raise(evidence_id)
         if ev.organization_id != ctx.organization_id and not ctx.is_platform_admin:
             raise AppError("FORBIDDEN", 403, "Evidence belongs to another organization")
         if ev.type != "file":
             raise AppError("INVALID_INPUT", 422, "Download URL is only available for file-type evidence")
         file_row = await self.repo.session.execute(
-            select(EvidenceFile.file_uri).where(EvidenceFile.evidence_id == evidence_id)
+            select(
+                EvidenceFile.file_uri,
+                EvidenceFile.file_name,
+                EvidenceFile.mime_type,
+            ).where(EvidenceFile.evidence_id == evidence_id)
         )
-        file_uri = file_row.scalar_one_or_none()
-        if not file_uri:
+        file_record = file_row.one_or_none()
+        if not file_record:
             raise AppError("NOT_FOUND", 404, "No file associated with this evidence")
-        return await self.storage.get_url(file_uri)
+        file_uri, file_name, mime_type = file_record
+        return EvidenceDownloadPayload(
+            data=await self.storage.download(file_uri),
+            file_name=file_name,
+            mime_type=mime_type,
+        )
 
     async def get_evidence(self, evidence_id: int, ctx: RequestContext) -> EvidenceOut:
         ev = await self.repo.get_or_raise(evidence_id)
@@ -553,11 +570,14 @@ class EvidenceService:
         }
 
         result = await self.repo.session.execute(
-            select(User.id, User.full_name).where(
+            select(User.id, User.full_name, User.email).where(
                 User.id.in_([item.created_by for item in items if item.created_by is not None])
             )
         )
-        user_names = {user_id: full_name for user_id, full_name in result.all()}
+        user_names = {
+            user_id: (full_name or email or f"User {user_id}")
+            for user_id, full_name, email in result.all()
+        }
 
         result = await self.repo.session.execute(
             select(

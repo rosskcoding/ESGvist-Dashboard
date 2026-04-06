@@ -13,7 +13,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
+import { Select, type SelectOptionItem } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
@@ -81,6 +81,17 @@ interface AvailableStandard {
   catalog_group_code: string;
   catalog_group_name: string;
   is_attachable: boolean;
+}
+
+interface ProjectStandardAttachPreview {
+  standard_id: number;
+  standard_code: string;
+  standard_name: string;
+  total_mapped_elements: number;
+  auto_reuse_count: number;
+  needs_review_count: number;
+  new_metric_count: number;
+  already_in_collection_count: number;
 }
 
 interface BoundaryOption {
@@ -173,6 +184,69 @@ function getStandardDisplayName(code: string, name: string) {
 function formatStandardLabel(standard: Pick<AvailableStandard, "code" | "name">) {
   const displayName = getStandardDisplayName(standard.code, standard.name);
   return displayName === standard.code ? standard.code : `${standard.code} - ${displayName}`;
+}
+
+function pluralize(count: number, singular: string, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function getStandardCardTone(familyCode?: string) {
+  switch (familyCode) {
+    case "GRI":
+      return {
+        border: "border-l-emerald-500",
+        icon: "bg-emerald-100 text-emerald-700",
+        chip: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      };
+    case "IFRS":
+      return {
+        border: "border-l-blue-500",
+        icon: "bg-blue-100 text-blue-700",
+        chip: "border-blue-200 bg-blue-50 text-blue-700",
+      };
+    case "SASB":
+      return {
+        border: "border-l-amber-500",
+        icon: "bg-amber-100 text-amber-700",
+        chip: "border-amber-200 bg-amber-50 text-amber-700",
+      };
+    case "ESRS":
+      return {
+        border: "border-l-cyan-500",
+        icon: "bg-cyan-100 text-cyan-700",
+        chip: "border-cyan-200 bg-cyan-50 text-cyan-700",
+      };
+    default:
+      return {
+        border: "border-l-slate-400",
+        icon: "bg-slate-100 text-slate-700",
+        chip: "border-slate-200 bg-slate-50 text-slate-700",
+      };
+  }
+}
+
+function getCompletionTone(percentage: number) {
+  if (percentage >= 80) {
+    return {
+      label: "Ready",
+      variant: "success" as const,
+      progress: "bg-green-500",
+    };
+  }
+
+  if (percentage >= 50) {
+    return {
+      label: "In progress",
+      variant: "warning" as const,
+      progress: "bg-amber-500",
+    };
+  }
+
+  return {
+    label: "Starting",
+    variant: "secondary" as const,
+    progress: "bg-cyan-600",
+  };
 }
 
 function isFixtureStandard(standard: AvailableStandard) {
@@ -279,6 +353,15 @@ export default function ProjectSettingsPage() {
   const { data: availableStandards } = useApiQuery<{
     items: AvailableStandard[];
   }>(["available-standards"], "/standards?page_size=500");
+  const selectedAttachPreviewStandardId = selectedStandardId ? Number(selectedStandardId) : 0;
+  const { data: attachPreview, isLoading: attachPreviewLoading } =
+    useApiQuery<ProjectStandardAttachPreview>(
+      ["project-standard-attach-preview", projectId, selectedAttachPreviewStandardId],
+      `/projects/${projectId}/standards/${selectedAttachPreviewStandardId}/attach-preview`,
+      {
+        enabled: addStandardDialogOpen && Boolean(selectedStandardId),
+      }
+    );
 
   const { data: teamData } = useApiQuery<{ items: AssignmentSummary[] }>(
     ["project-team", projectId],
@@ -381,6 +464,8 @@ export default function ProjectSettingsPage() {
       }
       setAddStandardDialogOpen(false);
       setSelectedStandardId("");
+      setSelectedFamilyCode("");
+      setSelectedGroupCode("");
       setStandardSearch("");
       await invalidateDerivedProjectViews();
     },
@@ -470,6 +555,18 @@ export default function ProjectSettingsPage() {
 
   const standards = standardsData?.items ?? [];
   const allStandards = availableStandards?.items ?? [];
+  const standardCatalogById = new Map(allStandards.map((standard) => [standard.id, standard]));
+  const totalDisclosureCount = standards.reduce((sum, standard) => sum + standard.disclosure_count, 0);
+  const averageCompletion = standards.length
+    ? Math.round(
+        standards.reduce((sum, standard) => sum + standard.completion_percentage, 0) / standards.length
+      )
+    : 0;
+  const attachedFamilyCount = new Set(
+    standards
+      .map((standard) => standardCatalogById.get(standard.standard_id)?.family_code)
+      .filter((familyCode): familyCode is string => Boolean(familyCode))
+  ).size;
   const normalizedStandardSearch = standardSearch.trim().toLowerCase();
   const baseSelectableStandards = allStandards
     .filter((standard) => !standards.some((projectStandard) => projectStandard.standard_id === standard.id))
@@ -524,6 +621,22 @@ export default function ProjectSettingsPage() {
       if (!normalizedStandardSearch) return true;
       return `${standard.code} ${standard.name}`.toLowerCase().includes(normalizedStandardSearch);
     });
+  const standardOptions: SelectOptionItem[] = selectedFamilyCode
+    ? selectableStandards.map((standard) => ({
+        value: String(standard.id),
+        label: formatStandardLabel(standard),
+      }))
+    : familyOptions
+        .map((family) => ({
+          label: family.label,
+          options: selectableStandards
+            .filter((standard) => standard.family_code === family.value)
+            .map((standard) => ({
+              value: String(standard.id),
+              label: formatStandardLabel(standard),
+            })),
+        }))
+        .filter((family) => family.options.length > 0);
 
   useEffect(() => {
     if (selectedStandardId && !selectableStandards.some((standard) => String(standard.id) === selectedStandardId)) {
@@ -783,7 +896,7 @@ export default function ProjectSettingsPage() {
                 Add Standard
               </Button>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-5">
               {standardsLoading ? (
                 <div className="flex justify-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
@@ -793,55 +906,127 @@ export default function ProjectSettingsPage() {
                   No standards attached yet. Add a standard to begin.
                 </p>
               ) : (
-                <div className="space-y-4">
-                  {standards.map((std) => (
-                    <div
-                      key={std.id}
-                      className="flex items-center justify-between rounded-lg border border-slate-200 p-4"
-                    >
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <Shield className="h-4 w-4 text-slate-500" />
-                          <span className="font-medium">{std.code}</span>
-                          {getStandardDisplayName(std.code, std.standard_name) !== std.code && (
-                            <span className="text-sm text-slate-500">
-                              {getStandardDisplayName(std.code, std.standard_name)}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-slate-400">
-                          {std.disclosure_count} disclosures
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <Progress
-                          value={std.completion_percentage}
-                          className="w-24"
-                          indicatorClassName={
-                            std.completion_percentage >= 80
-                              ? "bg-green-500"
-                              : std.completion_percentage >= 50
-                                ? "bg-amber-500"
-                                : "bg-cyan-600"
-                          }
-                        />
-                        <span className="text-sm font-semibold">
-                          {Math.round(std.completion_percentage)}%
-                        </span>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setActionError(null);
-                            setLaunchStandard(std);
-                          }}
+                <>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="secondary" className="rounded-full px-3 py-1 text-[11px] shadow-none">
+                      {pluralize(standards.length, "standard")}
+                    </Badge>
+                    <Badge variant="outline" className="rounded-full px-3 py-1 text-[11px] text-slate-600">
+                      {pluralize(totalDisclosureCount, "disclosure")}
+                    </Badge>
+                    <Badge variant="outline" className="rounded-full px-3 py-1 text-[11px] text-slate-600">
+                      {attachedFamilyCount} families
+                    </Badge>
+                    <Badge variant="outline" className="rounded-full px-3 py-1 text-[11px] text-slate-600">
+                      {averageCompletion}% avg completion
+                    </Badge>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                    {standards.map((std) => {
+                      const standardMeta = standardCatalogById.get(std.standard_id);
+                      const tone = getStandardCardTone(standardMeta?.family_code);
+                      const completionTone = getCompletionTone(std.completion_percentage);
+                      const displayName = getStandardDisplayName(std.code, std.standard_name);
+
+                      return (
+                        <div
+                          key={std.id}
+                          className={`flex h-full flex-col rounded-2xl border border-slate-200 border-l-4 ${tone.border} bg-gradient-to-b from-white via-white to-slate-50/80 p-5 shadow-sm transition-transform duration-150 hover:-translate-y-0.5 hover:shadow-md`}
                         >
-                          Launch Indicators
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex min-w-0 items-start gap-3">
+                              <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${tone.icon}`}>
+                                <Shield className="h-5 w-5" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                  {standardMeta?.family_name ?? "Reporting standard"}
+                                </p>
+                                <h3 className="mt-1 text-lg font-extrabold tracking-tight text-slate-900">
+                                  {std.code}
+                                </h3>
+                                {displayName !== std.code && (
+                                  <p className="mt-1 line-clamp-2 text-sm leading-5 text-slate-600">
+                                    {displayName}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <Badge
+                              variant={completionTone.variant}
+                              className="rounded-full px-2.5 py-1 text-[10px] shadow-none"
+                            >
+                              {completionTone.label}
+                            </Badge>
+                          </div>
+
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            {standardMeta?.catalog_group_name && (
+                              <span
+                                className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${tone.chip}`}
+                              >
+                                {standardMeta.catalog_group_name}
+                              </span>
+                            )}
+                            {standardMeta?.family_code && (
+                              <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                                {standardMeta.family_code}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="mt-5 grid grid-cols-2 gap-3">
+                            <div className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2.5">
+                              <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                <FileText className="h-3.5 w-3.5" />
+                                Disclosures
+                              </div>
+                              <div className="mt-1 text-lg font-bold text-slate-900">
+                                {std.disclosure_count}
+                              </div>
+                            </div>
+                            <div className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2.5">
+                              <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                <Globe className="h-3.5 w-3.5" />
+                                Completion
+                              </div>
+                              <div className="mt-1 text-lg font-bold text-slate-900">
+                                {Math.round(std.completion_percentage)}%
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-5">
+                            <div className="mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                              <span>Readiness</span>
+                              <span>{Math.round(std.completion_percentage)}%</span>
+                            </div>
+                            <Progress
+                              value={std.completion_percentage}
+                              className="h-2.5"
+                              indicatorClassName={completionTone.progress}
+                            />
+                          </div>
+
+                          <div className="mt-5 pt-1">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="w-full justify-center rounded-xl border-slate-300 bg-white/70"
+                              onClick={() => {
+                                setActionError(null);
+                                setLaunchStandard(std);
+                              }}
+                            >
+                              Launch Indicators
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>
@@ -1072,29 +1257,84 @@ export default function ProjectSettingsPage() {
                 setSelectedStandardId("");
               }}
             />
-            <Select
-              label="Group"
-              options={[{ value: "", label: "All groups" }, ...groupOptions]}
-              value={selectedGroupCode}
-              onChange={(val) => {
-                setSelectedGroupCode(val);
-                setSelectedStandardId("");
-              }}
-            />
+            {selectedFamilyCode ? (
+              <Select
+                label="Group"
+                options={[{ value: "", label: "All groups" }, ...groupOptions]}
+                value={selectedGroupCode}
+                onChange={(val) => {
+                  setSelectedGroupCode(val);
+                  setSelectedStandardId("");
+                }}
+              />
+            ) : (
+              <p className="text-sm text-slate-500">
+                Choose a family first if you want to narrow the list by group.
+              </p>
+            )}
             <Select
               label="Standard"
-              options={selectableStandards.map((s) => ({
-                  value: String(s.id),
-                  label: formatStandardLabel(s),
-                }))}
+              options={standardOptions}
               placeholder="Select a standard..."
               value={selectedStandardId}
               onChange={(val) => setSelectedStandardId(val)}
             />
             {selectableStandards.length === 0 && (
               <p className="text-sm text-slate-500">
-                No visible standards match the current family, group, and search filters.
+                No visible standards match the current filters.
               </p>
+            )}
+            {selectedStandardId && (
+              <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-3">
+                <p className="text-sm font-medium text-cyan-950">Automatic reuse preview</p>
+                <p className="mt-1 text-sm text-cyan-900">
+                  Full-match links reuse one shared data point across standards. Editing from either linked card stays in sync.
+                </p>
+                {attachPreviewLoading ? (
+                  <div className="mt-3 flex items-center gap-2 text-sm text-cyan-900">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Calculating reuse impact...
+                  </div>
+                ) : attachPreview ? (
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="rounded-lg border border-cyan-200 bg-white px-3 py-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cyan-700">
+                        Auto-linked
+                      </p>
+                      <p className="mt-1 text-2xl font-bold text-slate-900">
+                        {attachPreview.auto_reuse_count}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-amber-200 bg-white px-3 py-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-700">
+                        Needs Extra Input
+                      </p>
+                      <p className="mt-1 text-2xl font-bold text-slate-900">
+                        {attachPreview.needs_review_count}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                        New Metrics
+                      </p>
+                      <p className="mt-1 text-2xl font-bold text-slate-900">
+                        {attachPreview.new_metric_count}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-emerald-200 bg-white px-3 py-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-700">
+                        Already In Collection
+                      </p>
+                      <p className="mt-1 text-2xl font-bold text-slate-900">
+                        {attachPreview.already_in_collection_count}
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
+                <p className="mt-3 text-sm text-cyan-900">
+                  After attaching the standard, launch only the missing metrics. Existing linked metrics will be reused automatically.
+                </p>
+              </div>
             )}
             {addStandardMutation.error && (
               <p className="text-sm text-red-500">

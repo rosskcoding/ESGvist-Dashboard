@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ESGvist Evidence Repository - Где используется файл</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #eef2ea;
+        --panel: rgba(255, 255, 255, 0.92);
+        --panel-soft: rgba(255, 255, 255, 0.72);
+        --border: rgba(18, 29, 36, 0.11);
+        --text: #17242a;
+        --muted: #61707c;
+        --muted-soft: #8c97a0;
+        --green: #1f7a45;
+        --green-soft: #e2f6e8;
+        --blue: #1f57d6;
+        --blue-soft: #e8eeff;
+        --cyan: #0f7b72;
+        --cyan-soft: #ddf5f2;
+        --amber: #a86a18;
+        --amber-soft: #fff1dc;
+        --red: #a33f41;
+        --red-soft: #fde7e7;
+        --shadow: 0 28px 80px rgba(19, 35, 30, 0.18);
+        --radius-xl: 28px;
+        --radius-lg: 20px;
+        --radius-md: 16px;
+        --radius-sm: 12px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+      }
+
+      body {
+        font-family: "Manrope", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, rgba(15, 123, 114, 0.12), transparent 24rem),
+          radial-gradient(circle at right, rgba(31, 87, 214, 0.1), transparent 22rem),
+          linear-gradient(180deg, #f8faf7 0%, var(--bg) 100%);
+      }
+
+      .app-shell {
+        position: relative;
+        min-height: 100vh;
+        overflow: hidden;
+      }
+
+      .background-page {
+        padding: 32px;
+        filter: blur(2px);
+        opacity: 0.52;
+      }
+
+      .background-toolbar,
+      .background-card,
+      .background-table {
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.68);
+        backdrop-filter: blur(10px);
+      }
+
+      .background-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 20px 24px;
+      }
+
+      .background-title {
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 28px;
+        letter-spacing: -0.04em;
+      }
+
+      .background-subtitle {
+        margin-top: 8px;
+        color: var(--muted);
+      }
+
+      .background-upload {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 18px;
+        border-radius: 999px;
+        background: rgba(31, 87, 214, 0.08);
+        color: var(--blue);
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .background-card {
+        margin-top: 24px;
+        min-height: 180px;
+        border-style: dashed;
+      }
+
+      .background-table {
+        margin-top: 20px;
+        padding: 24px;
+      }
+
+      .table-row {
+        display: grid;
+        grid-template-columns: 1.2fr 0.8fr 0.8fr;
+        gap: 18px;
+        padding: 18px 0;
+        border-top: 1px solid var(--border);
+        color: var(--muted);
+      }
+
+      .overlay {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        padding: 28px;
+        background: rgba(19, 29, 32, 0.22);
+      }
+
+      .modal {
+        width: min(1220px, calc(100vw - 48px));
+        max-height: calc(100vh - 48px);
+        overflow: auto;
+        border: 1px solid rgba(255, 255, 255, 0.6);
+        border-radius: 32px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(18px);
+      }
+
+      .modal-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 20px;
+        padding: 28px 32px 24px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .header-main {
+        display: flex;
+        gap: 16px;
+      }
+
+      .file-mark {
+        display: grid;
+        place-items: center;
+        width: 52px;
+        height: 52px;
+        border-radius: 18px;
+        background: linear-gradient(145deg, #eef3ff, #dce7ff);
+        color: var(--blue);
+        font-size: 24px;
+        flex: none;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-family: "Space Grotesk", sans-serif;
+        font-size: clamp(28px, 3vw, 38px);
+        line-height: 1.02;
+        letter-spacing: -0.05em;
+      }
+
+      .subtitle {
+        margin-top: 10px;
+        max-width: 70ch;
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.6;
+      }
+
+      .close-button {
+        border: none;
+        background: transparent;
+        color: var(--muted);
+        font-size: 30px;
+        line-height: 1;
+        cursor: pointer;
+      }
+
+      .top-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 18px;
+        flex-wrap: wrap;
+      }
+
+      .chip,
+      .action-button,
+      .filter-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        font: inherit;
+      }
+
+      .chip {
+        padding: 9px 14px;
+        background: rgba(255, 255, 255, 0.8);
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .chip.good {
+        background: var(--green-soft);
+        color: var(--green);
+        border-color: rgba(31, 122, 69, 0.18);
+      }
+
+      .chip.warn {
+        background: var(--amber-soft);
+        color: var(--amber);
+        border-color: rgba(168, 106, 24, 0.18);
+      }
+
+      .action-button {
+        padding: 11px 16px;
+        background: #fff;
+        color: var(--text);
+        font-size: 14px;
+        font-weight: 700;
+        text-decoration: none;
+      }
+
+      .action-button.primary {
+        background: linear-gradient(135deg, #1647c8, #2962ff);
+        color: #fff;
+        border-color: transparent;
+      }
+
+      .content-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.78fr);
+        gap: 24px;
+        padding: 28px 32px 32px;
+      }
+
+      .section {
+        border: 1px solid var(--border);
+        border-radius: var(--radius-xl);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.74));
+      }
+
+      .section-inner {
+        padding: 24px;
+      }
+
+      .section-label {
+        color: var(--muted-soft);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .meta-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
+        margin-top: 18px;
+      }
+
+      .meta-item {
+        padding: 16px;
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.76);
+      }
+
+      .meta-item span {
+        display: block;
+        color: var(--muted-soft);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .meta-item strong {
+        display: block;
+        margin-top: 8px;
+        font-size: 17px;
+        line-height: 1.35;
+      }
+
+      .file-line {
+        margin-top: 14px;
+        padding: 18px 20px;
+        border-radius: 18px;
+        background: var(--panel-soft);
+        color: var(--muted);
+      }
+
+      .file-line strong {
+        color: var(--text);
+      }
+
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
+        margin-top: 18px;
+      }
+
+      .summary-card {
+        padding: 18px;
+        border-radius: 20px;
+        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.85);
+      }
+
+      .summary-card span {
+        display: block;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .summary-card strong {
+        display: block;
+        margin-top: 10px;
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 30px;
+        letter-spacing: -0.05em;
+      }
+
+      .summary-card em {
+        display: block;
+        margin-top: 8px;
+        color: var(--muted-soft);
+        font-size: 13px;
+        font-style: normal;
+        line-height: 1.5;
+      }
+
+      .impact-banner {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        margin-top: 18px;
+        padding: 18px 20px;
+        border-radius: 20px;
+        border: 1px solid rgba(168, 106, 24, 0.18);
+        background: linear-gradient(180deg, #fffaf1, #fff4e4);
+      }
+
+      .impact-banner strong {
+        display: block;
+        font-size: 16px;
+      }
+
+      .impact-banner p {
+        margin-top: 6px;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+
+      .controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 20px;
+        flex-wrap: wrap;
+      }
+
+      .search {
+        flex: 1 1 280px;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 13px 16px;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.86);
+      }
+
+      .search input {
+        width: 100%;
+        border: none;
+        outline: none;
+        background: transparent;
+        font: inherit;
+        color: var(--text);
+      }
+
+      .filter-chip {
+        padding: 11px 14px;
+        background: rgba(255, 255, 255, 0.7);
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .filter-chip.active {
+        background: #12232f;
+        color: #fff;
+        border-color: transparent;
+      }
+
+      .groups {
+        margin-top: 20px;
+        display: grid;
+        gap: 14px;
+      }
+
+      .group-card {
+        border: 1px solid var(--border);
+        border-radius: 22px;
+        background: rgba(255, 255, 255, 0.86);
+        overflow: hidden;
+      }
+
+      .group-card summary {
+        list-style: none;
+        cursor: pointer;
+      }
+
+      .group-card summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .group-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1.25fr) auto;
+        gap: 16px;
+        padding: 20px;
+      }
+
+      .group-title {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .group-title strong {
+        font-size: 18px;
+      }
+
+      .group-title span {
+        color: var(--muted);
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+      }
+
+      .badge.cyan {
+        background: var(--cyan-soft);
+        color: var(--cyan);
+      }
+
+      .badge.amber {
+        background: var(--amber-soft);
+        color: var(--amber);
+      }
+
+      .badge.green {
+        background: var(--green-soft);
+        color: var(--green);
+      }
+
+      .group-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+      }
+
+      .mini-metrics {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .mini-pill {
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(18, 35, 47, 0.05);
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .group-body {
+        padding: 0 20px 20px;
+        border-top: 1px solid var(--border);
+      }
+
+      .group-description {
+        padding-top: 16px;
+        color: var(--muted);
+        line-height: 1.65;
+      }
+
+      .item-list {
+        display: grid;
+        gap: 12px;
+        margin-top: 16px;
+      }
+
+      .item-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 14px;
+        padding: 14px 16px;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.76);
+      }
+
+      .item-row strong {
+        display: block;
+        font-size: 15px;
+      }
+
+      .item-row span {
+        display: block;
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .item-code {
+        align-self: start;
+        padding: 7px 10px;
+        border-radius: 999px;
+        background: rgba(31, 87, 214, 0.08);
+        color: var(--blue);
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 11px;
+        font-weight: 500;
+      }
+
+      .more-link {
+        margin-top: 16px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--blue);
+        font-size: 14px;
+        font-weight: 700;
+        text-decoration: none;
+      }
+
+      .sidebar-stack {
+        display: grid;
+        gap: 16px;
+      }
+
+      .side-panel {
+        border: 1px solid var(--border);
+        border-radius: var(--radius-xl);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.82));
+        overflow: hidden;
+      }
+
+      .side-panel .section-inner {
+        padding: 22px;
+      }
+
+      .side-list {
+        margin-top: 16px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .side-list-item {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 16px;
+        border-radius: 16px;
+        background: rgba(18, 35, 47, 0.04);
+      }
+
+      .side-list-item strong {
+        display: block;
+        font-size: 14px;
+      }
+
+      .side-list-item span {
+        display: block;
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .side-count {
+        color: var(--text);
+        font-size: 15px;
+        font-weight: 800;
+      }
+
+      .audit-note {
+        margin-top: 14px;
+        padding: 14px 16px;
+        border-radius: 16px;
+        background: rgba(31, 122, 69, 0.07);
+        color: var(--muted);
+        line-height: 1.6;
+      }
+
+      .footer-actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 18px 32px 28px;
+        border-top: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.88));
+      }
+
+      .footer-note {
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .footer-buttons {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      @media (max-width: 1120px) {
+        .content-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .meta-grid,
+        .summary-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 760px) {
+        .background-page {
+          padding: 18px;
+        }
+
+        .overlay {
+          padding: 14px;
+        }
+
+        .modal {
+          width: calc(100vw - 20px);
+          max-height: calc(100vh - 20px);
+          border-radius: 24px;
+        }
+
+        .modal-header,
+        .content-grid,
+        .footer-actions {
+          padding-left: 18px;
+          padding-right: 18px;
+        }
+
+        .modal-header {
+          padding-top: 18px;
+          padding-bottom: 18px;
+        }
+
+        .header-main {
+          gap: 12px;
+        }
+
+        .meta-grid,
+        .summary-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .group-head,
+        .item-row,
+        .footer-actions {
+          grid-template-columns: 1fr;
+        }
+
+        .group-meta {
+          justify-content: flex-start;
+        }
+
+        .footer-actions {
+          justify-content: stretch;
+        }
+
+        .footer-buttons {
+          width: 100%;
+        }
+
+        .footer-buttons .action-button {
+          flex: 1 1 180px;
+          justify-content: center;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-shell">
+      <div class="background-page">
+        <div class="background-toolbar">
+          <div>
+            <div class="background-title">Evidence Repository</div>
+            <div class="background-subtitle">
+              Manage supporting evidence for disclosures
+            </div>
+          </div>
+          <div class="background-upload">+ Upload evidence</div>
+        </div>
+        <div class="background-card"></div>
+        <div class="background-table">
+          <div class="table-row">
+            <strong>Proxy ESG workbook source</strong>
+            <span>bound</span>
+            <span>Atlas Admin</span>
+          </div>
+          <div class="table-row">
+            <strong>2024 emissions source pack</strong>
+            <span>unbound</span>
+            <span>Anna Manager</span>
+          </div>
+          <div class="table-row">
+            <strong>Water notes - Munich</strong>
+            <span>bound</span>
+            <span>Ben Collector</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="overlay">
+        <div class="modal">
+          <div class="modal-header">
+            <div>
+              <div class="header-main">
+                <div class="file-mark">📄</div>
+                <div>
+                  <h1>Proxy ESG workbook source</h1>
+                  <p class="subtitle">
+                    Оригинальный workbook, который система использовала как
+                    proxy-источник для импортированных ESG-метрик FY2024. Ниже
+                    показано не “сырьё из кодов”, а где именно этот файл
+                    используется и что он затрагивает.
+                  </p>
+                </div>
+              </div>
+              <div class="top-actions">
+                <span class="chip good">Связан с показателями</span>
+                <span class="chip warn">Высокое влияние при замене</span>
+                <a class="action-button" href="#">Открыть в Collection</a>
+                <a class="action-button primary" href="#">Экспорт списка</a>
+              </div>
+            </div>
+            <button class="close-button" aria-label="Закрыть">&times;</button>
+          </div>
+
+          <div class="content-grid">
+            <div>
+              <section class="section">
+                <div class="section-inner">
+                  <div class="section-label">Карточка файла</div>
+                  <div class="meta-grid">
+                    <div class="meta-item">
+                      <span>Тип</span>
+                      <strong>Файл</strong>
+                    </div>
+                    <div class="meta-item">
+                      <span>Статус связи</span>
+                      <strong>Bound</strong>
+                    </div>
+                    <div class="meta-item">
+                      <span>Дата загрузки</span>
+                      <strong>5 апр 2026</strong>
+                    </div>
+                    <div class="meta-item">
+                      <span>Создал</span>
+                      <strong>Atlas Admin</strong>
+                    </div>
+                  </div>
+                  <div class="file-line">
+                    <strong>bp-esg-datasheet-2024.xlsx</strong>
+                    <span> · 130 KB · FY2024 импорт</span>
+                  </div>
+                </div>
+              </section>
+
+              <section class="section" style="margin-top: 18px">
+                <div class="section-inner">
+                  <div class="section-label">Где используется</div>
+                  <div class="summary-grid">
+                    <div class="summary-card">
+                      <span>Связанные показатели</span>
+                      <strong>362</strong>
+                      <em>Все data points, которые опираются на этот файл</em>
+                    </div>
+                    <div class="summary-card">
+                      <span>Тематики</span>
+                      <strong>12</strong>
+                      <em>Например: spills, emissions, water, waste</em>
+                    </div>
+                    <div class="summary-card">
+                      <span>Подразделения</span>
+                      <strong>4</strong>
+                      <em>Production, refining, trading, logistics</em>
+                    </div>
+                    <div class="summary-card">
+                      <span>Период</span>
+                      <strong>FY2024</strong>
+                      <em>Импортированные значения и производные проверки</em>
+                    </div>
+                  </div>
+
+                  <div class="impact-banner">
+                    <div>
+                      <strong>Если заменить или удалить файл, это затронет 362 показателя</strong>
+                      <p>
+                        Больше всего зависимостей сейчас в блоках
+                        <strong>Oil spills</strong>, <strong>Production</strong>
+                        и <strong>Refining</strong>. Для пользователя это
+                        главный ответ на вопрос “на что повлияет файл?”.
+                      </p>
+                    </div>
+                    <span class="badge amber">Высокий impact</span>
+                  </div>
+
+                  <div class="controls">
+                    <label class="search" aria-label="Поиск связанных показателей">
+                      <span>🔎</span>
+                      <input
+                        type="text"
+                        value=""
+                        placeholder="Поиск по названию метрики, entity или коду"
+                      />
+                    </label>
+                    <button class="filter-chip active">Все связи</button>
+                    <button class="filter-chip">По темам</button>
+                    <button class="filter-chip">По подразделениям</button>
+                    <button class="filter-chip">Только high impact</button>
+                  </div>
+
+                  <div class="groups">
+                    <details class="group-card" open>
+                      <summary>
+                        <div class="group-head">
+                          <div>
+                            <div class="group-title">
+                              <strong>Oil spills</strong>
+                              <span>Наиболее затронутая тема</span>
+                              <span class="badge cyan">96 показателей</span>
+                            </div>
+                            <div class="mini-metrics" style="margin-top: 12px">
+                              <span class="mini-pill">4 entities</span>
+                              <span class="mini-pill">Production + Refining</span>
+                              <span class="mini-pill">9 подтипов метрик</span>
+                            </div>
+                          </div>
+                          <div class="group-meta">
+                            <span class="badge amber">Нужен контроль при замене</span>
+                          </div>
+                        </div>
+                      </summary>
+                      <div class="group-body">
+                        <p class="group-description">
+                          В этой группе лежат показатели по spill events,
+                          contained / reaching land / reaching water и related
+                          breakdowns. Вместо длинной стены кодов пользователь
+                          видит тему, масштаб влияния и примеры.
+                        </p>
+                        <div class="item-list">
+                          <div class="item-row">
+                            <div>
+                              <strong>Loss of primary containment</strong>
+                              <span>BPDS Environment · All production entities</span>
+                            </div>
+                            <div class="item-code">BPDS_ENVIRONMENT_SPILLS_LOSS_OF_PRIMARY_CONTAINMENT</div>
+                          </div>
+                          <div class="item-row">
+                            <div>
+                              <strong>Oil spills - number (&gt;= 1bbl)</strong>
+                              <span>Production / contained / reaching land / reaching water</span>
+                            </div>
+                            <div class="item-code">BPDS_ENVIRONMENT_SPILLS_OIL_SPILLS_NUMBER_1BBL</div>
+                          </div>
+                          <div class="item-row">
+                            <div>
+                              <strong>Oil spills - refining breakdown</strong>
+                              <span>Refining entities · FY2024 imported values</span>
+                            </div>
+                            <div class="item-code">BPDS_ENVIRONMENT_SPILLS_OIL_SPILLS_NUMBER_1BBL_REFINING</div>
+                          </div>
+                        </div>
+                        <a class="more-link" href="#">Показать ещё 93 связанных показателя</a>
+                      </div>
+                    </details>
+
+                    <details class="group-card">
+                      <summary>
+                        <div class="group-head">
+                          <div>
+                            <div class="group-title">
+                              <strong>Production entities</strong>
+                              <span>Группировка по бизнес-направлению</span>
+                              <span class="badge green">118 показателей</span>
+                            </div>
+                            <div class="mini-metrics" style="margin-top: 12px">
+                              <span class="mini-pill">Berlin Plant</span>
+                              <span class="mini-pill">Hamburg Facility</span>
+                              <span class="mini-pill">Scope 1, spills, water</span>
+                            </div>
+                          </div>
+                          <div class="group-meta">
+                            <span class="badge cyan">2 entities</span>
+                          </div>
+                        </div>
+                      </summary>
+                      <div class="group-body">
+                        <p class="group-description">
+                          Этот режим помогает понять не тему метрики, а какие
+                          подразделения пострадают от замены файла.
+                        </p>
+                      </div>
+                    </details>
+
+                    <details class="group-card">
+                      <summary>
+                        <div class="group-head">
+                          <div>
+                            <div class="group-title">
+                              <strong>Water and waste</strong>
+                              <span>Средний размер группы</span>
+                              <span class="badge cyan">54 показателя</span>
+                            </div>
+                            <div class="mini-metrics" style="margin-top: 12px">
+                              <span class="mini-pill">2 темы</span>
+                              <span class="mini-pill">3 entities</span>
+                              <span class="mini-pill">Review recommended</span>
+                            </div>
+                          </div>
+                          <div class="group-meta">
+                            <span class="badge amber">Нужна выборочная проверка</span>
+                          </div>
+                        </div>
+                      </summary>
+                      <div class="group-body">
+                        <p class="group-description">
+                          Сюда попадают связанные показатели по water withdrawal,
+                          hazardous waste и похожим темам.
+                        </p>
+                      </div>
+                    </details>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <aside class="sidebar-stack">
+              <section class="side-panel">
+                <div class="section-inner">
+                  <div class="section-label">Быстрый ответ</div>
+                  <div class="side-list">
+                    <div class="side-list-item">
+                      <div>
+                        <strong>Что это за блок?</strong>
+                        <span>Карта зависимостей файла, а не просто список кодов</span>
+                      </div>
+                    </div>
+                    <div class="side-list-item">
+                      <div>
+                        <strong>Зачем он нужен?</strong>
+                        <span>Показывает, какие показатели сломаются или изменятся при замене источника</span>
+                      </div>
+                    </div>
+                    <div class="side-list-item">
+                      <div>
+                        <strong>Как его используют?</strong>
+                        <span>Для аудита, impact analysis и проверки происхождения импортированных значений</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="side-panel">
+                <div class="section-inner">
+                  <div class="section-label">Топ групп</div>
+                  <div class="side-list">
+                    <div class="side-list-item">
+                      <div>
+                        <strong>Oil spills</strong>
+                        <span>Самая большая тематическая группа</span>
+                      </div>
+                      <div class="side-count">96</div>
+                    </div>
+                    <div class="side-list-item">
+                      <div>
+                        <strong>Production</strong>
+                        <span>Самое затронутое направление</span>
+                      </div>
+                      <div class="side-count">118</div>
+                    </div>
+                    <div class="side-list-item">
+                      <div>
+                        <strong>Refining</strong>
+                        <span>Следующий по масштабу impact</span>
+                      </div>
+                      <div class="side-count">84</div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="side-panel">
+                <div class="section-inner">
+                  <div class="section-label">Аудит и риск</div>
+                  <div class="audit-note">
+                    Файл можно показывать аудитору как источник происхождения
+                    импортированных значений. При этом пользователю здесь важнее
+                    не запоминать коды, а видеть <strong>масштаб влияния</strong>,
+                    <strong>темы</strong> и <strong>затронутые сущности</strong>.
+                  </div>
+                  <div class="top-actions" style="margin-top: 16px">
+                    <span class="chip">Последний импорт: 4 апр 2026</span>
+                    <span class="chip">Reviewer: Anna Manager</span>
+                  </div>
+                </div>
+              </section>
+            </aside>
+          </div>
+
+          <div class="footer-actions">
+            <div class="footer-note">
+              Вместо списка из 362 бейджей модалка сначала отвечает на вопрос
+              “где используется файл?”, а уже потом даёт детали.
+            </div>
+            <div class="footer-buttons">
+              <a class="action-button" href="#">Закрыть</a>
+              <a class="action-button" href="#">Скачать файл</a>
+              <a class="action-button primary" href="#">Открыть полный список связей</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

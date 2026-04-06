@@ -1,14 +1,27 @@
 "use client";
 
-import { useEffect, useEffectEvent, useId, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+  type KeyboardEvent,
+} from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  ArrowLeft,
   CheckCircle2,
+  Circle,
   FileText,
   Loader2,
   ShieldAlert,
+  TriangleAlert,
   Upload,
   XCircle,
 } from "lucide-react";
@@ -21,7 +34,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -118,12 +130,95 @@ const EMPTY_FORM: GuidedEntryForm = {
   files: [],
 };
 
+const EVIDENCE_FILE_ACCEPT =
+  ".pdf,.json,.xlsx,.docx,.csv,.png,.jpg,.jpeg,application/pdf,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/csv,image/png,image/jpeg";
+
 function isEditableStatus(status: string | undefined) {
   return status ? ["draft", "needs_revision", "rejected"].includes(status) : false;
 }
 
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
+}
+
+type ReadinessTone = "done" | "pending" | "warning";
+
+interface ReadinessItem {
+  label: string;
+  tone: ReadinessTone;
+}
+
+function getStatusBadgeVariant(status: string | undefined) {
+  if (status === "approved") return "success" as const;
+  if (status === "submitted" || status === "in_review") return "warning" as const;
+  return "secondary" as const;
+}
+
+function methodologySelectionRequired(
+  detail: Pick<DataPointDetail, "methodology_options"> | null | undefined
+) {
+  return (detail?.methodology_options?.length ?? 0) > 0;
+}
+
+function getMethodologyOptions(
+  detail: Pick<DataPointDetail, "methodology" | "methodology_options"> | null | undefined
+) {
+  const options = [...(detail?.methodology_options ?? [])];
+  const currentMethodology = detail?.methodology?.trim();
+  if (currentMethodology && !options.includes(currentMethodology)) {
+    options.unshift(currentMethodology);
+  }
+  return options;
+}
+
+function getReadinessItems(detail: DataPointDetail, form: GuidedEntryForm): ReadinessItem[] {
+  const hasStoredValue =
+    detail.element_type === "numeric"
+      ? detail.numeric_value != null
+      : Boolean(detail.text_value?.trim());
+  const hasValue = Boolean(form.value.trim()) || hasStoredValue;
+  const hasMethodology =
+    !methodologySelectionRequired(detail) ||
+    Boolean(form.methodology.trim()) ||
+    Boolean(detail.methodology?.trim());
+  const hasEvidence = !detail.evidence_required || detail.evidence_count + form.files.length > 0;
+  const contextTone: ReadinessTone =
+    detail.boundary_status === "included" ? "done" : "warning";
+
+  return [
+    { label: "Draft created", tone: "done" },
+    { label: "Value entered", tone: hasValue ? "done" : "pending" },
+    { label: "Methodology", tone: hasMethodology ? "done" : "pending" },
+    { label: "Evidence", tone: hasEvidence ? "done" : "pending" },
+    {
+      label: detail.boundary_status === "included" ? "Context" : "Boundary review",
+      tone: contextTone,
+    },
+  ];
+}
+
+function ReadinessIcon({ tone }: { tone: ReadinessTone }) {
+  if (tone === "done") {
+    return (
+      <span className="flex h-6 w-6 items-center justify-center rounded-md bg-green-500 text-white">
+        <CheckCircle2 className="h-4 w-4" />
+      </span>
+    );
+  }
+
+  if (tone === "warning") {
+    return (
+      <span className="flex h-6 w-6 items-center justify-center rounded-md border border-amber-300 bg-amber-50 text-amber-700">
+        <TriangleAlert className="h-4 w-4" />
+      </span>
+    );
+  }
+
+  return (
+    <span className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-400">
+      <Circle className="h-4 w-4" />
+    </span>
+  );
 }
 
 export function GuidedEntryDialog({
@@ -153,6 +248,7 @@ export function GuidedEntryDialog({
   const [isSaving, setIsSaving] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
   const notifyDataPointResolved = useEffectEvent((currentRowKey: string, dataPointId: number) => {
     onDataPointResolved(currentRowKey, dataPointId);
   });
@@ -177,6 +273,7 @@ export function GuidedEntryDialog({
         setIsSaving(false);
         setIsChecking(false);
         setIsSubmitting(false);
+        setIsDragOver(false);
       }
       return;
     }
@@ -245,6 +342,30 @@ export function GuidedEntryDialog({
     });
   }
 
+  function addFiles(files: File[]) {
+    if (files.length === 0) return;
+    updateField("files", [...form.files, ...files]);
+  }
+
+  function handleFileSelect(event: ChangeEvent<HTMLInputElement>) {
+    addFiles(Array.from(event.target.files ?? []));
+    event.target.value = "";
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setIsDragOver(false);
+    if (!isEditable) return;
+    addFiles(Array.from(event.dataTransfer.files ?? []));
+  }
+
+  function handleEvidenceZoneKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (!isEditable) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    fileInputRef.current?.click();
+  }
+
   function validateForSubmission() {
     if (!detail) return false;
 
@@ -258,7 +379,7 @@ export function GuidedEntryDialog({
     if (detail.element_type === "numeric" && !form.unit) {
       errors.unit = "Unit is required";
     }
-    if (!form.methodology) {
+    if (methodologySelectionRequired(detail) && !form.methodology) {
       errors.methodology = "Methodology is required";
     }
     if (detail.evidence_required && form.files.length === 0 && detail.evidence_count === 0) {
@@ -325,6 +446,12 @@ export function GuidedEntryDialog({
     await uploadSelectedEvidence(updated.id);
     await queryClient.invalidateQueries({ queryKey: ["data-points", projectId] });
     await queryClient.invalidateQueries({ queryKey: ["collection-assignments", projectId] });
+    await queryClient.invalidateQueries({
+      queryKey: ["collection-selected-detail", updated.id],
+    });
+    await queryClient.invalidateQueries({
+      queryKey: ["collection-selected-evidence", updated.id],
+    });
     return updated;
   }
 
@@ -408,6 +535,12 @@ export function GuidedEntryDialog({
       setActionTone("success");
       await queryClient.invalidateQueries({ queryKey: ["data-points", projectId] });
       await queryClient.invalidateQueries({ queryKey: ["collection-assignments", projectId] });
+      await queryClient.invalidateQueries({
+        queryKey: ["collection-selected-detail", updated.id],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["collection-selected-evidence", updated.id],
+      });
     } catch (error) {
       setActionMessage(errorMessage(error, "Submission failed. Please try again."));
       setActionTone("error");
@@ -416,98 +549,85 @@ export function GuidedEntryDialog({
     }
   }
 
+  const readinessItems = detail ? getReadinessItems(detail, form) : [];
+  const missingReadinessCount = readinessItems.filter((item) => item.tone !== "done").length;
+  const linkedEvidenceCount = detail ? detail.evidence_count + form.files.length : 0;
+  const availableMethodologyOptions = detail ? getMethodologyOptions(detail) : [];
+  const requiresMethodologySelection = detail ? methodologySelectionRequired(detail) : false;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Guided Quick Entry</DialogTitle>
-          <DialogDescription>
-            Save or submit this configured field without leaving the collection screen.
-          </DialogDescription>
-        </DialogHeader>
-
+      <DialogContent
+        className="inset-y-0 left-auto right-0 m-0 h-screen max-h-screen w-screen max-w-[min(1100px,100vw)] rounded-none border-y-0 border-r-0 border-l border-slate-200 bg-white shadow-2xl backdrop:bg-slate-950/35 backdrop:backdrop-blur-[2px]"
+        contentClassName="flex h-full flex-col p-0"
+        showCloseButton={false}
+      >
         {isLoading ? (
-          <div className="flex min-h-[240px] items-center justify-center text-slate-500">
+          <div className="flex min-h-[240px] flex-1 items-center justify-center text-slate-500">
             <Loader2 className="mr-2 h-5 w-5 animate-spin" />
             Preparing entry...
           </div>
         ) : loadError ? (
-          <div className="flex min-h-[180px] flex-col items-center justify-center rounded-lg border border-red-200 bg-red-50 px-6 py-8 text-center text-red-700">
+          <div className="flex min-h-[180px] flex-1 flex-col items-center justify-center px-6 py-8 text-center text-red-700">
             <AlertTriangle className="mb-3 h-6 w-6" />
             <p>{loadError}</p>
           </div>
         ) : !detail || !row ? (
-          <div className="flex min-h-[180px] items-center justify-center text-slate-500">
+          <div className="flex min-h-[180px] flex-1 items-center justify-center text-slate-500">
             No guided field selected.
           </div>
         ) : (
-          <div className="space-y-5">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="space-y-2">
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => onOpenChange(false)}
+                  aria-label="Close panel"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+                <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-md bg-white px-2 py-1 font-mono text-[11px] text-slate-600">
-                      {detail.element_code}
-                    </span>
-                    <p className="font-medium text-slate-900">{detail.element_name}</p>
+                    <h2 className="truncate text-xl font-semibold text-slate-900">
+                      {detail.element_name}
+                    </h2>
+                    <Badge variant={getStatusBadgeVariant(detail.status)}>
+                      {detail.status}
+                    </Badge>
                     {field?.required && (
                       <Badge variant="outline" className="text-[10px]">
                         Required
                       </Badge>
                     )}
                   </div>
-                  <div className="flex flex-wrap gap-3 text-xs text-slate-500">
-                    <span>Entity: {detail.entity_name ?? row.entity_name}</span>
-                    {(detail.facility_name ?? row.facility_name) && (
-                      <span>Facility: {detail.facility_name ?? row.facility_name}</span>
-                    )}
-                    <span>Boundary: {detail.boundary_status}</span>
-                    <span>Consolidation: {detail.consolidation_method}</span>
-                    {row.assignment_id && <span>Assignment #{row.assignment_id}</span>}
-                  </div>
-                  {field?.help_text && (
-                    <p className="whitespace-pre-line text-xs text-slate-500">
-                      {field.help_text}
-                    </p>
-                  )}
-                </div>
-
-                <div className="flex flex-col items-end gap-2">
-                  <Badge
-                    variant={
-                      detail.status === "approved"
-                        ? "success"
-                        : detail.status === "submitted" || detail.status === "in_review"
-                          ? "warning"
-                          : "secondary"
-                    }
-                  >
-                    {detail.status}
-                  </Badge>
-                  {detail.evidence_required && (
-                    <Badge variant="outline" className="text-[10px]">
-                      Evidence required
-                    </Badge>
-                  )}
+                  <p className="mt-1 font-mono text-xs text-slate-500">{detail.element_code}</p>
                 </div>
               </div>
 
-              {(detail.related_standards ?? []).length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-1">
-                  {detail.related_standards.map((standard) => (
-                    <Badge key={standard.code} variant="outline" className="text-[10px]">
-                      {standard.code}
-                    </Badge>
-                  ))}
-                </div>
-              )}
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (!fullWizardUrl) return;
+                  onOpenChange(false);
+                  router.push(fullWizardUrl);
+                }}
+                disabled={!fullWizardUrl}
+              >
+                Open Full Wizard
+              </Button>
             </div>
 
             {!isEditable && (
-              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
-                <div>
-                  This data point is read-only while it is in the <span className="font-medium">{detail.status}</span> status.
+              <div className="border-b border-amber-200 bg-amber-50 px-6 py-3 text-sm text-amber-800">
+                <div className="flex items-start gap-2">
+                  <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>
+                    This data point is read-only while it is in the{" "}
+                    <span className="font-medium">{detail.status}</span> status.
+                  </span>
                 </div>
               </div>
             )}
@@ -515,286 +635,447 @@ export function GuidedEntryDialog({
             {actionMessage && (
               <div
                 className={cn(
-                  "rounded-lg px-4 py-3 text-sm",
+                  "border-b px-6 py-3 text-sm",
                   actionTone === "error" || (gateResult && !gateResult.allowed)
-                    ? "border border-red-200 bg-red-50 text-red-800"
+                    ? "border-red-200 bg-red-50 text-red-800"
                     : actionTone === "success"
-                      ? "border border-green-200 bg-green-50 text-green-800"
-                      : "border border-slate-200 bg-slate-50 text-slate-700"
+                      ? "border-green-200 bg-green-50 text-green-800"
+                      : "border-slate-200 bg-slate-50 text-slate-700"
                 )}
               >
                 {actionMessage}
               </div>
             )}
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <Input
-                label="Value"
-                type={detail.element_type === "numeric" ? "number" : "text"}
-                value={form.value}
-                onChange={(event) => updateField("value", event.target.value)}
-                error={validationErrors.value}
-                placeholder={
-                  detail.element_type === "numeric"
-                    ? "Enter numeric value"
-                    : "Enter value"
-                }
-                disabled={!isEditable}
-              />
-
-              {detail.element_type === "numeric" ? (
-                <Select
-                  label="Unit"
-                  value={form.unit}
-                  onChange={(value) => updateField("unit", value)}
-                  options={[
-                    { value: "", label: "Select unit" },
-                    ...detail.unit_options.map((unit) => ({ value: unit, label: unit })),
-                  ]}
-                  error={validationErrors.unit}
-                  disabled={!isEditable}
-                />
-              ) : (
-                <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
-                  This field stores text content. Unit selection is not required.
-                </div>
-              )}
-            </div>
-
-            <Select
-              label="Methodology"
-              value={form.methodology}
-              onChange={(value) => updateField("methodology", value)}
-              options={[
-                { value: "", label: "Select methodology" },
-                ...detail.methodology_options.map((methodology) => ({
-                  value: methodology,
-                  label: methodology,
-                })),
-              ]}
-              error={validationErrors.methodology}
-              disabled={!isEditable}
-            />
-
-            {(detail.dimensions.scope || detail.dimensions.gas_type || detail.dimensions.category) && (
-              <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <h4 className="text-sm font-semibold text-slate-700">Dimensions</h4>
-                <div className="grid gap-4 md:grid-cols-3">
-                  {detail.dimensions.scope && (
-                    <div className="grid gap-1.5">
-                      <label htmlFor={scopeSelectId} className="text-sm font-medium text-slate-700">
-                        Scope
-                      </label>
-                      <select
-                        id={scopeSelectId}
-                        value={form.scope}
-                        onChange={(event) => updateField("scope", event.target.value)}
-                        className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-950"
-                        disabled={!isEditable}
-                      >
-                        <option value="">Select...</option>
-                        <option value="scope_1">Scope 1</option>
-                        <option value="scope_2">Scope 2</option>
-                        <option value="scope_3">Scope 3</option>
-                      </select>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <div className="grid min-h-full grid-cols-1 xl:grid-cols-[minmax(0,1fr)_280px]">
+                <div className="space-y-6 px-6 py-5">
+                  <section className="space-y-4">
+                    <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                      Context
+                    </h3>
+                    <div className="space-y-3 rounded-xl border border-slate-200 bg-white">
+                      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 text-sm">
+                        <span className="text-slate-500">Entity</span>
+                        <span className="font-medium text-slate-900">
+                          {detail.entity_name ?? row.entity_name}
+                        </span>
+                      </div>
+                      {(detail.facility_name ?? row.facility_name) && (
+                        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 text-sm">
+                          <span className="text-slate-500">Facility</span>
+                          <span className="font-medium text-slate-900">
+                            {detail.facility_name ?? row.facility_name}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 text-sm">
+                        <span className="text-slate-500">Boundary</span>
+                        <span className="font-medium text-slate-900">{detail.boundary_status}</span>
+                      </div>
+                      <div className="flex items-center justify-between px-4 py-3 text-sm">
+                        <span className="text-slate-500">Consolidation</span>
+                        <span className="font-medium text-slate-900">{detail.consolidation_method}</span>
+                      </div>
                     </div>
-                  )}
-                  {detail.dimensions.gas_type && (
-                    <div className="grid gap-1.5">
-                      <label htmlFor={gasTypeSelectId} className="text-sm font-medium text-slate-700">
-                        Gas Type
-                      </label>
-                      <select
-                        id={gasTypeSelectId}
-                        value={form.gas_type}
-                        onChange={(event) => updateField("gas_type", event.target.value)}
-                        className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-950"
-                        disabled={!isEditable}
-                      >
-                        <option value="">Select...</option>
-                        <option value="co2">CO2</option>
-                        <option value="ch4">CH4</option>
-                        <option value="n2o">N2O</option>
-                        <option value="hfcs">HFCs</option>
-                        <option value="pfcs">PFCs</option>
-                        <option value="sf6">SF6</option>
-                        <option value="nf3">NF3</option>
-                      </select>
-                    </div>
-                  )}
-                  {detail.dimensions.category && (
-                    <Input
-                      id={categoryInputId}
-                      label="Category"
-                      value={form.category}
-                      onChange={(event) => updateField("category", event.target.value)}
-                      placeholder="e.g. Energy, Transport"
-                      disabled={!isEditable}
-                    />
-                  )}
-                </div>
-              </div>
-            )}
 
-            <div className="space-y-3 rounded-xl border border-slate-200 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium text-slate-900">Evidence</p>
-                  <p className="text-xs text-slate-500">
-                    Linked evidence: {detail.evidence_count}
-                    {detail.evidence_required ? " (required before submission)" : ""}
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={!isEditable}
-                >
-                  <Upload className="mr-2 h-4 w-4" />
-                  Add Files
-                </Button>
-              </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                className="hidden"
-                onChange={(event) => {
-                  const selected = Array.from(event.target.files ?? []);
-                  if (selected.length > 0) {
-                    updateField("files", [...form.files, ...selected]);
-                  }
-                  event.target.value = "";
-                }}
-              />
-              {validationErrors.files && (
-                <p className="text-xs text-red-500">{validationErrors.files}</p>
-              )}
-              {form.files.length > 0 && (
-                <ul className="space-y-1">
-                  {form.files.map((file, index) => (
-                    <li
-                      key={`${file.name}-${index}`}
-                      className="flex items-center justify-between rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm"
-                    >
-                      <span className="flex items-center gap-2 text-slate-700">
-                        <FileText className="h-4 w-4 text-slate-400" />
-                        {file.name}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateField(
-                            "files",
-                            form.files.filter((_, fileIndex) => fileIndex !== index)
-                          )
+                    {(detail.related_standards ?? []).length > 0 && (
+                      <div className="space-y-2 rounded-xl border border-cyan-200 bg-cyan-50/70 p-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">
+                            Used in {detail.related_standards.length} standards
+                          </Badge>
+                          {detail.related_standards.map((standard) => (
+                            <Badge
+                              key={standard.code}
+                              variant="outline"
+                              className="text-[10px] uppercase tracking-wide"
+                            >
+                              {standard.code}
+                            </Badge>
+                          ))}
+                        </div>
+                        {detail.related_standards.length > 1 && (
+                          <p className="text-sm text-cyan-900">
+                            This is one shared data point. Editing it here updates the linked disclosures across the connected standards.
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {field?.help_text && (
+                      <p className="whitespace-pre-line text-sm leading-6 text-slate-500">
+                        {field.help_text}
+                      </p>
+                    )}
+                  </section>
+
+                  <section className="space-y-4">
+                    <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                      Data Entry
+                    </h3>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <Input
+                        label="Value"
+                        type={detail.element_type === "numeric" ? "number" : "text"}
+                        value={form.value}
+                        onChange={(event) => updateField("value", event.target.value)}
+                        error={validationErrors.value}
+                        placeholder={
+                          detail.element_type === "numeric"
+                            ? "Enter numeric value"
+                            : "Enter value"
                         }
-                        className="text-slate-400 hover:text-red-500"
                         disabled={!isEditable}
+                      />
+
+                      {detail.element_type === "numeric" ? (
+                        <Select
+                          label="Unit"
+                          value={form.unit}
+                          onChange={(value) => updateField("unit", value)}
+                          options={[
+                            { value: "", label: "Select unit" },
+                            ...detail.unit_options.map((unit) => ({ value: unit, label: unit })),
+                          ]}
+                          error={validationErrors.unit}
+                          disabled={!isEditable}
+                        />
+                      ) : (
+                        <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
+                          This field stores text content. Unit selection is not required.
+                        </div>
+                      )}
+                    </div>
+
+                    {availableMethodologyOptions.length > 0 ? (
+                      <div className="space-y-1.5">
+                        <Select
+                          label="Methodology"
+                          value={form.methodology}
+                          onChange={(value) => updateField("methodology", value)}
+                          options={[
+                            {
+                              value: "",
+                              label: requiresMethodologySelection
+                                ? "Select methodology"
+                                : "Methodology catalog unavailable",
+                            },
+                            ...availableMethodologyOptions.map((methodology) => ({
+                              value: methodology,
+                              label: methodology,
+                            })),
+                          ]}
+                          error={validationErrors.methodology}
+                          disabled={!isEditable || !requiresMethodologySelection}
+                        />
+                        {!requiresMethodologySelection && (
+                          <p className="text-xs text-slate-500">
+                            No methodology catalog is configured yet, so this field is read-only and not required.
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
+                        No methodologies are configured yet, so this field is not required for this entry.
+                      </div>
+                    )}
+
+                    {(detail.dimensions.scope || detail.dimensions.gas_type || detail.dimensions.category) && (
+                      <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <h4 className="text-sm font-semibold text-slate-700">Dimensions</h4>
+                        <div className="grid gap-4 md:grid-cols-3">
+                          {detail.dimensions.scope && (
+                            <div className="grid gap-1.5">
+                              <label htmlFor={scopeSelectId} className="text-sm font-medium text-slate-700">
+                                Scope
+                              </label>
+                              <select
+                                id={scopeSelectId}
+                                value={form.scope}
+                                onChange={(event) => updateField("scope", event.target.value)}
+                                className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-950"
+                                disabled={!isEditable}
+                              >
+                                <option value="">Select...</option>
+                                <option value="scope_1">Scope 1</option>
+                                <option value="scope_2">Scope 2</option>
+                                <option value="scope_3">Scope 3</option>
+                              </select>
+                            </div>
+                          )}
+                          {detail.dimensions.gas_type && (
+                            <div className="grid gap-1.5">
+                              <label htmlFor={gasTypeSelectId} className="text-sm font-medium text-slate-700">
+                                Gas Type
+                              </label>
+                              <select
+                                id={gasTypeSelectId}
+                                value={form.gas_type}
+                                onChange={(event) => updateField("gas_type", event.target.value)}
+                                className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-950"
+                                disabled={!isEditable}
+                              >
+                                <option value="">Select...</option>
+                                <option value="co2">CO2</option>
+                                <option value="ch4">CH4</option>
+                                <option value="n2o">N2O</option>
+                                <option value="hfcs">HFCs</option>
+                                <option value="pfcs">PFCs</option>
+                                <option value="sf6">SF6</option>
+                                <option value="nf3">NF3</option>
+                              </select>
+                            </div>
+                          )}
+                          {detail.dimensions.category && (
+                            <Input
+                              id={categoryInputId}
+                              label="Category"
+                              value={form.category}
+                              onChange={(event) => updateField("category", event.target.value)}
+                              placeholder="e.g. Energy, Transport"
+                              disabled={!isEditable}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="space-y-3 rounded-xl border border-slate-200 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-slate-900">Evidence</p>
+                          <p className="text-xs text-slate-500">
+                            Linked evidence: {linkedEvidenceCount}
+                            {detail.evidence_required ? " (required before submission)" : ""}
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={!isEditable}
+                        >
+                          <Upload className="mr-2 h-4 w-4" />
+                          Add Files
+                        </Button>
+                      </div>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        multiple
+                        accept={EVIDENCE_FILE_ACCEPT}
+                        className="hidden"
+                        onChange={handleFileSelect}
+                      />
+                      <div
+                        role="button"
+                        tabIndex={isEditable ? 0 : -1}
+                        onClick={() => {
+                          if (!isEditable) return;
+                          fileInputRef.current?.click();
+                        }}
+                        onKeyDown={handleEvidenceZoneKeyDown}
+                        onDragOver={(event) => {
+                          event.preventDefault();
+                          if (!isEditable) return;
+                          setIsDragOver(true);
+                        }}
+                        onDragLeave={() => setIsDragOver(false)}
+                        onDrop={handleDrop}
+                        className={cn(
+                          "rounded-xl border-2 border-dashed px-4 py-6 text-center text-sm transition-colors",
+                          isEditable
+                            ? "cursor-pointer focus:outline-none focus:ring-2 focus:ring-cyan-200"
+                            : "cursor-not-allowed opacity-60",
+                          isDragOver
+                            ? "border-cyan-400 bg-cyan-50 text-cyan-700"
+                            : "border-slate-200 text-slate-400",
+                          isEditable && !isDragOver && "hover:border-slate-300 hover:bg-slate-50"
+                        )}
+                        aria-disabled={!isEditable}
                       >
-                        <XCircle className="h-4 w-4" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+                        Drop files here or click to browse. Allowed: PDF, JSON, XLSX, DOCX, CSV, PNG, JPG.
+                      </div>
+                      {validationErrors.files && (
+                        <p className="text-xs text-red-500">{validationErrors.files}</p>
+                      )}
+                      {form.files.length > 0 && (
+                        <ul className="space-y-1">
+                          {form.files.map((file, index) => (
+                            <li
+                              key={`${file.name}-${index}`}
+                              className="flex items-center justify-between rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm"
+                            >
+                              <span className="flex items-center gap-2 text-slate-700">
+                                <FileText className="h-4 w-4 text-slate-400" />
+                                {file.name}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateField(
+                                    "files",
+                                    form.files.filter((_, fileIndex) => fileIndex !== index)
+                                  )
+                                }
+                                className="text-slate-400 hover:text-red-500"
+                                disabled={!isEditable}
+                              >
+                                <XCircle className="h-4 w-4" />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </section>
+                </div>
+
+                <aside className="border-t border-slate-200 bg-slate-50/80 px-5 py-5 xl:border-l xl:border-t-0">
+                  <div className="space-y-5">
+                    <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                          Readiness
+                        </h3>
+                        <span className="text-sm font-semibold text-amber-700">
+                          {missingReadinessCount} missing
+                        </span>
+                      </div>
+                      <div className="space-y-3">
+                        {readinessItems.map((item) => (
+                          <div
+                            key={item.label}
+                            className="flex items-center gap-3 border-b border-slate-200 pb-3 last:border-b-0 last:pb-0"
+                          >
+                            <ReadinessIcon tone={item.tone} />
+                            <span className="text-sm text-slate-700">{item.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {gateResult && (
+                      <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+                        <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                          Gate Check
+                        </h3>
+                        {gateResult.allowed && gateResult.failedGates.length === 0 && (
+                          <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-3 text-sm text-green-800">
+                            <CheckCircle2 className="h-4 w-4 shrink-0" />
+                            All checks passed. Ready to submit.
+                          </div>
+                        )}
+                        {gateResult.failedGates.map((failure) => (
+                          <div
+                            key={failure.code}
+                            className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-800"
+                          >
+                            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                            <div>{failure.message}</div>
+                          </div>
+                        ))}
+                        {gateResult.warnings.map((warning) => (
+                          <div
+                            key={warning.code}
+                            className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800"
+                          >
+                            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                            <div>{warning.message}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+                      <p>
+                        Entity: <span className="font-medium text-slate-900">{detail.entity_name ?? row.entity_name}</span>
+                      </p>
+                      {(detail.facility_name ?? row.facility_name) && (
+                        <p>
+                          Facility: <span className="font-medium text-slate-900">{detail.facility_name ?? row.facility_name}</span>
+                        </p>
+                      )}
+                      {row.assignment_id && (
+                        <p>
+                          Assignment: <span className="font-medium text-slate-900">#{row.assignment_id}</span>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </aside>
+              </div>
             </div>
 
-            {gateResult && (
-              <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <h4 className="text-sm font-semibold text-slate-700">Gate Check Results</h4>
-                {gateResult.allowed && gateResult.failedGates.length === 0 && (
-                  <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
-                    <CheckCircle2 className="h-4 w-4 shrink-0" />
-                    All checks passed. Ready to submit.
-                  </div>
-                )}
-                {gateResult.failedGates.map((failure) => (
-                  <div
-                    key={failure.code}
-                    className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+            <div className="border-t border-slate-200 bg-white px-6 py-4">
+              <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      if (!fullWizardUrl) return;
+                      onOpenChange(false);
+                      router.push(fullWizardUrl);
+                    }}
+                    disabled={!fullWizardUrl}
                   >
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                    <div>{failure.message}</div>
-                  </div>
-                ))}
-                {gateResult.warnings.map((warning) => (
-                  <div
-                    key={warning.code}
-                    className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+                    Open Full Wizard
+                  </Button>
+                  <Button variant="outline" onClick={() => onOpenChange(false)}>
+                    Close
+                  </Button>
+                </div>
+
+                <div className="flex flex-wrap gap-2 xl:justify-end">
+                  <Button
+                    variant="outline"
+                    onClick={() => void handleSaveDraft()}
+                    disabled={!isEditable || isLoading || isSaving || isChecking || isSubmitting}
                   >
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                    <div>{warning.message}</div>
-                  </div>
-                ))}
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      "Save Draft"
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => void handleGateCheck()}
+                    disabled={!isEditable || isLoading || isSaving || isChecking || isSubmitting}
+                  >
+                    {isChecking ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Checking...
+                      </>
+                    ) : (
+                      "Check Readiness"
+                    )}
+                  </Button>
+                  <Button
+                    onClick={() => void handleSubmit()}
+                    disabled={!isEditable || isLoading || isSaving || isChecking || isSubmitting}
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Submitting...
+                      </>
+                    ) : (
+                      "Submit"
+                    )}
+                  </Button>
+                </div>
               </div>
-            )}
+            </div>
           </div>
         )}
-
-        <DialogFooter>
-          <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-between">
-            <Button
-              variant="outline"
-              onClick={() => {
-                if (!fullWizardUrl) return;
-                onOpenChange(false);
-                router.push(fullWizardUrl);
-              }}
-              disabled={!fullWizardUrl}
-            >
-              Open Full Wizard
-            </Button>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Close
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => void handleSaveDraft()}
-                disabled={!isEditable || isLoading || isSaving || isChecking || isSubmitting}
-              >
-                {isSaving ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  "Save Draft"
-                )}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => void handleGateCheck()}
-                disabled={!isEditable || isLoading || isSaving || isChecking || isSubmitting}
-              >
-                {isChecking ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Checking...
-                  </>
-                ) : (
-                  "Check Readiness"
-                )}
-              </Button>
-              <Button
-                onClick={() => void handleSubmit()}
-                disabled={!isEditable || isLoading || isSaving || isChecking || isSubmitting}
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Submitting...
-                  </>
-                ) : (
-                  "Submit"
-                )}
-              </Button>
-            </div>
-          </div>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

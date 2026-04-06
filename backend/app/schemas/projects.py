@@ -37,6 +37,17 @@ class ProjectStandardAdd(BaseModel):
     is_base_standard: bool = False
 
 
+class ProjectStandardAttachPreviewOut(BaseModel):
+    standard_id: int
+    standard_code: str
+    standard_name: str
+    total_mapped_elements: int = 0
+    auto_reuse_count: int = 0
+    needs_review_count: int = 0
+    new_metric_count: int = 0
+    already_in_collection_count: int = 0
+
+
 class AssignmentCreate(BaseModel):
     shared_element_id: int | None = None
     shared_element_code: str | None = None

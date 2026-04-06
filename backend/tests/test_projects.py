@@ -231,6 +231,115 @@ async def test_list_projects(client: AsyncClient, org_ctx: dict):
 
 
 @pytest.mark.asyncio
+async def test_project_standard_attach_preview_counts_reuse_and_new_metrics(
+    client: AsyncClient, org_ctx: dict
+):
+    fixture = await _setup_standard_launch_fixture(client, org_ctx["headers"])
+
+    existing_assignment = await client.post(
+        f"/api/projects/{fixture['project_id']}/assignments",
+        json={
+            "shared_element_id": fixture["energy_element_id"],
+            "entity_id": org_ctx["root_entity_id"],
+        },
+        headers=org_ctx["headers"],
+    )
+    assert existing_assignment.status_code == 201
+
+    standard = await client.post(
+        "/api/standards",
+        json={"code": "IFRS-PREVIEW", "name": "IFRS Preview"},
+        headers=org_ctx["headers"],
+    )
+    assert standard.status_code == 201
+    preview_standard_id = standard.json()["id"]
+
+    disclosure = await client.post(
+        f"/api/standards/{preview_standard_id}/disclosures",
+        json={
+            "code": "IFRS S2.1",
+            "title": "Preview disclosure",
+            "requirement_type": "quantitative",
+            "mandatory_level": "mandatory",
+        },
+        headers=org_ctx["headers"],
+    )
+    assert disclosure.status_code == 201
+
+    full_item = await client.post(
+        f"/api/disclosures/{disclosure.json()['id']}/items",
+        json={
+            "item_code": "PREVIEW_FULL",
+            "name": "Preview full reuse",
+            "item_type": "metric",
+            "value_type": "number",
+            "unit_code": "MWh",
+        },
+        headers=org_ctx["headers"],
+    )
+    partial_item = await client.post(
+        f"/api/disclosures/{disclosure.json()['id']}/items",
+        json={
+            "item_code": "PREVIEW_PARTIAL",
+            "name": "Preview partial reuse",
+            "item_type": "metric",
+            "value_type": "number",
+            "unit_code": "tCO2e",
+        },
+        headers=org_ctx["headers"],
+    )
+    new_item = await client.post(
+        f"/api/disclosures/{disclosure.json()['id']}/items",
+        json={
+            "item_code": "PREVIEW_NEW",
+            "name": "Preview new metric",
+            "item_type": "metric",
+            "value_type": "number",
+            "unit_code": "m3",
+        },
+        headers=org_ctx["headers"],
+    )
+    assert full_item.status_code == 201
+    assert partial_item.status_code == 201
+    assert new_item.status_code == 201
+
+    new_element = await client.post(
+        "/api/shared-elements",
+        json={"code": "SE-WATER-PREVIEW", "name": "Water preview", "default_unit_code": "m3"},
+        headers=org_ctx["headers"],
+    )
+    assert new_element.status_code == 201
+
+    for item_id, element_id, mapping_type in (
+        (full_item.json()["id"], fixture["energy_element_id"], "full"),
+        (partial_item.json()["id"], fixture["emissions_element_id"], "partial"),
+        (new_item.json()["id"], new_element.json()["id"], "full"),
+    ):
+        mapping = await client.post(
+            "/api/mappings",
+            json={
+                "requirement_item_id": item_id,
+                "shared_element_id": element_id,
+                "mapping_type": mapping_type,
+            },
+            headers=org_ctx["headers"],
+        )
+        assert mapping.status_code == 201
+
+    preview = await client.get(
+        f"/api/projects/{fixture['project_id']}/standards/{preview_standard_id}/attach-preview",
+        headers=org_ctx["headers"],
+    )
+    assert preview.status_code == 200
+    body = preview.json()
+    assert body["total_mapped_elements"] == 3
+    assert body["auto_reuse_count"] == 1
+    assert body["needs_review_count"] == 1
+    assert body["new_metric_count"] == 1
+    assert body["already_in_collection_count"] == 1
+
+
+@pytest.mark.asyncio
 async def test_project_repo_rejects_non_editable_fields(client: AsyncClient, org_ctx: dict):
     project = await client.post(
         "/api/projects",
@@ -252,7 +361,7 @@ async def test_add_standard_to_project(client: AsyncClient, org_ctx: dict):
     # Create standard
     std = await client.post(
         "/api/standards",
-        json={"code": "GRI", "name": "GRI"},
+        json={"code": "GRI 302", "name": "GRI 302: Energy"},
         headers=org_ctx["headers"],
     )
     std_id = std.json()["id"]

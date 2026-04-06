@@ -58,6 +58,7 @@ from app.schemas.projects import (
     ProjectStandardLaunchRequest,
     ProjectStandardLaunchRequirementOut,
     ProjectStandardLaunchResultOut,
+    ProjectStandardAttachPreviewOut,
     ProjectStandardSummaryListOut,
     ProjectStandardSummaryOut,
     ProjectStandardAdd,
@@ -452,6 +453,132 @@ class ProjectService:
                 option.shared_element_name.lower(),
                 option.shared_element_code.lower(),
             ),
+        )
+
+    async def _build_project_standard_attach_preview(
+        self,
+        project_id: int,
+        standard: Standard,
+    ) -> ProjectStandardAttachPreviewOut:
+        candidate_rows = (
+            await self.repo.session.execute(
+                select(
+                    RequirementItemSharedElement.shared_element_id,
+                    RequirementItemSharedElement.mapping_type,
+                )
+                .join(
+                    RequirementItem,
+                    RequirementItem.id == RequirementItemSharedElement.requirement_item_id,
+                )
+                .join(
+                    DisclosureRequirement,
+                    DisclosureRequirement.id == RequirementItem.disclosure_requirement_id,
+                )
+                .join(
+                    SharedElement,
+                    SharedElement.id == RequirementItemSharedElement.shared_element_id,
+                )
+                .where(
+                    DisclosureRequirement.standard_id == standard.id,
+                    RequirementItem.is_required == True,
+                    RequirementItemSharedElement.is_current == True,
+                    SharedElement.is_current == True,
+                )
+            )
+        ).all()
+
+        mapping_types_by_element: dict[int, set[str]] = {}
+        for shared_element_id, mapping_type in candidate_rows:
+            mapping_types_by_element.setdefault(shared_element_id, set()).add(mapping_type)
+
+        if not mapping_types_by_element:
+            return ProjectStandardAttachPreviewOut(
+                standard_id=standard.id,
+                standard_code=standard.code,
+                standard_name=standard.name,
+            )
+
+        attached_standard_rows = (
+            await self.repo.session.execute(
+                select(RequirementItemSharedElement.shared_element_id)
+                .join(
+                    RequirementItem,
+                    RequirementItem.id == RequirementItemSharedElement.requirement_item_id,
+                )
+                .join(
+                    DisclosureRequirement,
+                    DisclosureRequirement.id == RequirementItem.disclosure_requirement_id,
+                )
+                .join(
+                    SharedElement,
+                    SharedElement.id == RequirementItemSharedElement.shared_element_id,
+                )
+                .join(
+                    ReportingProjectStandard,
+                    ReportingProjectStandard.standard_id == DisclosureRequirement.standard_id,
+                )
+                .where(
+                    ReportingProjectStandard.reporting_project_id == project_id,
+                    DisclosureRequirement.standard_id != standard.id,
+                    RequirementItem.is_required == True,
+                    RequirementItemSharedElement.is_current == True,
+                    SharedElement.is_current == True,
+                )
+                .distinct()
+            )
+        ).all()
+        attached_standard_element_ids = {shared_element_id for (shared_element_id,) in attached_standard_rows}
+
+        assignment_rows = (
+            await self.repo.session.execute(
+                select(MetricAssignment.shared_element_id)
+                .where(MetricAssignment.reporting_project_id == project_id)
+                .distinct()
+            )
+        ).all()
+        assignment_element_ids = {shared_element_id for (shared_element_id,) in assignment_rows}
+
+        data_point_rows = (
+            await self.repo.session.execute(
+                select(DataPoint.shared_element_id)
+                .where(DataPoint.reporting_project_id == project_id)
+                .distinct()
+            )
+        ).all()
+        data_point_element_ids = {shared_element_id for (shared_element_id,) in data_point_rows}
+
+        existing_project_element_ids = (
+            attached_standard_element_ids | assignment_element_ids | data_point_element_ids
+        )
+        live_collection_element_ids = assignment_element_ids | data_point_element_ids
+
+        auto_reuse_count = 0
+        needs_review_count = 0
+        new_metric_count = 0
+        already_in_collection_count = 0
+
+        for shared_element_id, mapping_types in mapping_types_by_element.items():
+            if shared_element_id in live_collection_element_ids:
+                already_in_collection_count += 1
+
+            if shared_element_id not in existing_project_element_ids:
+                new_metric_count += 1
+                continue
+
+            if mapping_types.issubset({"full"}):
+                auto_reuse_count += 1
+            else:
+                needs_review_count += 1
+
+        return ProjectStandardAttachPreviewOut(
+            standard_id=standard.id,
+            standard_code=standard.code,
+            standard_name=standard.name,
+            total_mapped_elements=len(mapping_types_by_element),
+            auto_reuse_count=auto_reuse_count,
+            needs_review_count=needs_review_count,
+            new_metric_count=new_metric_count,
+            already_in_collection_count=already_in_collection_count,
         )
 
     async def _build_assignment_matrix(
@@ -897,6 +1024,38 @@ class ProjectService:
             changes=payload.model_dump(),
         )
         return {"project_id": project_id, "standard_id": payload.standard_id}
+
+    async def get_project_standard_attach_preview(
+        self,
+        project_id: int,
+        standard_id: int,
+        ctx: RequestContext,
+    ) -> ProjectStandardAttachPreviewOut:
+        self._require_manager(ctx)
+        await get_project_for_ctx(
+            self.repo.session,
+            project_id,
+            ctx,
+            allow_collectors=False,
+            allow_reviewers=False,
+        )
+
+        standard_result = await self.repo.session.execute(
+            select(Standard).where(Standard.id == standard_id)
+        )
+        standard = standard_result.scalar_one_or_none()
+        if not standard:
+            raise AppError("NOT_FOUND", 404, f"Standard {standard_id} not found")
+
+        catalog_meta = resolve_standard_catalog_meta(standard.code, standard.name)
+        if not catalog_meta.is_attachable:
+            raise AppError(
+                "STANDARD_NOT_ATTACHABLE",
+                422,
+                f"Standard {standard.code} is a catalog family and cannot be attached directly",
+            )
+
+        return await self._build_project_standard_attach_preview(project_id, standard)
 
     async def list_project_standards(
         self, project_id: int, ctx: RequestContext

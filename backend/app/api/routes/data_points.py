@@ -1,5 +1,7 @@
+from urllib.parse import quote
+
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,6 +31,7 @@ from app.services.evidence_service import EvidenceService
 
 ALLOWED_MIME_TYPES = {
     "application/pdf",
+    "application/json",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "text/csv",
@@ -156,7 +159,7 @@ async def create_evidence(
             raise AppError(
                 "INVALID_MIME_TYPE", 422,
                 f"MIME type '{payload.mime_type}' is not allowed. "
-                f"Allowed types: pdf, xlsx, docx, csv, png, jpg"
+                f"Allowed types: pdf, json, xlsx, docx, csv, png, jpg"
             )
 
     return await _ev_service(session).create(payload, ctx)
@@ -174,7 +177,7 @@ async def upload_evidence(
         raise AppError(
             "INVALID_MIME_TYPE", 422,
             f"MIME type '{file.content_type}' is not allowed. "
-            f"Allowed types: pdf, xlsx, docx, csv, png, jpg"
+            f"Allowed types: pdf, json, xlsx, docx, csv, png, jpg"
         )
     file_data = await file.read()
     if len(file_data) > MAX_FILE_SIZE:
@@ -198,8 +201,22 @@ async def download_evidence(
     ctx: RequestContext = Depends(get_current_context),
     session: AsyncSession = Depends(get_session),
 ):
-    url = await _ev_service(session).get_download_url(evidence_id, ctx)
-    return RedirectResponse(url=url)
+    file_payload = await _ev_service(session).get_download_file(evidence_id, ctx)
+    ascii_name = (
+        file_payload.file_name.encode("ascii", "ignore").decode("ascii").replace('"', "") or "evidence"
+    )
+    encoded_name = quote(file_payload.file_name)
+    return Response(
+        content=file_payload.data,
+        media_type=file_payload.mime_type or "application/octet-stream",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{encoded_name}'
+            ),
+            "Content-Length": str(len(file_payload.data)),
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.get("/api/evidences", response_model=EvidenceListOut)

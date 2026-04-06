@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
+import { triggerFileDownload } from "@/lib/download";
 import { AIEvidenceGuidance } from "@/components/ai-inline-explain";
 import {
   Card,
@@ -33,7 +35,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useApiMutation, useApiQuery } from "@/lib/hooks/use-api";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Loader2,
   AlertTriangle,
@@ -49,6 +51,9 @@ import {
   ExternalLink,
   ShieldAlert,
 } from "lucide-react";
+
+const EVIDENCE_FILE_ACCEPT =
+  ".pdf,.json,.xlsx,.docx,.csv,.png,.jpg,.jpeg,application/pdf,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/csv,image/png,image/jpeg";
 
 // ---------- Types ----------
 
@@ -86,6 +91,55 @@ interface EvidenceResponse {
   total: number;
 }
 
+interface ProjectItem {
+  id: number;
+  name: string;
+}
+
+interface ProjectsResponse {
+  items: ProjectItem[];
+  total: number;
+}
+
+interface AssignmentRow {
+  id: number;
+  shared_element_id: number;
+  shared_element_code: string;
+  shared_element_name: string;
+  entity_id: number | null;
+  entity_name: string | null;
+  facility_id: number | null;
+  facility_name: string | null;
+}
+
+interface AssignmentMatrixResponse {
+  assignments: AssignmentRow[];
+}
+
+interface ProjectDataPoint {
+  id: number;
+  shared_element_id: number;
+  entity_id: number | null;
+  facility_id: number | null;
+}
+
+interface ProjectDataPointsResponse {
+  items: ProjectDataPoint[];
+  total: number;
+}
+
+interface LinkCandidate {
+  key: string;
+  shared_element_id: number;
+  entity_id: number | null;
+  facility_id: number | null;
+  data_point_id: number | null;
+  metric_code: string;
+  metric_name: string;
+  entity_name: string | null;
+  facility_name: string | null;
+}
+
 // ---------- Helpers ----------
 
 function formatFileSize(bytes: number): string {
@@ -102,15 +156,50 @@ function formatDate(dateStr: string): string {
   });
 }
 
+function getBindingLabel(status: EvidenceItem["binding_status"]): string {
+  return status === "bound" ? "Linked" : "Not linked";
+}
+
+function buildAssignmentContextKey(
+  sharedElementId: number,
+  entityId: number | null,
+  facilityId: number | null
+) {
+  return `${sharedElementId}:${entityId ?? 0}:${facilityId ?? 0}`;
+}
+
+async function fetchAllProjectDataPoints(projectId: number) {
+  const pageSize = 100;
+  let page = 1;
+  const items: ProjectDataPoint[] = [];
+
+  while (true) {
+    const response = await api.get<ProjectDataPointsResponse>(
+      `/projects/${projectId}/data-points?page=${page}&page_size=${pageSize}`
+    );
+    items.push(...response.items);
+    if (response.items.length < pageSize || items.length >= response.total) {
+      break;
+    }
+    page += 1;
+  }
+
+  return items;
+}
+
 // ---------- Component ----------
 
 export default function EvidencePage() {
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [typeFilter, setTypeFilter] = useState("");
   const [bindingFilter, setBindingFilter] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<EvidenceItem | null>(null);
   const [detailTarget, setDetailTarget] = useState<EvidenceItem | null>(null);
+  const [autoOpenedEvidenceId, setAutoOpenedEvidenceId] = useState<number | null>(null);
   const [addLinkOpen, setAddLinkOpen] = useState(false);
   const [linkTitle, setLinkTitle] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
@@ -118,18 +207,64 @@ export default function EvidencePage() {
   const [isDragOver, setIsDragOver] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [linkProjectId, setLinkProjectId] = useState("");
+  const [linkSearch, setLinkSearch] = useState("");
+  const [isLinking, setIsLinking] = useState(false);
+  const [unlinkingDataPointId, setUnlinkingDataPointId] = useState<number | null>(null);
 
   const { data: me, isLoading: meLoading } = useApiQuery<{
     roles: Array<{ role: string }>;
   }>(["auth-me"], "/auth/me");
   const role = me?.roles?.[0]?.role ?? "";
   const isReviewer = role === "reviewer";
+  const canManageEvidence = !["auditor", "reviewer"].includes(role);
 
   const { data, isLoading, error } = useApiQuery<EvidenceResponse>(
     ["evidence"],
     "/evidences",
     { enabled: !isReviewer }
   );
+  const { data: projectsData } = useApiQuery<ProjectsResponse>(
+    ["projects", "evidence-link"],
+    "/projects?page_size=100",
+    { enabled: !isReviewer }
+  );
+  const evidenceIdFromQuery = useMemo(() => {
+    const value = searchParams.get("evidenceId");
+    if (!value) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }, [searchParams]);
+  const { data: requestedEvidence } = useApiQuery<EvidenceItem>(
+    ["evidence-detail-direct", evidenceIdFromQuery],
+    `/evidences/${evidenceIdFromQuery ?? 0}`,
+    { enabled: !isReviewer && Boolean(evidenceIdFromQuery) }
+  );
+  const selectedProjectId = Number(linkProjectId) || null;
+  const { data: assignmentsData, isLoading: assignmentsLoading } =
+    useApiQuery<AssignmentMatrixResponse>(
+      ["evidence-link-assignments", selectedProjectId],
+      `/projects/${selectedProjectId ?? 0}/assignments`,
+      {
+        enabled:
+          !isReviewer &&
+          canManageEvidence &&
+          Boolean(detailTarget) &&
+          Boolean(selectedProjectId),
+      }
+    );
+  const { data: projectDataPoints, isLoading: dataPointsLoading } = useQuery<
+    ProjectDataPoint[],
+    Error
+  >({
+    queryKey: ["evidence-link-data-points", selectedProjectId],
+    queryFn: () => fetchAllProjectDataPoints(selectedProjectId as number),
+    enabled:
+      !isReviewer &&
+      canManageEvidence &&
+      Boolean(detailTarget) &&
+      Boolean(selectedProjectId),
+  });
 
   const syncEvidenceCache = useCallback(
     (updater: (current: EvidenceResponse | undefined) => EvidenceResponse | undefined) => {
@@ -219,7 +354,6 @@ export default function EvidencePage() {
   });
 
   const items = data?.items ?? [];
-  const canManageEvidence = !["auditor", "reviewer"].includes(role);
   const accessDenied =
     isReviewer ||
     ((error as Error & { code?: string } | null)?.code === "FORBIDDEN") ||
@@ -248,6 +382,116 @@ export default function EvidencePage() {
 
     return result;
   }, [items, typeFilter, bindingFilter, searchQuery]);
+
+  const projects = projectsData?.items ?? [];
+
+  const clearEvidenceIdParam = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("evidenceId");
+    const next = params.toString();
+    router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
+
+  const closeDetailDrawer = useCallback(() => {
+    setDetailTarget(null);
+    setAutoOpenedEvidenceId(null);
+    if (evidenceIdFromQuery) {
+      clearEvidenceIdParam();
+    }
+  }, [clearEvidenceIdParam, evidenceIdFromQuery]);
+
+  useEffect(() => {
+    if (!detailTarget) return;
+    if (linkProjectId) return;
+    const requestedProjectId = Number(searchParams.get("projectId") ?? "");
+    if (requestedProjectId) {
+      setLinkProjectId(String(requestedProjectId));
+      return;
+    }
+    if (projects.length > 0) {
+      setLinkProjectId(String(projects[0].id));
+    }
+  }, [detailTarget, linkProjectId, projects, searchParams]);
+
+  const linkedDataPointIdSet = useMemo(
+    () => new Set((detailTarget?.linked_data_points ?? []).map((item) => item.data_point_id)),
+    [detailTarget]
+  );
+
+  const linkCandidates = useMemo(() => {
+    const assignments = assignmentsData?.assignments ?? [];
+    const dataPoints = projectDataPoints ?? [];
+    const dataPointsByContext = new Map<string, ProjectDataPoint>();
+
+    for (const dataPoint of dataPoints) {
+      dataPointsByContext.set(
+        buildAssignmentContextKey(
+          dataPoint.shared_element_id,
+          dataPoint.entity_id,
+          dataPoint.facility_id
+        ),
+        dataPoint
+      );
+    }
+
+    const query = linkSearch.trim().toLowerCase();
+    const candidates: LinkCandidate[] = assignments.map((assignment) => {
+      const contextKey = buildAssignmentContextKey(
+        assignment.shared_element_id,
+        assignment.entity_id,
+        assignment.facility_id
+      );
+      const existingDataPoint = dataPointsByContext.get(contextKey);
+      return {
+        key: contextKey,
+        shared_element_id: assignment.shared_element_id,
+        entity_id: assignment.entity_id,
+        facility_id: assignment.facility_id,
+        data_point_id: existingDataPoint?.id ?? null,
+        metric_code: assignment.shared_element_code,
+        metric_name: assignment.shared_element_name,
+        entity_name: assignment.entity_name,
+        facility_name: assignment.facility_name,
+      };
+    });
+
+    return candidates
+      .filter((candidate) => !linkedDataPointIdSet.has(candidate.data_point_id ?? -1))
+      .filter((candidate) => {
+        if (!query) return true;
+        return [
+          candidate.metric_code,
+          candidate.metric_name,
+          candidate.entity_name ?? "",
+          candidate.facility_name ?? "",
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(query);
+      })
+      .slice(0, 8);
+  }, [assignmentsData?.assignments, linkSearch, linkedDataPointIdSet, projectDataPoints]);
+
+  useEffect(() => {
+    if (!evidenceIdFromQuery) return;
+    if (autoOpenedEvidenceId === evidenceIdFromQuery) return;
+
+    const existing = items.find((item) => item.id === evidenceIdFromQuery);
+    if (existing) {
+      setDetailTarget(existing);
+      setAutoOpenedEvidenceId(evidenceIdFromQuery);
+      return;
+    }
+
+    if (requestedEvidence) {
+      setDetailTarget(requestedEvidence);
+      setAutoOpenedEvidenceId(evidenceIdFromQuery);
+    }
+  }, [autoOpenedEvidenceId, evidenceIdFromQuery, items, requestedEvidence]);
+
+  useEffect(() => {
+    setLinkSearch("");
+  }, [detailTarget?.id]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -302,6 +546,79 @@ export default function EvidencePage() {
       setIsDeleting(false);
     }
   }, [deleteTarget, removeEvidenceFromCache]);
+
+  const refreshEvidenceDetail = useCallback(
+    async (evidenceId: number) => {
+      const refreshed = await api.get<EvidenceItem>(`/evidences/${evidenceId}`);
+      upsertEvidenceCache(refreshed);
+      setDetailTarget(refreshed);
+      return refreshed;
+    },
+    [upsertEvidenceCache]
+  );
+
+  const handleLinkToMetric = useCallback(
+    async (candidate: LinkCandidate) => {
+      if (!detailTarget || !selectedProjectId) return;
+
+      try {
+        setIsLinking(true);
+        setActionError(null);
+        let dataPointId = candidate.data_point_id;
+
+        if (!dataPointId) {
+          const created = await api.post<{ id: number }>(`/projects/${selectedProjectId}/data-points`, {
+            shared_element_id: candidate.shared_element_id,
+            entity_id: candidate.entity_id ?? undefined,
+            facility_id: candidate.facility_id ?? undefined,
+          });
+          dataPointId = created.id;
+        }
+
+        await api.post(`/data-points/${dataPointId}/evidences`, {
+          evidence_id: detailTarget.id,
+        });
+
+        await refreshEvidenceDetail(detailTarget.id);
+        await queryClient.invalidateQueries({ queryKey: ["evidence"] });
+        await queryClient.invalidateQueries({ queryKey: ["evidence-link-data-points", selectedProjectId] });
+        await queryClient.invalidateQueries({ queryKey: ["data-points", selectedProjectId] });
+        await queryClient.invalidateQueries({ queryKey: ["collection-assignments", selectedProjectId] });
+      } catch (error) {
+        setActionError(
+          error instanceof Error ? error.message : "Unable to link this evidence to the selected metric."
+        );
+      } finally {
+        setIsLinking(false);
+      }
+    },
+    [detailTarget, queryClient, refreshEvidenceDetail, selectedProjectId]
+  );
+
+  const handleUnlinkFromMetric = useCallback(
+    async (dataPointId: number) => {
+      if (!detailTarget) return;
+
+      try {
+        setUnlinkingDataPointId(dataPointId);
+        setActionError(null);
+        await api.delete(`/data-points/${dataPointId}/evidences/${detailTarget.id}`);
+        await refreshEvidenceDetail(detailTarget.id);
+        if (selectedProjectId) {
+          await queryClient.invalidateQueries({ queryKey: ["data-points", selectedProjectId] });
+          await queryClient.invalidateQueries({ queryKey: ["collection-assignments", selectedProjectId] });
+        }
+        await queryClient.invalidateQueries({ queryKey: ["evidence"] });
+      } catch (error) {
+        setActionError(
+          error instanceof Error ? error.message : "Unable to unlink this evidence from the selected metric."
+        );
+      } finally {
+        setUnlinkingDataPointId(null);
+      }
+    },
+    [detailTarget, queryClient, refreshEvidenceDetail, selectedProjectId]
+  );
 
   // ---------- Render ----------
 
@@ -406,12 +723,13 @@ export default function EvidencePage() {
                 Drag and drop files here
               </p>
               <p className="mt-1 text-xs text-slate-400">
-                or click to browse files
+                or click to browse files. Allowed: PDF, JSON, XLSX, DOCX, CSV, PNG, JPG.
               </p>
               <label className="mt-3 cursor-pointer">
                 <input
                   type="file"
                   multiple
+                  accept={EVIDENCE_FILE_ACCEPT}
                   className="hidden"
                   onChange={handleFileInput}
                   disabled={!canManageEvidence || uploadMutation.isPending}
@@ -459,14 +777,14 @@ export default function EvidencePage() {
           </div>
           <div className="w-44">
             <Select
-              label="Binding Status"
+              label="Link Status"
               placeholder="All"
               value={bindingFilter}
               onChange={setBindingFilter}
               options={[
                 { value: "", label: "All" },
-                { value: "bound", label: "Bound" },
-                { value: "unbound", label: "Unbound" },
+                { value: "bound", label: "Linked" },
+                { value: "unbound", label: "Not linked" },
               ]}
             />
           </div>
@@ -502,7 +820,7 @@ export default function EvidencePage() {
                 <TableHead className="hidden lg:table-cell">
                   Created By
                 </TableHead>
-                <TableHead className="text-center">Binding</TableHead>
+                <TableHead className="text-center">Link status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -538,7 +856,7 @@ export default function EvidencePage() {
                       {formatDate(item.upload_date)}
                     </TableCell>
                     <TableCell className="hidden text-sm text-slate-500 lg:table-cell">
-                      {item.created_by_name ?? "Unknown"}
+                      {item.created_by_name ?? "System"}
                     </TableCell>
                     <TableCell className="text-center">
                       <Badge
@@ -548,7 +866,7 @@ export default function EvidencePage() {
                             : "secondary"
                         }
                       >
-                        {item.binding_status}
+                        {getBindingLabel(item.binding_status)}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
@@ -570,7 +888,7 @@ export default function EvidencePage() {
                             size="icon"
                             title="Download"
                             onClick={() => {
-                              window.open(`/api/evidences/${item.id}/download`, "_blank");
+                              void triggerFileDownload(`/api/evidences/${item.id}/download`);
                             }}
                           >
                             <Download className="h-4 w-4" />
@@ -611,137 +929,412 @@ export default function EvidencePage() {
       <Dialog
         open={detailTarget !== null}
         onOpenChange={(open) => {
-          if (!open) setDetailTarget(null);
+          if (!open) {
+            closeDetailDrawer();
+          }
         }}
       >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {detailTarget?.type === "file" ? (
-                <FileText className="h-5 w-5 text-cyan-500" />
-              ) : (
-                <Link2 className="h-5 w-5 text-emerald-500" />
-              )}
-              {detailTarget?.title}
-            </DialogTitle>
-            <DialogDescription>{detailTarget?.description}</DialogDescription>
-          </DialogHeader>
-
+        <DialogContent
+          className="inset-y-0 left-auto right-0 m-0 h-screen max-h-screen w-screen max-w-[min(1180px,100vw)] rounded-none border-y-0 border-r-0 border-l border-slate-200 bg-white shadow-2xl backdrop:bg-slate-950/35 backdrop:backdrop-blur-[2px]"
+          contentClassName="flex h-full flex-col p-0"
+          showCloseButton={false}
+        >
           {detailTarget && (
-            <div className="mt-4 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs font-medium text-slate-500">Type</p>
-                  <p className="mt-1 text-sm capitalize">{detailTarget.type}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-slate-500">
-                    Binding Status
-                  </p>
-                  <Badge
-                    variant={
-                      detailTarget.binding_status === "bound"
-                        ? "success"
-                        : "secondary"
-                    }
-                    className="mt-1"
-                  >
-                    {detailTarget.binding_status}
-                  </Badge>
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-slate-500">
-                    Upload Date
-                  </p>
-                  <p className="mt-1 text-sm">
-                    {formatDate(detailTarget.upload_date)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-slate-500">
-                    Created By
-                  </p>
-                  <p className="mt-1 text-sm">{detailTarget.created_by_name ?? "Unknown"}</p>
-                </div>
-              </div>
-
-              {detailTarget.type === "file" && detailTarget.file_name && (
-                <div>
-                  <p className="text-xs font-medium text-slate-500">File</p>
-                  <p className="mt-1 text-sm">
-                    {detailTarget.file_name}
-                    {detailTarget.file_size != null && (
-                      <span className="ml-2 text-slate-400">
-                        ({formatFileSize(detailTarget.file_size)})
-                      </span>
+            <>
+              <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+                <DialogHeader className="space-y-2">
+                  <DialogTitle className="flex items-center gap-2 text-2xl font-semibold">
+                    {detailTarget.type === "file" ? (
+                      <FileText className="h-6 w-6 text-cyan-500" />
+                    ) : (
+                      <Link2 className="h-6 w-6 text-emerald-500" />
                     )}
-                  </p>
-                </div>
-              )}
+                    <span className="truncate">{detailTarget.title}</span>
+                  </DialogTitle>
+                  <DialogDescription className="max-w-3xl text-base leading-7">
+                    {detailTarget.description || "Review this evidence, manage links to metrics, and update supporting context."}
+                  </DialogDescription>
+                </DialogHeader>
 
-              {detailTarget.type === "link" && detailTarget.url && (
-                <div>
-                  <p className="text-xs font-medium text-slate-500">URL</p>
-                  <a
-                    href={detailTarget.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-1 inline-flex items-center gap-1 text-sm text-cyan-600 hover:underline"
+                <div className="flex shrink-0 items-center gap-2">
+                  {detailTarget.type === "file" ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        void triggerFileDownload(`/api/evidences/${detailTarget.id}/download`);
+                      }}
+                    >
+                      <Download className="h-4 w-4" />
+                      Download
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        if (detailTarget.url) window.open(detailTarget.url, "_blank");
+                      }}
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      Open link
+                    </Button>
+                  )}
+                  <button
+                    type="button"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+                    onClick={closeDetailDrawer}
+                    aria-label="Close"
                   >
-                    {detailTarget.url}
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M18 6 6 18" />
+                      <path d="m6 6 12 12" />
+                    </svg>
+                  </button>
                 </div>
-              )}
-
-              {/* Linked data points */}
-              <div>
-                <p className="text-xs font-medium text-slate-500">
-                  Linked Data Points ({(detailTarget.linked_data_points ?? []).length})
-                </p>
-                {(detailTarget.linked_data_points ?? []).length === 0 ? (
-                  <p className="mt-1 text-xs text-slate-400">None</p>
-                ) : (
-                  <div className="mt-1.5 flex flex-wrap gap-1">
-                    {(detailTarget.linked_data_points ?? []).map((dp) => (
-                      <Badge key={dp.data_point_id} variant="outline">
-                        {dp.code} &mdash; {dp.label}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
               </div>
 
-              {/* Linked requirement items */}
-              <div>
-                <p className="text-xs font-medium text-slate-500">
-                  Linked Requirement Items (
-                  {(detailTarget.linked_requirement_items ?? []).length})
-                </p>
-                {(detailTarget.linked_requirement_items ?? []).length === 0 ? (
-                  <p className="mt-1 text-xs text-slate-400">None</p>
-                ) : (
-                  <div className="mt-1.5 space-y-1">
-                    {(detailTarget.linked_requirement_items ?? []).map((ri) => (
-                      <div
-                        key={ri.requirement_item_id}
-                        className="rounded border border-slate-100 px-2 py-1 text-xs"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span>
-                            <span className="font-medium">{ri.code}</span>{" "}
-                            <span className="text-slate-500">
-                              {ri.description}
-                            </span>
-                          </span>
-                          <AIEvidenceGuidance requirementItemId={ri.requirement_item_id} />
+              <div className="grid min-h-0 flex-1 xl:grid-cols-[minmax(0,1fr)_320px]">
+                <div className="min-h-0 overflow-y-auto px-6 py-5">
+                  <div className="space-y-6">
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                          Type
+                        </div>
+                        <div className="mt-2 text-base font-medium capitalize text-slate-900">
+                          {detailTarget.type}
                         </div>
                       </div>
-                    ))}
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                          Link status
+                        </div>
+                        <div className="mt-2">
+                          <Badge
+                            variant={
+                              detailTarget.binding_status === "bound"
+                                ? "success"
+                                : "secondary"
+                            }
+                            className="text-sm"
+                          >
+                            {getBindingLabel(detailTarget.binding_status)}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                          Upload date
+                        </div>
+                        <div className="mt-2 text-base font-medium text-slate-900">
+                          {formatDate(detailTarget.upload_date)}
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                          Created by
+                        </div>
+                        <div className="mt-2 text-base font-medium text-slate-900">
+                          {detailTarget.created_by_name ?? "System"}
+                        </div>
+                      </div>
+                    </div>
+
+                    {detailTarget.binding_status === "unbound" && (
+                      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                        This evidence is uploaded, but it is not linked to any metric yet.
+                      </div>
+                    )}
+
+                    {detailTarget.type === "file" && detailTarget.file_name && (
+                      <div className="rounded-xl border border-slate-200 bg-white p-4">
+                        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                          File
+                        </div>
+                        <div className="mt-2 text-base font-medium text-slate-900">
+                          {detailTarget.file_name}
+                        </div>
+                        {detailTarget.file_size != null && (
+                          <div className="mt-1 text-sm text-slate-500">
+                            {formatFileSize(detailTarget.file_size)}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {detailTarget.type === "link" && detailTarget.url && (
+                      <div className="rounded-xl border border-slate-200 bg-white p-4">
+                        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                          Link
+                        </div>
+                        <a
+                          href={detailTarget.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-2 inline-flex items-center gap-1 text-base font-medium text-cyan-700 hover:underline"
+                        >
+                          {detailTarget.url}
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
+                      </div>
+                    )}
+
+                    <section className="space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">
+                            Linked Metrics
+                          </h3>
+                          <p className="mt-1 text-sm text-slate-500">
+                            {(detailTarget.linked_data_points ?? []).length} linked metric contexts
+                          </p>
+                        </div>
+                      </div>
+
+                      {(detailTarget.linked_data_points ?? []).length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-slate-200 px-4 py-5 text-sm text-slate-400">
+                          No linked metrics yet.
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {(detailTarget.linked_data_points ?? []).map((dp) => (
+                            <div
+                              key={dp.data_point_id}
+                              className="grid gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto]"
+                            >
+                              <div className="min-w-0">
+                                <div className="text-base font-medium text-slate-900">{dp.label}</div>
+                                <div className="mt-1 break-all font-mono text-xs text-slate-500">
+                                  {dp.code}
+                                </div>
+                              </div>
+                              <div className="flex items-start justify-end">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-9 px-3 text-sm text-red-600 hover:bg-red-50 hover:text-red-700"
+                                  onClick={() => void handleUnlinkFromMetric(dp.data_point_id)}
+                                  disabled={!canManageEvidence || unlinkingDataPointId === dp.data_point_id}
+                                >
+                                  {unlinkingDataPointId === dp.data_point_id ? (
+                                    <>
+                                      <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                                      Unlinking...
+                                    </>
+                                  ) : (
+                                    "Unlink"
+                                  )}
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </section>
+
+                    <section className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                      <div>
+                        <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">
+                          Link To Metric
+                        </h3>
+                        <p className="mt-1 text-sm text-slate-500">
+                          Attach this evidence to an existing project indicator. If the draft data point
+                          does not exist yet, it will be created automatically for the selected context.
+                        </p>
+                      </div>
+
+                      <div className="grid gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
+                        <Select
+                          label="Project"
+                          placeholder="Select project"
+                          value={linkProjectId}
+                          onChange={setLinkProjectId}
+                          options={projects.map((project) => ({
+                            value: String(project.id),
+                            label: project.name,
+                          }))}
+                        />
+                        <Input
+                          label="Search metric"
+                          placeholder="Search by code, metric name, entity, facility..."
+                          value={linkSearch}
+                          onChange={(event) => setLinkSearch(event.target.value)}
+                        />
+                      </div>
+
+                      {selectedProjectId == null ? (
+                        <div className="text-sm text-slate-400">Choose a project to start linking.</div>
+                      ) : assignmentsLoading || dataPointsLoading ? (
+                        <div className="flex items-center gap-2 text-sm text-slate-500">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Loading metric contexts...
+                        </div>
+                      ) : linkCandidates.length === 0 ? (
+                        <div className="text-sm text-slate-400">
+                          No matching unlinked metrics found in this project.
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {linkCandidates.map((candidate) => (
+                            <div
+                              key={candidate.key}
+                              className="grid gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto]"
+                            >
+                              <div className="min-w-0">
+                                <div className="truncate text-base font-medium text-slate-900">
+                                  {candidate.metric_name}
+                                </div>
+                                <div className="mt-1 break-all font-mono text-xs text-slate-500">
+                                  {candidate.metric_code}
+                                </div>
+                                <div className="mt-1 truncate text-sm text-slate-500">
+                                  {[candidate.entity_name, candidate.facility_name].filter(Boolean).join(" / ")}
+                                </div>
+                              </div>
+                              <div className="flex items-start justify-end">
+                                <Button
+                                  size="sm"
+                                  className="h-9 px-4 text-sm"
+                                  onClick={() => void handleLinkToMetric(candidate)}
+                                  disabled={!canManageEvidence || isLinking}
+                                >
+                                  {isLinking ? (
+                                    <>
+                                      <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                                      Linking...
+                                    </>
+                                  ) : (
+                                    "Link"
+                                  )}
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </section>
+
+                    <section className="space-y-3">
+                      <div>
+                        <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">
+                          Linked Requirement Items
+                        </h3>
+                        <p className="mt-1 text-sm text-slate-500">
+                          {(detailTarget.linked_requirement_items ?? []).length} linked requirement items
+                        </p>
+                      </div>
+                      {(detailTarget.linked_requirement_items ?? []).length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-slate-200 px-4 py-5 text-sm text-slate-400">
+                          No linked requirement items.
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {(detailTarget.linked_requirement_items ?? []).map((ri) => (
+                            <div
+                              key={ri.requirement_item_id}
+                              className="rounded-xl border border-slate-200 bg-white px-4 py-3"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="text-sm font-semibold text-slate-900">{ri.code}</div>
+                                  <div className="mt-1 text-sm text-slate-500">{ri.description}</div>
+                                </div>
+                                <AIEvidenceGuidance requirementItemId={ri.requirement_item_id} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </section>
                   </div>
-                )}
+                </div>
+
+                <aside className="border-t border-slate-200 bg-slate-50/80 px-5 py-5 xl:border-l xl:border-t-0">
+                  <div className="space-y-4">
+                    <div className="rounded-xl border border-slate-200 bg-white p-4">
+                      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        Summary
+                      </div>
+                      <div className="mt-3 space-y-3 text-sm text-slate-600">
+                        <div className="flex items-center justify-between gap-3">
+                          <span>Type</span>
+                          <span className="font-medium capitalize text-slate-900">{detailTarget.type}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                          <span>Status</span>
+                          <Badge
+                            variant={
+                              detailTarget.binding_status === "bound" ? "success" : "secondary"
+                            }
+                          >
+                            {getBindingLabel(detailTarget.binding_status)}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                          <span>Linked metrics</span>
+                          <span className="font-medium text-slate-900">
+                            {(detailTarget.linked_data_points ?? []).length}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                          <span>Requirements</span>
+                          <span className="font-medium text-slate-900">
+                            {(detailTarget.linked_requirement_items ?? []).length}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 bg-white p-4">
+                      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        Actions
+                      </div>
+                      <div className="mt-3 flex flex-col gap-2">
+                        {detailTarget.type === "file" ? (
+                          <Button
+                            type="button"
+                            onClick={() => {
+                              void triggerFileDownload(`/api/evidences/${detailTarget.id}/download`);
+                            }}
+                          >
+                            <Download className="h-4 w-4" />
+                            Download file
+                          </Button>
+                        ) : (
+                          <Button
+                            type="button"
+                            onClick={() => {
+                              if (detailTarget.url) window.open(detailTarget.url, "_blank");
+                            }}
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                            Open link
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={closeDetailDrawer}
+                        >
+                          Close
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </aside>
               </div>
-            </div>
+            </>
           )}
         </DialogContent>
       </Dialog>

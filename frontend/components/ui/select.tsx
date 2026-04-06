@@ -9,13 +9,24 @@ export interface SelectOption {
   disabled?: boolean;
 }
 
+export interface SelectOptionGroup {
+  label: string;
+  options: SelectOption[];
+}
+
+export type SelectOptionItem = SelectOption | SelectOptionGroup;
+
 export interface SelectProps
   extends Omit<React.SelectHTMLAttributes<HTMLSelectElement>, "onChange"> {
   label?: string;
   error?: string;
-  options: SelectOption[];
+  options: SelectOptionItem[];
   placeholder?: string;
   onChange?: (value: string) => void;
+}
+
+function isOptionGroup(option: SelectOptionItem): option is SelectOptionGroup {
+  return "options" in option;
 }
 
 const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
@@ -51,15 +62,29 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
               {placeholder}
             </option>
           )}
-          {options.map((option, idx) => (
-            <option
-              key={option.value || `opt-${idx}`}
-              value={option.value}
-              disabled={option.disabled}
-            >
-              {option.label}
-            </option>
-          ))}
+          {options.map((option, idx) =>
+            isOptionGroup(option) ? (
+              <optgroup key={`${option.label}-${idx}`} label={option.label}>
+                {option.options.map((groupOption, groupOptionIdx) => (
+                  <option
+                    key={groupOption.value || `opt-${idx}-${groupOptionIdx}`}
+                    value={groupOption.value}
+                    disabled={groupOption.disabled}
+                  >
+                    {groupOption.label}
+                  </option>
+                ))}
+              </optgroup>
+            ) : (
+              <option
+                key={option.value || `opt-${idx}`}
+                value={option.value}
+                disabled={option.disabled}
+              >
+                {option.label}
+              </option>
+            )
+          )}
         </select>
         {error && <p className="text-xs text-red-500">{error}</p>}
       </div>

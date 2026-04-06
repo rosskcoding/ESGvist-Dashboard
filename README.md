@@ -34,6 +34,13 @@ cp .env.example backend/.env
 docker compose up -d postgres redis minio
 ```
 
+By default, local startup now points the backend at the main imported proxy dataset database:
+
+- `esgvist_bp_proxy_case`
+- DSN: `postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/esgvist_bp_proxy_case`
+
+If you switch databases for a one-off task, restore this value in `backend/.env` before the next normal app launch.
+
 2. Start the backend on port `8001`:
 
 ```bash

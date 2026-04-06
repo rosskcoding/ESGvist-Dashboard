@@ -73,6 +73,7 @@ class DataPointRepository:
         "numeric_value",
         "text_value",
         "unit_code",
+        "methodology_id",
         "status",
         "entity_id",
         "facility_id",

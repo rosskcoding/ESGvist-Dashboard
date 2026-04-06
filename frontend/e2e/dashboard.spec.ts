@@ -16,7 +16,7 @@ test.describe("Dashboard", () => {
     await expect(page.getByText("Dashboard").first()).toBeVisible();
     await expect(page.getByText("Collection").first()).toBeVisible();
     await expect(page.getByText("Validation").first()).toBeVisible();
-    await expect(page.getByText("Merge View").first()).toBeVisible();
+    await expect(page.getByText("Coverage Matrix").first()).toBeVisible();
     await expect(page.getByText("Projects").first()).toBeVisible();
   });
 

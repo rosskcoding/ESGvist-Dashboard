@@ -142,7 +142,7 @@ export default function MergePage() {
   }>(["auth-me"], "/auth/me");
 
   const roles = me?.roles?.map((binding) => binding.role) ?? [];
-  const canAccess = roles.some((role) => ["admin", "esg_manager", "auditor"].includes(role));
+  const canAccess = roles.some((role) => ["admin", "auditor"].includes(role));
   const accessDenied = roles.length > 0 && !canAccess;
   const isAuditor = roles.includes("auditor");
 
@@ -225,10 +225,10 @@ export default function MergePage() {
         <div>
           <h2 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
             <GitMerge className="h-6 w-6" />
-            Merge View
+            Coverage Matrix
           </h2>
           <p className="mt-1 text-sm text-slate-500">
-            Cross-standard data element coverage matrix
+            Project coverage, reuse, and gaps across selected standards
           </p>
         </div>
         <Card className="border-red-200 bg-red-50">
@@ -237,7 +237,7 @@ export default function MergePage() {
             <div>
               <p className="font-semibold">Access denied</p>
               <p className="mt-1 text-sm">
-                Only admin, ESG manager, and auditor roles can access merge analysis.
+                Coverage analysis is reserved for admin diagnostics and auditor review.
               </p>
             </div>
           </CardContent>
@@ -250,9 +250,9 @@ export default function MergePage() {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900">Merge View</h2>
+          <h2 className="text-2xl font-bold text-slate-900">Coverage Matrix</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Cross-standard data element coverage matrix
+            Project coverage, reuse, and gaps across selected standards
           </p>
         </div>
         <Card>
@@ -274,10 +274,13 @@ export default function MergePage() {
         <div>
           <h2 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
             <GitMerge className="h-6 w-6" />
-            Merge View
+            Coverage Matrix
           </h2>
           <p className="mt-1 text-sm text-slate-500">
-            Cross-standard data element coverage matrix
+            Project coverage, reuse, and gaps across selected standards
+          </p>
+          <p className="mt-2 text-sm text-slate-500">
+            Built from approved library mappings. Standard relationships are maintained in the framework catalog.
           </p>
         </div>
       </div>
@@ -289,7 +292,7 @@ export default function MergePage() {
             <div>
               <p className="font-medium">Auditor access is read-only.</p>
               <p className="text-sm">
-                Merge analysis is available for inspection, but editing remains disabled elsewhere.
+                Coverage analysis is available for inspection, but editing remains disabled elsewhere.
               </p>
             </div>
           </CardContent>
@@ -397,7 +400,7 @@ export default function MergePage() {
       {/* Matrix table */}
       <Card>
         <CardHeader>
-          <CardTitle>Element Coverage Matrix</CardTitle>
+          <CardTitle>Project Coverage Matrix</CardTitle>
           <CardDescription>
             {filteredElements.length} element{filteredElements.length !== 1 && "s"}{" "}
             across {visibleStandards.length} standard{visibleStandards.length !== 1 && "s"}

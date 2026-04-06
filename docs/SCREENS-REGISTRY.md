@@ -256,19 +256,20 @@
   - Outlier flags (% difference)
   - Reuse impact indicator
 
-## 8. Merge & Analysis (1 screen)
+## 8. Coverage & Analysis (1 screen)
 
 | # | Screen | Route | Roles | Doc |
 |---|--------|-------|-------|-----|
-| 18 | Merge View Matrix | `/merge` | esg_manager, admin, auditor | TZ-Admin |
+| 18 | Coverage Matrix | `/merge` | admin, auditor | TZ-Admin |
 
-### Screen 18 — Merge View zones:
+### Screen 18 — Coverage Matrix zones:
 - Matrix: rows = shared elements, columns = standards
 - Cells: status color (red/yellow/green) + binding type
 - Summary bar (coverage %, common/unique/delta counts)
 - Boundary Scope Layer (entities in scope, excluded, consolidation)
 - Filters: standard, status, domain
 - Drill-down on click
+- Note: screen is built from approved library mappings and does not edit standard relationships
 
 ## 9. Assignments & Users (2 screens)
 
@@ -365,7 +366,7 @@
 ### Phase 2 — Management (Sprint F4-F6)
 7. Project List + Settings (#11-12)
 8. Assignments Matrix (#19)
-9. Merge View (#18)
+9. Coverage Matrix (#18)
 10. Completeness (#7)
 11. Company Structure (#8)
 12. Evidence Repository (#15)

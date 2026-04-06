@@ -27,6 +27,7 @@ from app.schemas.projects import (
     ProjectStandardLaunchOptionsOut,
     ProjectStandardLaunchRequest,
     ProjectStandardLaunchResultOut,
+    ProjectStandardAttachPreviewOut,
     ProjectStandardSummaryListOut,
     ProjectStandardAdd,
 )
@@ -93,6 +94,19 @@ async def add_standard(
 ):
     AuthPolicy.auditor_read_only(ctx)
     return await _get_service(session).add_standard(project_id, payload, ctx)
+
+
+@router.get(
+    "/api/projects/{project_id}/standards/{standard_id}/attach-preview",
+    response_model=ProjectStandardAttachPreviewOut,
+)
+async def get_project_standard_attach_preview(
+    project_id: int,
+    standard_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _get_service(session).get_project_standard_attach_preview(project_id, standard_id, ctx)
 
 
 @router.get("/api/projects/{project_id}/standards", response_model=ProjectStandardSummaryListOut)

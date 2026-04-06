@@ -5,6 +5,8 @@ const CSRF_COOKIE_KEY = "csrf_token";
 const CSRF_HEADER_NAME = "X-CSRF-Token";
 const FRONTEND_ORIGIN_HEADER_NAME = "X-Frontend-Origin";
 const LEGACY_AUTH_STORAGE_KEYS = ["access_token", "refresh_token"] as const;
+const CSRF_COOKIE_WAIT_TIMEOUT_MS = 1200;
+const CSRF_COOKIE_POLL_INTERVAL_MS = 50;
 export const API_ERROR_EVENT = "app-api-error";
 export const AUTH_EXPIRED_EVENT = "app-auth-expired";
 
@@ -86,6 +88,27 @@ function getCookieValue(key: string): string | null {
     .find((entry) => entry.startsWith(`${key}=`));
   if (!match) return null;
   return decodeURIComponent(match.slice(key.length + 1));
+}
+
+async function waitForCookieValue(
+  key: string,
+  timeoutMs = CSRF_COOKIE_WAIT_TIMEOUT_MS,
+): Promise<string | null> {
+  const initial = getCookieValue(key);
+  if (initial || typeof window === "undefined") {
+    return initial;
+  }
+
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => window.setTimeout(resolve, CSRF_COOKIE_POLL_INTERVAL_MS));
+    const value = getCookieValue(key);
+    if (value) {
+      return value;
+    }
+  }
+
+  return null;
 }
 
 function removeStorageValue(key: string): void {
@@ -195,8 +218,30 @@ function requiresCsrfHeader(method?: string): boolean {
   return !["GET", "HEAD", "OPTIONS", "TRACE"].includes(normalized);
 }
 
+function shouldWaitForCsrfCookie(path: string, method?: string): boolean {
+  if (!requiresCsrfHeader(method)) return false;
+  return path !== "/auth/login" && path !== "/auth/register";
+}
+
 function isJsonContentType(response: Response): boolean {
   return response.headers.get("content-type")?.includes("application/json") ?? false;
+}
+
+function parseContentDispositionFileName(header: string | null): string | null {
+  if (!header) return null;
+
+  const utf8Match = header.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch {
+      return utf8Match[1];
+    }
+  }
+
+  const asciiMatch = header.match(/filename="([^"]+)"/i) ?? header.match(/filename=([^;]+)/i);
+  if (!asciiMatch?.[1]) return null;
+  return asciiMatch[1].trim().replace(/^"(.*)"$/, "$1");
 }
 
 async function parseSuccessBody<T>(response: Response): Promise<T> {
@@ -218,7 +263,7 @@ export async function reportClientRuntimeEvent(event: ClientRuntimeEvent): Promi
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
-    const csrfToken = getCookieValue(CSRF_COOKIE_KEY);
+    const csrfToken = await waitForCookieValue(CSRF_COOKIE_KEY, 300);
     const browserOrigin = currentBrowserOrigin();
     if (csrfToken) {
       headers[CSRF_HEADER_NAME] = csrfToken;
@@ -263,9 +308,17 @@ class ApiClient {
     );
   }
 
-  private buildHeaders(headers?: HeadersInit, options: AuthHeaderOptions = {}): Record<string, string> {
+  private async buildHeaders(
+    path: string,
+    headers?: HeadersInit,
+    options: AuthHeaderOptions = {},
+  ): Promise<Record<string, string>> {
     const merged = mergeHeaders(headers);
-    const csrfToken = requiresCsrfHeader(options.method) ? getCookieValue(CSRF_COOKIE_KEY) : null;
+    const csrfToken = requiresCsrfHeader(options.method)
+      ? shouldWaitForCsrfCookie(path, options.method)
+        ? await waitForCookieValue(CSRF_COOKIE_KEY)
+        : getCookieValue(CSRF_COOKIE_KEY)
+      : null;
 
     if (options.contentType && !merged["Content-Type"]) {
       merged["Content-Type"] = options.contentType;
@@ -288,13 +341,15 @@ class ApiClient {
     options: RequestInit,
     headerOptions: AuthHeaderOptions,
   ): Promise<Response> {
+    const headers = await this.buildHeaders(path, options.headers, {
+      ...headerOptions,
+      method: options.method,
+    });
+
     return fetch(`${API_BASE}${path}`, {
       ...options,
       credentials: "same-origin",
-      headers: this.buildHeaders(options.headers, {
-        ...headerOptions,
-        method: options.method,
-      }),
+      headers,
     });
   }
 
@@ -390,13 +445,13 @@ class ApiClient {
 
   private async tryRefresh(): Promise<boolean> {
     try {
+      const csrfToken = await waitForCookieValue(CSRF_COOKIE_KEY, 300);
+      const browserOrigin = currentBrowserOrigin();
       const response = await fetch(`${API_BASE}/auth/refresh`, {
         method: "POST",
         credentials: "same-origin",
         headers: (() => {
           const headers: Record<string, string> = {};
-          const csrfToken = getCookieValue(CSRF_COOKIE_KEY);
-          const browserOrigin = currentBrowserOrigin();
           if (csrfToken) {
             headers[CSRF_HEADER_NAME] = csrfToken;
           }
@@ -468,6 +523,19 @@ class ApiClient {
       },
       { contentType: null },
     );
+  }
+
+  async download(path: string): Promise<{ blob: Blob; fileName: string | null; mimeType: string | null }> {
+    const response = await this.fetchWithAuth(path);
+    if (!response.ok) {
+      throw await this.parseErrorResponse(response);
+    }
+
+    return {
+      blob: await response.blob(),
+      fileName: parseContentDispositionFileName(response.headers.get("content-disposition")),
+      mimeType: response.headers.get("content-type"),
+    };
   }
 
   async stream(path: string, body: unknown, options: Pick<RequestInit, "signal"> = {}): Promise<Response> {

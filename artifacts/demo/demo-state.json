@@ -1,6 +1,6 @@
 {
-  "base_url": "http://localhost:3002",
-  "api_url": "http://localhost:8002/api",
+  "base_url": "http://127.0.0.1:3001",
+  "api_url": "http://127.0.0.1:8003/api",
   "password": "Test1234",
   "organization": {
     "id": 1,
@@ -28,32 +28,38 @@
       "full_name": "Ross Admin",
       "role": "platform_admin"
     },
-    "esg_manager": {
+    "framework_admin": {
       "id": 2,
+      "email": "framework@esgvist.com",
+      "full_name": "Iris Framework",
+      "role": null
+    },
+    "esg_manager": {
+      "id": 3,
       "email": "manager@greentech.com",
       "full_name": "Anna Manager",
       "role": "esg_manager"
     },
     "reviewer": {
-      "id": 3,
+      "id": 4,
       "email": "reviewer@greentech.com",
       "full_name": "Dmitry Reviewer",
       "role": "reviewer"
     },
     "auditor": {
-      "id": 4,
+      "id": 5,
       "email": "auditor@greentech.com",
       "full_name": "Elena Auditor",
       "role": "auditor"
     },
     "collector_energy": {
-      "id": 5,
+      "id": 6,
       "email": "collector1@greentech.com",
       "full_name": "Ivan Collector",
       "role": "collector"
     },
     "collector_climate": {
-      "id": 6,
+      "id": 7,
       "email": "collector2@greentech.com",
       "full_name": "Maria Data",
       "role": "collector"
@@ -62,7 +68,7 @@
   "pending_invitation": {
     "email": "pending.facility@greentech.com",
     "role": "collector",
-    "token": "6497ccb1-658d-4bb8-ab34-0f27b9defa2d"
+    "token": "a722392a-3e4b-472c-a8eb-ee0ad8e84b8f"
   },
   "entities": {
     "root": {

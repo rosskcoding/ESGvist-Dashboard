@@ -11,7 +11,7 @@ async function loginAsAdmin(page: import("@playwright/test").Page) {
 const screens = [
   { path: "/collection", title: /collection/i },
   { path: "/validation", title: /review|validation/i },
-  { path: "/merge", title: /merge/i },
+  { path: "/merge", title: /coverage|cross-standard/i },
   { path: "/projects", title: /project/i },
   { path: "/completeness", title: /completeness/i },
   { path: "/evidence", title: /evidence/i },

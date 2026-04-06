@@ -247,14 +247,14 @@ platform → organization → project → entity / data_point
 
 ---
 
-## 12. Merge View
+## 12. Coverage Matrix
 
 | Действие | platform_admin | admin | esg_manager | collector | reviewer | auditor |
 |----------|:-:|:-:|:-:|:-:|:-:|:-:|
-| Просматривать merge view | ⚠️ support | ✅ | ✅ | ❌ | ✅ RO | ✅ RO |
+| Просматривать coverage matrix | ⚠️ support | ✅ | ❌ | ❌ | ❌ | ✅ RO |
 | Impact preview (add standard) | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| Merge coverage report | ⚠️ support | ✅ | ✅ | ❌ | ✅ RO | ✅ RO |
-| Drill-down из merge view | ⚠️ support | ✅ | ✅ | ❌ | ⚠️ assigned | ✅ RO |
+| Coverage report | ⚠️ support | ✅ | ❌ | ❌ | ❌ | ✅ RO |
+| Drill-down из coverage matrix | ⚠️ support | ✅ | ❌ | ❌ | ❌ | ✅ RO |
 
 ---
 
@@ -372,7 +372,7 @@ platform → organization → project → entity / data_point
 - Только свои assignments;
 - Не видит всю структуру группы (только assigned entities);
 - Не управляет boundary;
-- Не видит Merge View;
+- Не видит Coverage Matrix;
 - Не видит чужие data points;
 - Может edit только в editable statuses (draft, rejected, needs_revision).
 

@@ -79,10 +79,16 @@ function DialogTrigger({
   );
 }
 
+interface DialogContentProps extends React.HTMLAttributes<HTMLDialogElement> {
+  contentClassName?: string;
+  closeButtonClassName?: string;
+  showCloseButton?: boolean;
+}
+
 const DialogContent = React.forwardRef<
   HTMLDialogElement,
-  React.HTMLAttributes<HTMLDialogElement>
->(({ className, children, ...props }, ref) => {
+  DialogContentProps
+>(({ className, children, contentClassName, closeButtonClassName, showCloseButton = true, ...props }, ref) => {
   const { setOpen, dialogRef } = useDialogContext();
 
   const mergedRef = React.useCallback(
@@ -108,29 +114,34 @@ const DialogContent = React.forwardRef<
       onClose={() => setOpen(false)}
       {...props}
     >
-      <div className="relative p-6">
+      <div className={cn("relative p-6", contentClassName)}>
         {children}
-        <button
-          type="button"
-          className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-950 focus:ring-offset-2 dark:ring-offset-slate-950 dark:focus:ring-slate-300"
-          onClick={() => setOpen(false)}
-          aria-label="Close"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+        {showCloseButton && (
+          <button
+            type="button"
+            className={cn(
+              "absolute right-4 top-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-950 focus:ring-offset-2 dark:ring-offset-slate-950 dark:focus:ring-slate-300",
+              closeButtonClassName
+            )}
+            onClick={() => setOpen(false)}
+            aria-label="Close"
           >
-            <path d="M18 6 6 18" />
-            <path d="m6 6 12 12" />
-          </svg>
-        </button>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M18 6 6 18" />
+              <path d="m6 6 12 12" />
+            </svg>
+          </button>
+        )}
       </div>
     </dialog>
   );

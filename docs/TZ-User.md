@@ -182,7 +182,8 @@
 
 ESG-менеджер и auditor дополнительно видят:
 
-- **Merge View** — полную матрицу element × standard;
+- impact preview при добавлении стандарта;
+- reused / linked стандарты в карточках данных;
 - общий coverage по всем стандартам;
 - gap analysis.
 
@@ -224,36 +225,32 @@ ESG-менеджер и auditor дополнительно видят:
 
 **Связь с БД:** `data_points.status`, `data_point_versions`, `audit_log`
 
-### 3.12. Доступ к Merge View
+### 3.12. Automatic Reuse In Project Flow
 
-Merge View — матрица пересечения стандартов — доступна **не всем ролям**:
+Связи между стандартами настраиваются в администраторском каталоге. Пользовательские проектные роли не работают с отдельной матрицей merge.
 
-| Роль | Доступ к Merge View |
-|------|-------------------|
-| `collector` | ❌ Нет |
-| `reviewer` | ✅ Да (read-only) |
-| `esg_manager` | ✅ Да (полный) |
-| `auditor` | ✅ Да (read-only) |
-| `admin` | ✅ Да (полный) |
+При добавлении нового стандарта система должна:
 
-**Для пользователей роли `collector`:**
+- автоматически находить `full`-совпадения по shared elements;
+- переиспользовать один и тот же `DataPoint` в нескольких стандартах;
+- показывать `impact preview`: `auto-linked`, `needs extra input`, `new metrics`, `already in collection`;
+- не создавать дубликаты assignment/data point там, где reuse уже возможен.
 
-- Merge View не отображается в навигации;
-- Пользователь видит только:
-  - назначенные ему элементы;
-  - пометку `reused` / `new` / `+Δ delta`;
-  - источник требования (какой стандарт требует этот элемент).
+**Для пользователей collection flow:**
 
-**Для ролей с доступом к Merge View:**
+- в карточке видно, в скольких стандартах используется этот shared data point;
+- список связанных стандартов отображается прямо в карточке / диалоге ввода;
+- при редактировании одного shared data point изменения видны во всех связанных стандартах;
+- при `partial` / `derived` reuse система явно показывает, что нужен дополнительный ввод.
 
-- Отображается полная матрица element × standard;
-- Видны reused элементы, дельты, пробелы;
-- Покрытие по стандартам (coverage %);
-- Drill-down до конкретного data point.
+**Для роли `esg_manager`:**
 
-**Связь с БД:** `requirement_item_shared_elements`, `requirement_item_statuses`
+- нет отдельного раздела Coverage Matrix в основной навигации;
+- основной интерфейс reuse = project settings + add standard preview + collection cards + rollout.
 
-**UI:** `/merge`
+**Связь с БД:** `requirement_item_shared_elements`, `requirement_item_statuses`, `data_points`
+
+**UI:** project settings + collection
 
 ### 3.13. Блокировка и предупреждение о влиянии (Locking and Impact Warning)
 

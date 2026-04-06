@@ -23,7 +23,7 @@ type MergeResponse = {
 };
 
 async function getMergeDataset(request: APIRequestContext) {
-  const managerAuth = await loginByApi(request, demoState.users.esg_manager.email, demoState.password);
+  const managerAuth = await loginByApi(request, demoState.users.admin.email, demoState.password);
   const response = await request.get(`${apiUrl}/projects/${demoState.project.id}/merge`, {
     headers: managerAuth.headers,
   });
@@ -35,11 +35,8 @@ function elementRow(page: Page, code: string) {
   return page.locator("tr", { has: page.getByText(code, { exact: true }) }).first();
 }
 
-test.describe("Screen 18 - Merge View", () => {
-  test("esg manager sees merge matrix, filters it, and opens cell details", async ({
-    page,
-    request,
-  }) => {
+test.describe("Screen 18 - Coverage Matrix", () => {
+  test("admin sees merge matrix, filters it, and opens cell details", async ({ page, request }) => {
     const merge = await getMergeDataset(request);
     const targetElement = merge.elements[0];
     const targetStandard = merge.standards.find((standard) =>
@@ -49,11 +46,11 @@ test.describe("Screen 18 - Merge View", () => {
     expect(targetElement).toBeTruthy();
     expect(targetStandard).toBeTruthy();
 
-    await loginThroughUi(page, demoState.users.esg_manager.email, demoState.password);
+    await loginThroughUi(page, demoState.users.admin.email, demoState.password);
     await page.goto("/merge");
 
-    await expect(page.getByRole("heading", { name: "Merge View" })).toBeVisible();
-    await expect(page.getByText("Element Coverage Matrix", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Coverage Matrix" })).toBeVisible();
+    await expect(page.getByText("Project Coverage Matrix", { exact: true })).toBeVisible();
     await expect(page.getByText(targetElement.code, { exact: true })).toBeVisible();
     await expect(page.getByRole("columnheader", { name: targetStandard!.code })).toBeVisible();
 
@@ -85,31 +82,32 @@ test.describe("Screen 18 - Merge View", () => {
     await page.goto("/merge");
 
     await expect(page.getByText("Auditor access is read-only.")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Merge View" })).toBeVisible();
-    await expect(page.getByText("Element Coverage Matrix", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Coverage Matrix" })).toBeVisible();
+    await expect(page.getByText("Project Coverage Matrix", { exact: true })).toBeVisible();
   });
 
   for (const user of [
+    demoState.users.esg_manager,
     demoState.users.collector_energy,
     demoState.users.reviewer,
   ]) {
     test(`blocks merge screen for ${user.role} (${user.email})`, async ({ page }) => {
       await loginThroughUi(page, user.email, demoState.password);
 
-      await expect(page.getByRole("link", { name: "Merge View" })).toHaveCount(0);
+      await expect(page.getByRole("link", { name: "Coverage Matrix" })).toHaveCount(0);
       await page.goto("/merge");
       await expect(page.getByText("Access denied")).toBeVisible();
       await expect(
-        page.getByText("Only admin, ESG manager, and auditor roles can access merge analysis.")
+        page.getByText("Coverage analysis is reserved for admin diagnostics and auditor review.")
       ).toBeVisible();
     });
   }
 
-  test("platform admin with org admin binding can access merge analysis", async ({ page }) => {
+  test("platform admin with org admin binding can access coverage analysis", async ({ page }) => {
     await loginThroughUi(page, demoState.users.admin.email, demoState.password);
     await page.goto("/merge");
 
-    await expect(page.getByRole("heading", { name: "Merge View" })).toBeVisible();
-    await expect(page.getByText("Element Coverage Matrix", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Coverage Matrix" })).toBeVisible();
+    await expect(page.getByText("Project Coverage Matrix", { exact: true })).toBeVisible();
   });
 });

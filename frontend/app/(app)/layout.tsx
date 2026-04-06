@@ -128,10 +128,10 @@ const navGroups: NavGroup[] = [
         requiredRoles: ["reviewer", "auditor"],
       },
       {
-        label: "Merge View",
+        label: "Coverage Matrix",
         href: "/merge",
         icon: GitMerge,
-        requiredRoles: ["esg_manager", "admin", "auditor", "reviewer"],
+        requiredRoles: ["admin", "auditor"],
       },
     ],
   },
@@ -360,12 +360,36 @@ function AppShell({ children }: { children: React.ReactNode }) {
     setOrgContextReady(false);
     setOrgContextError(null);
 
+    async function setOrganizationContextWithRetry(organizationId: number | null) {
+      let attempts = 0;
+
+      while (!cancelled) {
+        try {
+          await api.post("/auth/context/organization", {
+            organization_id: organizationId,
+          });
+          return;
+        } catch (error) {
+          const retryable =
+            isAppApiError(error) &&
+            error.status === 403 &&
+            (error.code === "CSRF_VALIDATION_FAILED" ||
+              error.code === "ORIGIN_VALIDATION_FAILED");
+
+          if (!retryable || attempts >= 2) {
+            throw error;
+          }
+
+          attempts += 1;
+          await new Promise((resolve) => window.setTimeout(resolve, 250 * attempts));
+        }
+      }
+    }
+
     async function ensureTenantContext() {
       try {
         if (orgRole?.scope_id) {
-          await api.post("/auth/context/organization", {
-            organization_id: orgRole.scope_id,
-          });
+          await setOrganizationContextWithRetry(orgRole.scope_id);
           if (!cancelled) {
             setOrgContextReady(true);
           }
@@ -387,9 +411,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
         const tenants = await api.get<TenantListResponse>("/platform/tenants?page=1&page_size=2");
         if (cancelled) return;
         if (tenants.total === 1 && tenants.items[0]) {
-          await api.post("/auth/context/organization", {
-            organization_id: tenants.items[0].id,
-          });
+          await setOrganizationContextWithRetry(tenants.items[0].id);
           if (!cancelled) {
             setOrgContextReady(true);
           }

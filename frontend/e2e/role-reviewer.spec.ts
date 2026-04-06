@@ -23,11 +23,11 @@ test.describe("Reviewer scenarios", () => {
     expect(body).toMatch(/review|approve|reject|submitted|queue/i);
   });
 
-  test("3. Merge view accessible for context", async ({ page }) => {
+  test("3. Coverage matrix accessible for context", async ({ page }) => {
     await loginAsAdmin(page);
     await page.goto("/merge");
     await page.waitForLoadState('networkidle');
-    await expect(page.getByText(/merge/i).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/coverage|matrix/i).first()).toBeVisible({ timeout: 10000 });
     const body = await page.textContent("body");
     expect(body).not.toContain("403");
   });

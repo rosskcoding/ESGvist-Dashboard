@@ -110,30 +110,29 @@ ESG-менеджер должен иметь возможность:
 
 **UI:** `/dashboard` — Overview экран
 
-### 3.4. Merge View (расширенный)
+### 3.4. Automatic Reuse & Standard Impact Preview
 
-ESG-менеджер имеет **полный доступ** к Merge View:
+ESG-менеджер **не управляет merge-логикой вручную** и не работает с отдельной матрицей связей между стандартами.
 
-- объединённая модель требований (element × standard);
-- reused элементы (одно значение закрывает несколько стандартов);
-- delta-требования (дополнительные поля при комбинации стандартов);
-- пробелы (gaps) — элементы без данных;
-- влияние стандартов друг на друга;
-- **drill-down** до data point / assignment;
-- **actions из merge view:**
-  - назначить ответственного (если gap);
-  - перейти к data entry;
-  - посмотреть evidence.
+При выборе стандарта для проекта система должна автоматически применять утверждённые library mappings (`shared_elements`, `mappings`, `deltas`) и показывать ESG-менеджеру только операционный результат:
 
-**Summary bar:**
-```
-Coverage: GRI 72% | IFRS 45% | SASB 60%
-Common elements: 8 | GRI-only: 4 | IFRS-only: 3 | Deltas: 5
-```
+- какие элементы будут переиспользованы автоматически (`full`);
+- где потребуется дополнительный ввод (`partial` / `derived`);
+- какие метрики являются новыми для проекта;
+- какие связанные метрики уже существуют в collection;
+- какие gaps нужно назначить команде.
 
-**Связь с БД:** `requirement_item_shared_elements`, `requirement_item_statuses`, `requirement_deltas`
+ESG-менеджер должен иметь возможность:
 
-**UI:** `/merge`
+- выбрать стандарт для проекта;
+- увидеть `impact preview` до подтверждения добавления;
+- после добавления стандарта открыть collection / rollout только для недостающих метрик;
+- провалиться из карточки в data entry, assignment и evidence;
+- видеть, что один shared data point используется в нескольких стандартах и синхронизируется между ними.
+
+**Связь с БД:** `requirement_item_shared_elements`, `requirement_item_statuses`, `requirement_deltas`, `data_points`
+
+**UI:** project settings + collection cards + launch flow
 
 ### 3.5. Управление качеством
 
@@ -339,8 +338,8 @@ ESG-менеджер должен видеть на Dashboard:
 - [ ] Можно создать проект с выбором стандартов и периода
 - [ ] Можно назначить сборщиков и ревьюеров (индивидуально и массово)
 - [ ] Dashboard показывает прогресс по стандартам / темам / пользователям
-- [ ] Merge View доступен с drill-down
 - [ ] При добавлении стандарта показывается impact preview
+- [ ] Карточки collection показывают reuse и связанные стандарты
 - [ ] Readiness check работает перед экспортом
 - [ ] Можно экспортировать GRI Content Index (PDF/Excel)
 - [ ] Можно перевести проект в `published` (с блокировкой данных)

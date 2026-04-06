@@ -1,0 +1,1622 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ESGvist Сбор данных - мокап task-first</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #eff2e9;
+        --bg-strong: #e5ebdd;
+        --panel: rgba(255, 255, 255, 0.82);
+        --panel-strong: #ffffff;
+        --border: rgba(15, 23, 32, 0.1);
+        --text: #132026;
+        --muted: #64707b;
+        --muted-soft: #86929c;
+        --green: #6b8f3c;
+        --green-soft: #e7f1d8;
+        --cyan: #11796f;
+        --cyan-soft: #dcf4f1;
+        --amber: #c57b1d;
+        --amber-soft: #fff1dd;
+        --red: #a84647;
+        --red-soft: #fde8e8;
+        --slate-soft: #f2f5f7;
+        --shadow: 0 18px 50px rgba(34, 50, 39, 0.08);
+        --radius-xl: 28px;
+        --radius-lg: 22px;
+        --radius-md: 16px;
+        --radius-sm: 12px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+      }
+
+      body {
+        font-family: "Manrope", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, rgba(17, 121, 111, 0.12), transparent 22rem),
+          radial-gradient(circle at top right, rgba(107, 143, 60, 0.16), transparent 20rem),
+          linear-gradient(180deg, #f8faf6 0%, var(--bg) 100%);
+      }
+
+      .page-shell {
+        width: min(1500px, calc(100vw - 32px));
+        margin: 16px auto;
+        border: 1px solid rgba(255, 255, 255, 0.55);
+        border-radius: 32px;
+        background: rgba(255, 255, 255, 0.42);
+        backdrop-filter: blur(18px);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        padding: 20px 24px;
+        border-bottom: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0.34));
+      }
+
+      .brand-lockup {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+
+      .brand-mark {
+        display: grid;
+        place-items: center;
+        width: 46px;
+        height: 46px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #10251f, #1f5e4e);
+        color: #f6fbf9;
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+      }
+
+      .brand-copy strong {
+        display: block;
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 18px;
+        letter-spacing: -0.03em;
+      }
+
+      .brand-copy span {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .topbar-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+
+      .pill,
+      .ghost-pill,
+      .tab-button,
+      .chip,
+      .workspace-button {
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        font: inherit;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        background: rgba(255, 255, 255, 0.75);
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .pill .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--cyan);
+      }
+
+      .ghost-pill {
+        padding: 10px 14px;
+        background: transparent;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .hero {
+        padding: 28px 24px 22px;
+      }
+
+      .hero-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.3fr) minmax(360px, 0.9fr);
+        gap: 20px;
+      }
+
+      .hero-panel,
+      .stats-panel,
+      .filters,
+      .content-panel,
+      .workspace {
+        border: 1px solid var(--border);
+        border-radius: var(--radius-xl);
+        background: var(--panel);
+        backdrop-filter: blur(16px);
+      }
+
+      .hero-panel {
+        padding: 26px;
+        background:
+          radial-gradient(circle at top right, rgba(17, 121, 111, 0.11), transparent 14rem),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.76));
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: rgba(17, 121, 111, 0.08);
+        color: var(--cyan);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3,
+      h4,
+      h5,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        margin-top: 16px;
+        font-family: "Space Grotesk", sans-serif;
+        font-size: clamp(32px, 4vw, 46px);
+        line-height: 1;
+        letter-spacing: -0.05em;
+      }
+
+      .hero-copy {
+        margin-top: 14px;
+        max-width: 58ch;
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.7;
+      }
+
+      .hero-notes {
+        margin-top: 18px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .note-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 12px;
+        border-radius: 999px;
+        background: rgba(19, 32, 38, 0.05);
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .note-badge small {
+        color: var(--muted);
+        font-weight: 600;
+      }
+
+      .stats-panel {
+        padding: 18px;
+        background:
+          radial-gradient(circle at bottom left, rgba(107, 143, 60, 0.15), transparent 12rem),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(245, 249, 242, 0.9));
+      }
+
+      .stats-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .stats-head h3 {
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 20px;
+        letter-spacing: -0.04em;
+      }
+
+      .stats-head p {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      .stats-grid {
+        margin-top: 18px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .stat-card {
+        padding: 18px;
+        border-radius: var(--radius-md);
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid rgba(19, 32, 38, 0.08);
+      }
+
+      .stat-card strong {
+        display: block;
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 28px;
+        letter-spacing: -0.05em;
+      }
+
+      .stat-card span {
+        display: block;
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .stat-card.is-hot {
+        background: linear-gradient(180deg, rgba(253, 232, 232, 0.95), rgba(255, 255, 255, 0.84));
+      }
+
+      .stat-card.is-good {
+        background: linear-gradient(180deg, rgba(231, 241, 216, 0.96), rgba(255, 255, 255, 0.84));
+      }
+
+      .tabs {
+        display: flex;
+        gap: 10px;
+        padding: 0 24px 18px;
+        overflow-x: auto;
+      }
+
+      .tab-button {
+        padding: 12px 16px;
+        background: rgba(255, 255, 255, 0.62);
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        cursor: pointer;
+      }
+
+      .tab-button.active {
+        background: linear-gradient(135deg, #143127, #1d6757);
+        color: #f3fffd;
+        box-shadow: 0 10px 24px rgba(20, 49, 39, 0.2);
+      }
+
+      .main-grid {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr) 360px;
+        gap: 20px;
+        padding: 0 24px 24px;
+      }
+
+      .filters,
+      .content-panel,
+      .workspace {
+        padding: 22px;
+      }
+
+      .filters {
+        align-self: start;
+        position: sticky;
+        top: 16px;
+      }
+
+      .filters h3,
+      .content-head h3,
+      .workspace h3 {
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 18px;
+        letter-spacing: -0.04em;
+      }
+
+      .filters p,
+      .content-head p,
+      .workspace p {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      .filter-group + .filter-group {
+        margin-top: 22px;
+        padding-top: 20px;
+        border-top: 1px solid var(--border);
+      }
+
+      .filter-group h4 {
+        margin-bottom: 12px;
+        font-size: 12px;
+        color: var(--muted-soft);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .search-input,
+      .select-shell {
+        width: 100%;
+        padding: 14px 14px;
+        border-radius: 16px;
+        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.82);
+        color: var(--text);
+        font: inherit;
+      }
+
+      .select-shell {
+        appearance: none;
+      }
+
+      .chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .chip {
+        padding: 9px 12px;
+        background: rgba(19, 32, 38, 0.04);
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+      }
+
+      .chip.active {
+        color: var(--text);
+        background: rgba(17, 121, 111, 0.12);
+        border-color: rgba(17, 121, 111, 0.22);
+      }
+
+      .stack {
+        display: grid;
+        gap: 12px;
+      }
+
+      .inline-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 16px;
+        border-radius: 18px;
+        background: rgba(19, 32, 38, 0.04);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .toggle-ui {
+        position: relative;
+        width: 46px;
+        height: 28px;
+        border-radius: 999px;
+        background: rgba(17, 121, 111, 0.18);
+      }
+
+      .toggle-ui::after {
+        content: "";
+        position: absolute;
+        top: 3px;
+        left: 21px;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: #fff;
+        box-shadow: 0 4px 12px rgba(17, 121, 111, 0.18);
+      }
+
+      .content-panel {
+        min-height: 840px;
+      }
+
+      .content-head {
+        display: flex;
+        align-items: start;
+        justify-content: space-between;
+        gap: 14px;
+        margin-bottom: 18px;
+      }
+
+      .section-group + .section-group {
+        margin-top: 26px;
+      }
+
+      .section-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
+      .section-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .section-title h4 {
+        font-size: 18px;
+        letter-spacing: -0.03em;
+      }
+
+      .section-title span {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .task-list {
+        display: grid;
+        gap: 14px;
+      }
+
+      .task-card {
+        padding: 18px;
+        border: 1px solid rgba(19, 32, 38, 0.08);
+        border-radius: 22px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 246, 0.9));
+        cursor: pointer;
+        transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+      }
+
+      .task-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 16px 28px rgba(19, 32, 38, 0.08);
+      }
+
+      .task-card.active {
+        border-color: rgba(17, 121, 111, 0.28);
+        box-shadow: 0 18px 36px rgba(17, 121, 111, 0.12);
+      }
+
+      .task-card.is-ready {
+        background: linear-gradient(180deg, rgba(231, 241, 216, 0.62), rgba(255, 255, 255, 0.92));
+      }
+
+      .task-card.is-submitted {
+        background: linear-gradient(180deg, rgba(242, 245, 247, 0.92), rgba(255, 255, 255, 0.92));
+      }
+
+      .task-top,
+      .task-meta,
+      .task-bottom {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .task-top {
+        align-items: start;
+      }
+
+      .code-badge,
+      .status-badge,
+      .mini-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: 999px;
+        padding: 7px 10px;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+      }
+
+      .code-badge {
+        font-family: "IBM Plex Mono", monospace;
+        background: rgba(19, 32, 38, 0.06);
+        color: var(--text);
+      }
+
+      .status-badge.status-draft {
+        background: var(--amber-soft);
+        color: var(--amber);
+      }
+
+      .status-badge.status-ready {
+        background: var(--green-soft);
+        color: var(--green);
+      }
+
+      .status-badge.status-review {
+        background: rgba(17, 121, 111, 0.12);
+        color: var(--cyan);
+      }
+
+      .status-badge.status-blocked {
+        background: var(--red-soft);
+        color: var(--red);
+      }
+
+      .task-card h5 {
+        margin-top: 12px;
+        font-size: 19px;
+        letter-spacing: -0.03em;
+      }
+
+      .task-card .subtitle {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .task-meta {
+        margin-top: 14px;
+        flex-wrap: wrap;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.7;
+      }
+
+      .task-bottom {
+        margin-top: 16px;
+        align-items: end;
+      }
+
+      .badge-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .mini-badge {
+        background: rgba(19, 32, 38, 0.05);
+        color: var(--muted);
+      }
+
+      .mini-badge.is-reused {
+        background: rgba(17, 121, 111, 0.12);
+        color: var(--cyan);
+      }
+
+      .mini-badge.is-blocker {
+        background: var(--red-soft);
+        color: var(--red);
+      }
+
+      .task-action {
+        padding: 11px 14px;
+        border-radius: 14px;
+        border: 1px solid rgba(19, 32, 38, 0.1);
+        background: #fff;
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .compact-table {
+        width: 100%;
+        border-collapse: collapse;
+        overflow: hidden;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.8);
+      }
+
+      .compact-table th,
+      .compact-table td {
+        padding: 14px 12px;
+        border-bottom: 1px solid rgba(19, 32, 38, 0.08);
+        text-align: left;
+        font-size: 13px;
+      }
+
+      .compact-table th {
+        color: var(--muted-soft);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .blocker-grid,
+      .guided-grid {
+        display: grid;
+        gap: 14px;
+      }
+
+      .blocker-card,
+      .guided-card {
+        padding: 18px;
+        border-radius: 22px;
+        border: 1px solid rgba(19, 32, 38, 0.08);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(249, 250, 247, 0.9));
+      }
+
+      .blocker-card {
+        border-color: rgba(197, 123, 29, 0.18);
+        background: linear-gradient(180deg, rgba(255, 241, 221, 0.78), rgba(255, 255, 255, 0.92));
+      }
+
+      .workspace {
+        align-self: start;
+        position: sticky;
+        top: 16px;
+        background:
+          radial-gradient(circle at top right, rgba(17, 121, 111, 0.1), transparent 14rem),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(246, 250, 247, 0.94));
+      }
+
+      .workspace-status {
+        margin-top: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .workspace-code {
+        display: inline-flex;
+        margin-top: 16px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(19, 32, 38, 0.06);
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 12px;
+      }
+
+      .workspace h4 {
+        margin-top: 14px;
+        font-size: 24px;
+        letter-spacing: -0.04em;
+      }
+
+      .workspace-meta {
+        margin-top: 12px;
+        display: grid;
+        gap: 9px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .workspace-section {
+        margin-top: 22px;
+        padding-top: 20px;
+        border-top: 1px solid var(--border);
+      }
+
+      .workspace-section h5 {
+        margin-bottom: 10px;
+        font-size: 12px;
+        color: var(--muted-soft);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .workspace-copy {
+        font-size: 14px;
+        line-height: 1.7;
+      }
+
+      .checklist {
+        display: grid;
+        gap: 10px;
+      }
+
+      .check {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 12px 14px;
+        border-radius: 16px;
+        background: rgba(19, 32, 38, 0.04);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .check .state {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 24px;
+        height: 24px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .check.is-done .state {
+        background: var(--green-soft);
+        color: var(--green);
+      }
+
+      .check.is-warn .state {
+        background: var(--amber-soft);
+        color: var(--amber);
+      }
+
+      .check.is-blocked .state {
+        background: var(--red-soft);
+        color: var(--red);
+      }
+
+      .standards-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .workspace-button-row {
+        margin-top: 22px;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .workspace-button {
+        padding: 13px 12px;
+        background: #fff;
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .workspace-button.primary {
+        background: linear-gradient(135deg, #143127, #1d6757);
+        color: #f3fffd;
+        border-color: transparent;
+      }
+
+      .workspace-footer-note {
+        margin-top: 14px;
+        padding: 12px 14px;
+        border-radius: 16px;
+        background: rgba(17, 121, 111, 0.08);
+        color: var(--cyan);
+        font-size: 12px;
+        line-height: 1.6;
+        font-weight: 700;
+      }
+
+      .tab-panel {
+        display: none;
+      }
+
+      .tab-panel.active {
+        display: block;
+      }
+
+      @media (max-width: 1260px) {
+        .hero-grid,
+        .main-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .filters,
+        .workspace {
+          position: static;
+        }
+      }
+
+      @media (max-width: 780px) {
+        .page-shell {
+          width: calc(100vw - 16px);
+          margin: 8px auto;
+          border-radius: 24px;
+        }
+
+        .topbar,
+        .hero,
+        .tabs,
+        .main-grid {
+          padding-left: 16px;
+          padding-right: 16px;
+        }
+
+        .topbar {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .topbar-actions,
+        .workspace-button-row,
+        .stats-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .workspace-button-row {
+          display: grid;
+        }
+
+        .task-top,
+        .task-bottom,
+        .content-head,
+        .section-head,
+        .stats-head {
+          flex-direction: column;
+          align-items: stretch;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <div class="brand-lockup">
+          <div class="brand-mark">ES</div>
+          <div class="brand-copy">
+            <strong>ESGvist Сбор данных</strong>
+            <span>Мокап рабочего пространства сбора в task-first формате</span>
+          </div>
+        </div>
+
+        <div class="topbar-actions">
+          <div class="pill"><span class="dot"></span> Проект: FY2025 Sustainability</div>
+          <div class="pill">Отчетный период: закрытие Q4</div>
+          <button class="ghost-pill" type="button">Режим менеджера</button>
+        </div>
+      </header>
+
+      <section class="hero">
+        <div class="hero-grid">
+          <div class="hero-panel">
+            <div class="eyebrow">Рабочая зона сбора</div>
+            <h1>От системной таблицы к человеческому списку задач.</h1>
+            <p class="hero-copy">
+              Этот мокап переосмысляет экран сбора вокруг того, что человеку нужно сделать
+              дальше: выбрать задачу, понять отчетный контекст, заранее увидеть блокеры и
+              отправить данные уверенно, а не разбираться в общей системной таблице.
+            </p>
+
+            <div class="hero-notes">
+              <div class="note-badge">Режим по умолчанию <small>Мои задачи</small></div>
+              <div class="note-badge">Вторичный режим <small>Все метрики</small></div>
+              <div class="note-badge">Отдельная зона <small>Блокеры</small></div>
+            </div>
+          </div>
+
+          <aside class="stats-panel">
+            <div class="stats-head">
+              <div>
+                <h3>Текущая нагрузка</h3>
+                <p>
+                  Коллектор должен сразу понимать, что требует действия, что уже можно
+                  отправлять, а что заблокировано еще до открытия формы.
+                </p>
+              </div>
+              <div class="pill">Обновлено 09:42</div>
+            </div>
+
+            <div class="stats-grid">
+              <div class="stat-card">
+                <strong>12</strong>
+                <span>Назначено метрик</span>
+              </div>
+              <div class="stat-card is-hot">
+                <strong>5</strong>
+                <span>Требуют действия</span>
+              </div>
+              <div class="stat-card is-good">
+                <strong>3</strong>
+                <span>Готовы к отправке</span>
+              </div>
+              <div class="stat-card">
+                <strong>2</strong>
+                <span>Проблемы config</span>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <nav class="tabs" aria-label="Режимы страницы сбора данных">
+        <button class="tab-button active" type="button" data-tab-target="tasks">Мои задачи</button>
+        <button class="tab-button" type="button" data-tab-target="table">Все метрики</button>
+        <button class="tab-button" type="button" data-tab-target="blockers">Блокеры</button>
+        <button class="tab-button" type="button" data-tab-target="guided">Пошаговая сессия</button>
+      </nav>
+
+      <div class="main-grid">
+        <aside class="filters">
+          <h3>Фильтры фокуса</h3>
+          <p>Экран по умолчанию должен быть персональным, спокойным и ориентированным на действие.</p>
+
+          <div class="filter-group">
+            <h4>Поиск</h4>
+            <input class="search-input" type="text" value="Scope 1" />
+          </div>
+
+          <div class="filter-group">
+            <h4>Состояние задачи</h4>
+            <div class="chip-row">
+              <button class="chip active" type="button">Требует действия</button>
+              <button class="chip" type="button">Черновик</button>
+              <button class="chip" type="button">Готово</button>
+              <button class="chip" type="button">На проверке</button>
+              <button class="chip" type="button">Подтверждено</button>
+            </div>
+          </div>
+
+          <div class="filter-group">
+            <h4>Сущность</h4>
+            <select class="select-shell">
+              <option>Все сущности</option>
+              <option selected>GreenTech Energy GmbH</option>
+              <option>GreenTech Chemicals Ltd</option>
+              <option>London R&amp;D Center</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <h4>Периметр</h4>
+            <div class="chip-row">
+              <button class="chip active" type="button">Входит</button>
+              <button class="chip" type="button">Частично</button>
+              <button class="chip" type="button">Исключено</button>
+            </div>
+          </div>
+
+          <div class="filter-group">
+            <h4>Стандарты</h4>
+            <div class="stack">
+              <select class="select-shell">
+                <option>Все стандарты</option>
+                <option selected>GRI</option>
+                <option>ESRS</option>
+                <option>ISSB</option>
+              </select>
+              <div class="inline-toggle">
+                <span>Только мои задачи</span>
+                <div class="toggle-ui" aria-hidden="true"></div>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <section class="content-panel">
+          <div id="panel-tasks" class="tab-panel active">
+            <div class="content-head">
+              <div>
+                <h3>Очередь сбора по действиям</h3>
+                <p>
+                  Вместо первой стены из строк здесь группированные карточки, которые сразу
+                  объясняют, что это за метрика, к какому контексту она относится и чего не хватает.
+                </p>
+              </div>
+              <div class="pill">Показано 5 из 12 назначенных метрик</div>
+            </div>
+
+            <div class="section-group">
+              <div class="section-head">
+                <div class="section-title">
+                  <div class="status-badge status-blocked">Приоритет</div>
+                  <div>
+                    <h4>Нужны действия</h4>
+                    <span>Черновики, нет подтверждения, неразрешенный контекст</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="task-list">
+                <article
+                  class="task-card active"
+                  data-task-card
+                  data-code="GHG-001"
+                  data-title="Выбросы Scope 1"
+                  data-status="Черновик"
+                  data-status-class="status-draft"
+                  data-entity="GreenTech Energy GmbH"
+                  data-facility="Berlin Manufacturing Plant"
+                  data-boundary="Входит в периметр проекта"
+                  data-method="Операционный контроль / полная консолидация"
+                  data-help="Нужно внести значение за текущий период по прямым выбросам. Карточка объясняет контекст еще до открытия формы."
+                  data-standards="GRI 305-1|ESRS E1"
+                  data-needs="Нет значения|Не выбрана методология|Перед отправкой нужно подтверждение"
+                  data-ready="0"
+                  data-review="1"
+                  data-value="0"
+                  data-methodology="0"
+                  data-evidence="0"
+                  data-context="1"
+                >
+                  <div class="task-top">
+                    <div>
+                      <span class="code-badge">GHG-001</span>
+                      <h5>Выбросы Scope 1</h5>
+                      <p class="subtitle">GreenTech Energy GmbH / Berlin Manufacturing Plant</p>
+                    </div>
+                    <span class="status-badge status-draft">Черновик</span>
+                  </div>
+
+                  <div class="task-meta">
+                    <span>Периметр: Входит</span>
+                    <span>Консолидация: Полная</span>
+                    <span>Стандарты: GRI 305-1, ESRS E1</span>
+                  </div>
+
+                  <div class="task-bottom">
+                    <div class="badge-row">
+                      <span class="mini-badge is-blocker">Нужно значение</span>
+                      <span class="mini-badge is-blocker">Нужно подтверждение</span>
+                    </div>
+                    <button class="task-action" type="button">Продолжить</button>
+                  </div>
+                </article>
+
+                <article
+                  class="task-card"
+                  data-task-card
+                  data-code="ENE-014"
+                  data-title="Потребление закупленной электроэнергии"
+                  data-status="Нужны файлы"
+                  data-status-class="status-blocked"
+                  data-entity="GreenTech Chemicals Ltd"
+                  data-facility="London R&amp;D Center"
+                  data-boundary="Входит в периметр проекта"
+                  data-method="Финансовый контроль / доля участия"
+                  data-help="Форма почти заполнена, но по этой задаче все еще нет подтверждающих счетов или инвойсов."
+                  data-standards="GRI 302-1|ESRS E1"
+                  data-needs="Нужно загрузить подтверждение|Ревьюер назначен"
+                  data-ready="0"
+                  data-review="1"
+                  data-value="1"
+                  data-methodology="1"
+                  data-evidence="0"
+                  data-context="1"
+                >
+                  <div class="task-top">
+                    <div>
+                      <span class="code-badge">ENE-014</span>
+                      <h5>Потребление закупленной электроэнергии</h5>
+                      <p class="subtitle">GreenTech Chemicals Ltd / London R&amp;D Center</p>
+                    </div>
+                    <span class="status-badge status-blocked">Нужны файлы</span>
+                  </div>
+
+                  <div class="task-meta">
+                    <span>Периметр: Входит</span>
+                    <span>Консолидация: Доля участия</span>
+                    <span>Стандарты: GRI 302-1, ESRS E1</span>
+                  </div>
+
+                  <div class="task-bottom">
+                    <div class="badge-row">
+                      <span class="mini-badge is-blocker">Нет подтверждения</span>
+                    </div>
+                    <button class="task-action" type="button">Добавить файлы</button>
+                  </div>
+                </article>
+
+                <article
+                  class="task-card"
+                  data-task-card
+                  data-code="WTR-009"
+                  data-title="Забор воды по источникам"
+                  data-status="Несколько контекстов"
+                  data-status-class="status-blocked"
+                  data-entity="GreenTech Holdings"
+                  data-facility="3 объекта"
+                  data-boundary="Несколько подходящих контекстов"
+                  data-method="Нужен явный выбор строки"
+                  data-help="Эта метрика совпадает сразу с несколькими объектами. Коллектор должен попадать на отфильтрованные строки, а не угадывать в общей форме."
+                  data-standards="GRI 303-3"
+                  data-needs="Найдено 3 контекста|Используйте таблицу для явного выбора"
+                  data-ready="0"
+                  data-review="0"
+                  data-value="0"
+                  data-methodology="0"
+                  data-evidence="0"
+                  data-context="0"
+                >
+                  <div class="task-top">
+                    <div>
+                      <span class="code-badge">WTR-009</span>
+                      <h5>Забор воды по источникам</h5>
+                      <p class="subtitle">GreenTech Holdings / 3 контекста объектов</p>
+                    </div>
+                    <span class="status-badge status-blocked">Несколько контекстов</span>
+                  </div>
+
+                  <div class="task-meta">
+                    <span>Периметр: Частично</span>
+                    <span>Нужен явный выбор контекста</span>
+                    <span>Стандарт: GRI 303-3</span>
+                  </div>
+
+                  <div class="task-bottom">
+                    <div class="badge-row">
+                      <span class="mini-badge is-blocker">3 контекста</span>
+                    </div>
+                    <button class="task-action" type="button">Показать строки</button>
+                  </div>
+                </article>
+              </div>
+            </div>
+
+            <div class="section-group">
+              <div class="section-head">
+                <div class="section-title">
+                  <div class="status-badge status-ready">Готово</div>
+                  <div>
+                    <h4>Готово к отправке</h4>
+                    <span>Все заполнено, осталось проверить и отправить</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="task-list">
+                <article
+                  class="task-card is-ready"
+                  data-task-card
+                  data-code="EMP-004"
+                  data-title="Общая численность персонала"
+                  data-status="Готово"
+                  data-status-class="status-ready"
+                  data-entity="GreenTech Holdings"
+                  data-facility="Уровень организации"
+                  data-boundary="Входит в периметр проекта"
+                  data-method="Управленческий контроль / уровень организации"
+                  data-help="Эта карточка показывает, как должна выглядеть спокойная задача, которая почти завершена."
+                  data-standards="GRI 2-7|ESRS S1"
+                  data-needs="Все обязательные поля заполнены"
+                  data-ready="1"
+                  data-review="1"
+                  data-value="1"
+                  data-methodology="1"
+                  data-evidence="1"
+                  data-context="1"
+                >
+                  <div class="task-top">
+                    <div>
+                      <span class="code-badge">EMP-004</span>
+                      <h5>Общая численность персонала</h5>
+                      <p class="subtitle">GreenTech Holdings / Уровень организации</p>
+                    </div>
+                    <span class="status-badge status-ready">Готово</span>
+                  </div>
+
+                  <div class="task-meta">
+                    <span>Периметр: Входит</span>
+                    <span>Консолидация: Управленческий контроль</span>
+                    <span>Стандарты: GRI 2-7, ESRS S1</span>
+                  </div>
+
+                  <div class="task-bottom">
+                    <div class="badge-row">
+                      <span class="mini-badge">Все заполнено</span>
+                    </div>
+                    <button class="task-action" type="button">Отправить</button>
+                  </div>
+                </article>
+              </div>
+            </div>
+
+            <div class="section-group">
+              <div class="section-head">
+                <div class="section-title">
+                  <div class="status-badge status-review">Уже отправлено</div>
+                  <div>
+                    <h4>Уже на проверке</h4>
+                    <span>Компактные строки вместо больших карточек</span>
+                  </div>
+                </div>
+              </div>
+
+              <table class="compact-table" aria-label="Отправленные метрики">
+                <thead>
+                  <tr>
+                    <th>Код</th>
+                    <th>Метрика</th>
+                    <th>Контекст</th>
+                    <th>Статус</th>
+                    <th>Обновлено</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><span class="code-badge">GOV-012</span></td>
+                    <td>Доля независимых директоров в совете</td>
+                    <td>GreenTech Holdings</td>
+                    <td><span class="status-badge status-review">На проверке</span></td>
+                    <td>Сегодня, 08:14</td>
+                  </tr>
+                  <tr>
+                    <td><span class="code-badge">SAF-102</span></td>
+                    <td>Коэффициент регистрируемых инцидентов</td>
+                    <td>Berlin Manufacturing Plant</td>
+                    <td><span class="status-badge status-review">Отправлено</span></td>
+                    <td>Вчера</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="panel-table" class="tab-panel">
+            <div class="content-head">
+              <div>
+                <h3>Таблица всех метрик</h3>
+                <p>
+                  Табличный режим сохраняется для power users, менеджеров и явного выбора
+                  нескольких контекстов. Он остается вторичным режимом, а не первой точкой входа.
+                </p>
+              </div>
+              <div class="pill">Вторичный режим</div>
+            </div>
+
+            <table class="compact-table" aria-label="Таблица всех метрик">
+              <thead>
+                <tr>
+                  <th>Код метрики</th>
+                  <th>Метрика</th>
+                  <th>Прогресс</th>
+                  <th>Сущность</th>
+                  <th>Объект</th>
+                  <th>Периметр</th>
+                  <th>Консолидация</th>
+                  <th>Действие</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><span class="code-badge">GHG-001</span></td>
+                  <td>Выбросы Scope 1</td>
+                  <td><span class="status-badge status-draft">Черновик</span></td>
+                  <td>GreenTech Energy GmbH</td>
+                  <td>Berlin Manufacturing Plant</td>
+                  <td>Входит</td>
+                  <td>Полная</td>
+                  <td><button class="task-action" type="button">Ввести данные</button></td>
+                </tr>
+                <tr>
+                  <td><span class="code-badge">ENE-014</span></td>
+                  <td>Потребление закупленной электроэнергии</td>
+                  <td><span class="status-badge status-blocked">Нужны файлы</span></td>
+                  <td>GreenTech Chemicals Ltd</td>
+                  <td>London R&amp;D Center</td>
+                  <td>Входит</td>
+                  <td>Доля участия</td>
+                  <td><button class="task-action" type="button">Открыть</button></td>
+                </tr>
+                <tr>
+                  <td><span class="code-badge">WTR-009</span></td>
+                  <td>Забор воды по источникам</td>
+                  <td><span class="status-badge status-blocked">3 контекста</span></td>
+                  <td>GreenTech Holdings</td>
+                  <td>Несколько контекстов</td>
+                  <td>Частично</td>
+                  <td>Смешанная</td>
+                  <td><button class="task-action" type="button">Фильтровать строки</button></td>
+                </tr>
+                <tr>
+                  <td><span class="code-badge">EMP-004</span></td>
+                  <td>Общая численность персонала</td>
+                  <td><span class="status-badge status-ready">Готово</span></td>
+                  <td>GreenTech Holdings</td>
+                  <td>Уровень организации</td>
+                  <td>Входит</td>
+                  <td>Управленческий контроль</td>
+                  <td><button class="task-action" type="button">Отправить</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div id="panel-blockers" class="tab-panel">
+            <div class="content-head">
+              <div>
+                <h3>Доска блокеров</h3>
+                <p>
+                  Здесь собраны все причины, которые мешают двигаться дальше: устаревший guided
+                  config, нехватка подтверждений, отсутствие методологии и неоднозначный контекст.
+                </p>
+              </div>
+              <div class="pill">2 устаревших + 3 блокера</div>
+            </div>
+
+            <div class="blocker-grid">
+              <article class="blocker-card">
+                <div class="section-title">
+                  <div class="status-badge status-blocked">Сбой config</div>
+                  <div>
+                    <h4>Конфиг guided-сценария устарел</h4>
+                    <span>Assignments или boundary изменились после последней синхронизации</span>
+                  </div>
+                </div>
+                <p class="hero-copy" style="margin-top: 12px;">
+                  Такой блок должен показываться как отдельная операционная проблема с одним
+                  очевидным действием, а не теряться внутри guided-панели.
+                </p>
+                <div class="badge-row" style="margin-top: 14px;">
+                  <span class="mini-badge is-blocker">2 поля вне синхронизации</span>
+                  <span class="mini-badge">Последняя синхронизация вчера</span>
+                </div>
+              </article>
+
+              <article class="blocker-card">
+                <div class="section-title">
+                  <div class="status-badge status-blocked">Проблема с подтверждением</div>
+                  <div>
+                    <h4>Потребление закупленной электроэнергии</h4>
+                    <span>Не приложен счет или инвойс</span>
+                  </div>
+                </div>
+                <p class="hero-copy" style="margin-top: 12px;">
+                  Коллектор должен видеть причину блокировки до входа в форму, а не только на
+                  этапе отправки.
+                </p>
+              </article>
+
+              <article class="blocker-card">
+                <div class="section-title">
+                  <div class="status-badge status-blocked">Проблема контекста</div>
+                  <div>
+                    <h4>Забор воды по источникам</h4>
+                    <span>Три строки объектов совпадают с одним guided-полем</span>
+                  </div>
+                </div>
+                <p class="hero-copy" style="margin-top: 12px;">
+                  Вместо угадывания guided-действие должно переводить пользователя к
+                  отфильтрованной таблице или выбору контекста.
+                </p>
+              </article>
+            </div>
+          </div>
+
+          <div id="panel-guided" class="tab-panel">
+            <div class="content-head">
+              <div>
+                <h3>Пошаговая сессия</h3>
+                <p>
+                  Guided-режим становится осознанным сфокусированным сценарием, а не большим
+                  блоком, который конкурирует с таблицей. Это скорее "продолжить мою сессию сбора".
+                </p>
+              </div>
+              <div class="pill">7 полей в сессии</div>
+            </div>
+
+            <div class="guided-grid">
+              <article class="guided-card">
+                <div class="section-title">
+                  <div class="status-badge status-ready">Шаг 1</div>
+                  <div>
+                    <h4>Энергия и выбросы</h4>
+                    <span>4 обязательных поля, 2 заполнено</span>
+                  </div>
+                </div>
+                <p class="hero-copy" style="margin-top: 12px;">
+                  Такая карточка может кратко описывать шаг, показывать прогресс и открывать
+                  следующее поле одним нажатием.
+                </p>
+              </article>
+
+              <article class="guided-card">
+                <div class="section-title">
+                  <div class="status-badge status-draft">Шаг 2</div>
+                  <div>
+                    <h4>Кадры и безопасность</h4>
+                    <span>2 обязательных поля, оба еще в черновике</span>
+                  </div>
+                </div>
+                <p class="hero-copy" style="margin-top: 12px;">
+                  Коллектор может идти по разделам, не теряя task-first таблицу для сложных
+                  и пограничных кейсов.
+                </p>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <aside class="workspace" id="workspace">
+          <h3>Рабочая панель задачи</h3>
+          <p>Правая колонка объясняет, почему задача важна и безопасно ли ее уже отправлять.</p>
+
+          <div class="workspace-status">
+            <span class="status-badge status-draft" id="workspace-status">Черновик</span>
+            <span class="pill">Выбранная задача</span>
+          </div>
+
+          <div class="workspace-code" id="workspace-code">GHG-001</div>
+          <h4 id="workspace-title">Выбросы Scope 1</h4>
+
+          <div class="workspace-meta">
+            <div><strong>Сущность:</strong> <span id="workspace-entity">GreenTech Energy GmbH</span></div>
+            <div><strong>Объект:</strong> <span id="workspace-facility">Berlin Manufacturing Plant</span></div>
+            <div><strong>Периметр:</strong> <span id="workspace-boundary">Входит в периметр проекта</span></div>
+            <div><strong>Консолидация:</strong> <span id="workspace-method">Операционный контроль / полная консолидация</span></div>
+          </div>
+
+          <div class="workspace-section">
+            <h5>Почему задача требует внимания</h5>
+            <p class="workspace-copy" id="workspace-help">
+              Нужно внести значение за текущий период по прямым выбросам. Карточка объясняет
+              контекст еще до открытия формы.
+            </p>
+          </div>
+
+          <div class="workspace-section">
+            <h5>Стандарты и переиспользование</h5>
+            <div class="standards-row" id="workspace-standards">
+              <span class="mini-badge">GRI 305-1</span>
+              <span class="mini-badge">ESRS E1</span>
+            </div>
+          </div>
+
+          <div class="workspace-section">
+            <h5>Готовность к отправке</h5>
+            <div class="checklist" id="workspace-checklist">
+              <div class="check is-blocked"><span>Значение введено</span><span class="state">!</span></div>
+              <div class="check is-blocked"><span>Методология выбрана</span><span class="state">!</span></div>
+              <div class="check is-blocked"><span>Подтверждение приложено</span><span class="state">!</span></div>
+              <div class="check is-done"><span>Контекст валиден</span><span class="state">OK</span></div>
+              <div class="check is-done"><span>Ревьюер назначен</span><span class="state">OK</span></div>
+            </div>
+          </div>
+
+          <div class="workspace-section">
+            <h5>Текущие блокеры</h5>
+            <div class="badge-row" id="workspace-needs">
+              <span class="mini-badge is-blocker">Нет значения</span>
+              <span class="mini-badge is-blocker">Не выбрана методология</span>
+              <span class="mini-badge is-blocker">Перед отправкой нужно подтверждение</span>
+            </div>
+          </div>
+
+          <div class="workspace-button-row">
+            <button class="workspace-button" type="button">Сохранить черновик</button>
+            <button class="workspace-button" type="button">Проверить готовность</button>
+            <button class="workspace-button primary" type="button">Открыть задачу</button>
+          </div>
+
+          <div class="workspace-footer-note">
+            Цель в том, чтобы человек работал в одном спокойном пространстве: вводил данные,
+            заранее видел блокеры и отправлял только тогда, когда чеклист стал зеленым.
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <script>
+      const tabs = document.querySelectorAll("[data-tab-target]");
+      const panels = document.querySelectorAll(".tab-panel");
+
+      function activateTab(target) {
+        tabs.forEach((tab) => {
+          tab.classList.toggle("active", tab.dataset.tabTarget === target);
+        });
+        panels.forEach((panel) => {
+          panel.classList.toggle("active", panel.id === `panel-${target}`);
+        });
+      }
+
+      tabs.forEach((tab) => {
+        tab.addEventListener("click", () => activateTab(tab.dataset.tabTarget));
+      });
+
+      const workspace = {
+        status: document.getElementById("workspace-status"),
+        code: document.getElementById("workspace-code"),
+        title: document.getElementById("workspace-title"),
+        entity: document.getElementById("workspace-entity"),
+        facility: document.getElementById("workspace-facility"),
+        boundary: document.getElementById("workspace-boundary"),
+        method: document.getElementById("workspace-method"),
+        help: document.getElementById("workspace-help"),
+        standards: document.getElementById("workspace-standards"),
+        needs: document.getElementById("workspace-needs"),
+        checklist: document.getElementById("workspace-checklist"),
+      };
+
+      const checklistMap = [
+        ["Значение введено", "value"],
+        ["Методология выбрана", "methodology"],
+        ["Подтверждение приложено", "evidence"],
+        ["Контекст валиден", "context"],
+        ["Ревьюер назначен", "review"],
+      ];
+
+      function createChecklistItem(label, state) {
+        const item = document.createElement("div");
+        const badge = document.createElement("span");
+        item.className = `check ${state ? "is-done" : "is-blocked"}`;
+        badge.className = "state";
+        badge.textContent = state ? "OK" : "!";
+        item.innerHTML = `<span>${label}</span>`;
+        item.appendChild(badge);
+        return item;
+      }
+
+      function hydrateWorkspace(card) {
+        document.querySelectorAll("[data-task-card]").forEach((node) => {
+          node.classList.toggle("active", node === card);
+        });
+
+        workspace.status.className = `status-badge ${card.dataset.statusClass}`;
+        workspace.status.textContent = card.dataset.status;
+        workspace.code.textContent = card.dataset.code;
+        workspace.title.textContent = card.dataset.title;
+        workspace.entity.textContent = card.dataset.entity;
+        workspace.facility.textContent = card.dataset.facility;
+        workspace.boundary.textContent = card.dataset.boundary;
+        workspace.method.textContent = card.dataset.method;
+        workspace.help.textContent = card.dataset.help;
+
+        workspace.standards.innerHTML = "";
+        (card.dataset.standards || "")
+          .split("|")
+          .filter(Boolean)
+          .forEach((standard) => {
+            const badge = document.createElement("span");
+            badge.className = "mini-badge";
+            badge.textContent = standard;
+            workspace.standards.appendChild(badge);
+          });
+
+        workspace.needs.innerHTML = "";
+        (card.dataset.needs || "")
+          .split("|")
+          .filter(Boolean)
+          .forEach((need) => {
+            const badge = document.createElement("span");
+            badge.className = "mini-badge is-blocker";
+            badge.textContent = need;
+            workspace.needs.appendChild(badge);
+          });
+
+        workspace.checklist.innerHTML = "";
+        checklistMap.forEach(([label, key]) => {
+          workspace.checklist.appendChild(
+            createChecklistItem(label, card.dataset[key] === "1")
+          );
+        });
+      }
+
+      document.querySelectorAll("[data-task-card]").forEach((card) => {
+        card.addEventListener("click", () => hydrateWorkspace(card));
+      });
+    </script>
+  </body>
+</html>

@@ -67,6 +67,9 @@ interface FormData {
   files: File[];
 }
 
+const EVIDENCE_FILE_ACCEPT =
+  ".pdf,.json,.xlsx,.docx,.csv,.png,.jpg,.jpeg,application/pdf,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/csv,image/png,image/jpeg";
+
 /* ---------- Step indicator ---------- */
 
 const STEPS = ["Context", "Data Entry", "Preview", "Submit"] as const;
@@ -105,6 +108,23 @@ function StepIndicator({ current }: { current: number }) {
       })}
     </nav>
   );
+}
+
+function methodologySelectionRequired(
+  detail: Pick<DataPointDetail, "methodology_options"> | null | undefined
+) {
+  return (detail?.methodology_options?.length ?? 0) > 0;
+}
+
+function getMethodologyOptions(
+  detail: Pick<DataPointDetail, "methodology" | "methodology_options"> | null | undefined
+) {
+  const options = [...(detail?.methodology_options ?? [])];
+  const currentMethodology = detail?.methodology?.trim();
+  if (currentMethodology && !options.includes(currentMethodology)) {
+    options.unshift(currentMethodology);
+  }
+  return options;
 }
 
 /* ---------- Component ---------- */
@@ -152,6 +172,8 @@ export default function DataEntryWizardPage() {
     ["data-point", id],
     `/data-points/${id}`
   );
+  const availableMethodologyOptions = getMethodologyOptions(dp);
+  const requiresMethodologySelection = methodologySelectionRequired(dp);
 
   const projectId = searchParams.get("projectId") || (dp ? String(dp.reporting_project_id) : "");
   const collectionListUrl = projectId ? `/collection?projectId=${projectId}` : "/collection";
@@ -288,7 +310,7 @@ export default function DataEntryWizardPage() {
     if (dp?.element_type === "numeric" && !form.unit) {
       errors.unit = "Unit is required";
     }
-    if (!form.methodology) {
+    if (requiresMethodologySelection && !form.methodology) {
       errors.methodology = "Methodology is required";
     }
     if (dp?.evidence_required && form.files.length === 0 && (dp.evidence_count ?? 0) === 0) {
@@ -595,34 +617,50 @@ export default function DataEntryWizardPage() {
             )}
 
             {/* Methodology */}
-            <div className="grid gap-1.5">
-              <label htmlFor={methodologySelectId} className="text-sm font-medium text-slate-700">
-                Methodology
-              </label>
-              <select
-                id={methodologySelectId}
-                value={form.methodology}
-                onChange={(e) => updateField("methodology", e.target.value)}
-                className={cn(
-                  "h-9 w-full rounded-md border bg-transparent px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-950",
-                  validationErrors.methodology
-                    ? "border-red-500 focus:ring-red-500"
-                    : "border-slate-200"
-                )}
-              >
-                <option value="">Select methodology...</option>
-                {(dp.methodology_options ?? []).map((m) => (
-                  <option key={m} value={m}>
-                    {m}
+            {availableMethodologyOptions.length > 0 ? (
+              <div className="grid gap-1.5">
+                <label htmlFor={methodologySelectId} className="text-sm font-medium text-slate-700">
+                  Methodology
+                </label>
+                <select
+                  id={methodologySelectId}
+                  value={form.methodology}
+                  onChange={(e) => updateField("methodology", e.target.value)}
+                  disabled={!requiresMethodologySelection}
+                  className={cn(
+                    "h-9 w-full rounded-md border bg-transparent px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-950 disabled:cursor-not-allowed disabled:opacity-50",
+                    validationErrors.methodology
+                      ? "border-red-500 focus:ring-red-500"
+                      : "border-slate-200"
+                  )}
+                >
+                  <option value="">
+                    {requiresMethodologySelection
+                      ? "Select methodology..."
+                      : "Methodology catalog unavailable"}
                   </option>
-                ))}
-              </select>
-              {validationErrors.methodology && (
-                <p className="text-xs text-red-500">
-                  {validationErrors.methodology}
-                </p>
-              )}
-            </div>
+                  {availableMethodologyOptions.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+                {!requiresMethodologySelection && (
+                  <p className="text-xs text-slate-500">
+                    No methodology catalog is configured yet, so this field is read-only and not required.
+                  </p>
+                )}
+                {validationErrors.methodology && (
+                  <p className="text-xs text-red-500">
+                    {validationErrors.methodology}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
+                No methodologies are configured yet, so this field is not required for this entry.
+              </div>
+            )}
 
             {/* Narrative */}
             <div className="grid gap-1.5">
@@ -733,12 +771,13 @@ export default function DataEntryWizardPage() {
               >
                 <Upload className="h-8 w-8 text-slate-300" />
                 <p className="mt-2 text-sm text-slate-500">
-                  Drag and drop files here, or click to browse
+                  Drag and drop files here, or click to browse. Allowed: PDF, JSON, XLSX, DOCX, CSV, PNG, JPG.
                 </p>
                 <input
                   ref={fileInputRef}
                   type="file"
                   multiple
+                  accept={EVIDENCE_FILE_ACCEPT}
                   className="hidden"
                   onChange={handleFileSelect}
                 />
@@ -804,7 +843,13 @@ export default function DataEntryWizardPage() {
                 </div>
                 <div>
                   <dt className="text-slate-400">Methodology</dt>
-                  <dd className="text-slate-700">{form.methodology}</dd>
+                  <dd className="text-slate-700">
+                    {form.methodology ||
+                      dp.methodology ||
+                      (requiresMethodologySelection
+                        ? "Not selected"
+                        : "Not required (no methodology catalog configured)")}
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-slate-400">Evidence</dt>

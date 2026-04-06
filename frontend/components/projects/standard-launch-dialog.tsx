@@ -630,6 +630,10 @@ export function StandardLaunchDialog({
     selectedDisclosureIds.includes(id)
   ).length;
   const canSelectAll = visibleSelectableDisclosureIds.length > 0;
+  const existingProjectOptionCount = useMemo(
+    () => options.filter((option) => option.existing_assignment_count > 0).length,
+    [options]
+  );
 
   const selectedSharedElementIds = useMemo(
     () =>
@@ -819,6 +823,20 @@ export function StandardLaunchDialog({
               <p className="mt-1 text-sm text-slate-500">
                 You assign work at the disclosure level. The data points stay nested inside each disclosure and launch together.
               </p>
+            </div>
+
+            <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-3">
+              <p className="text-sm font-medium text-cyan-950">
+                Automatic reuse is applied from the framework library.
+              </p>
+              <p className="mt-1 text-sm text-cyan-900">
+                Shared data points that already exist in this project are reused automatically. Launch only creates missing work for the selected entity scope.
+              </p>
+              {existingProjectOptionCount > 0 && (
+                <p className="mt-2 text-sm text-cyan-900">
+                  {pluralize(existingProjectOptionCount, "linked data point")} already exist in this project and will not be duplicated.
+                </p>
+              )}
             </div>
 
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">

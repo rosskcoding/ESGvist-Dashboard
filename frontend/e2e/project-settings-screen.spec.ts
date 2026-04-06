@@ -50,7 +50,19 @@ test.describe("Screen 12 - Project Settings", () => {
 
     await page.getByRole("tab", { name: "Standards" }).click();
     await page.getByRole("button", { name: "Add Standard" }).click();
+    await expect(page.getByLabel("Group")).toHaveCount(0);
+    expect(await page.getByLabel("Standard").locator("optgroup").count()).toBeGreaterThan(0);
+    const familyValue = await page.getByLabel("Family").evaluate((select) => {
+      const familySelect = select as HTMLSelectElement;
+      return (
+        Array.from(familySelect.options).find((option) => option.value !== "" && !option.disabled)?.value ?? ""
+      );
+    });
+    expect(familyValue).toBeTruthy();
+    await page.getByLabel("Family").selectOption(familyValue);
+    await expect(page.getByLabel("Group")).toBeVisible();
     await selectFirstAvailableStandard(page);
+    await expect(page.getByText("Automatic reuse preview")).toBeVisible();
     await page.getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByText("No standards attached yet. Add a standard to begin.")).toHaveCount(0);
 

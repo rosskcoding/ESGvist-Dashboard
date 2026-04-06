@@ -7,20 +7,24 @@ import {
   AlertTriangle,
   ArrowRight,
   ArrowUpDown,
-  CheckCircle2,
-  Circle,
+  Download,
+  Eye,
+  ExternalLink,
   Filter,
+  FileText,
+  LayoutGrid,
+  Link2,
   Loader2,
+  Plus,
   Repeat2,
   Rows3,
   Search,
   ShieldAlert,
-  Sparkles,
-  Table2,
   TriangleAlert,
 } from "lucide-react";
 
 import { api, type AppApiError } from "@/lib/api";
+import { triggerFileDownload } from "@/lib/download";
 import { cn } from "@/lib/utils";
 import { useActiveProject } from "@/lib/hooks/use-active-project";
 import { useApiQuery } from "@/lib/hooks/use-api";
@@ -28,13 +32,27 @@ import { GuidedEntryDialog } from "./components/guided-entry-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
 type DataPointStatus = "missing" | "partial" | "complete";
 type BoundaryStatus = "included" | "excluded" | "partial";
-type FeedSection = "action" | "blocked" | "done" | "all";
+type FeedSection = "action" | "blocked" | "ready" | "submitted";
 type ViewMode = "feed" | "table";
-type ReadinessTone = "done" | "pending" | "warning";
+
+interface AuthMe {
+  id: number;
+  full_name: string;
+  email: string;
+  roles: Array<{ role: string }>;
+}
 
 interface DataPoint {
   id: number;
@@ -50,6 +68,10 @@ interface DataPoint {
   facility_name: string | null;
   boundary_status: BoundaryStatus;
   consolidation_method: string;
+  collector_id?: number | null;
+  collector_name?: string | null;
+  reviewer_id?: number | null;
+  reviewer_name?: string | null;
   reused_across_standards: boolean;
   standards: string[];
   status?: string | null;
@@ -60,6 +82,9 @@ interface DataPoint {
   evidence_required?: boolean;
   evidence_count?: number;
   element_type?: "numeric" | "text" | "boolean" | null;
+  deadline?: string | null;
+  days_overdue?: number;
+  days_until_deadline?: number | null;
 }
 
 interface DataPointsResponse {
@@ -87,6 +112,13 @@ interface AssignmentRow {
   facility_name: string | null;
   boundary_included: boolean;
   consolidation_method: string;
+  collector_id?: number | null;
+  collector_name?: string | null;
+  reviewer_id?: number | null;
+  reviewer_name?: string | null;
+  deadline?: string | null;
+  days_overdue?: number;
+  days_until_deadline?: number | null;
   status: string;
 }
 
@@ -163,19 +195,37 @@ interface DataPointDetail {
   methodology_options?: string[];
 }
 
-interface ReadinessItem {
-  label: string;
-  tone: ReadinessTone;
+interface EvidenceItem {
+  id: number;
+  type: "file" | "link";
+  title: string;
+  description?: string | null;
+  url?: string | null;
+  file_name?: string | null;
+  file_size?: number | null;
+  mime_type?: string | null;
+  upload_date?: string | null;
+  created_by?: number | null;
+  created_by_name?: string | null;
+  binding_status?: "bound" | "unbound";
+  linked_data_points?: Array<{ data_point_id: number; code: string; label: string }>;
+  linked_requirement_items?: Array<{
+    requirement_item_id: number;
+    code: string;
+    description: string;
+  }>;
 }
 
-const STATUS_CONFIG: Record<
-  DataPointStatus,
-  { label: string; variant: "destructive" | "warning" | "success" }
-> = {
-  missing: { label: "Not started", variant: "destructive" },
-  partial: { label: "In progress", variant: "warning" },
-  complete: { label: "Complete", variant: "success" },
-};
+interface EvidencePreviewTarget {
+  item: EvidenceItem;
+  row: DataPoint;
+}
+
+interface DisplayFramework {
+  code: string;
+  name: string;
+  tone: "framework" | "custom";
+}
 
 const BOUNDARY_CONFIG: Record<
   BoundaryStatus,
@@ -200,19 +250,20 @@ const FEED_SECTION_CONFIG: Record<
     dotClassName: "bg-amber-500",
     emptyState: "No blocked contexts match the current filters.",
   },
-  done: {
-    label: "Completed",
+  ready: {
+    label: "Ready",
     dotClassName: "bg-green-500",
-    emptyState: "No completed collection rows match the current filters.",
+    emptyState: "No rows are currently ready to submit.",
   },
-  all: {
-    label: "All tasks",
-    dotClassName: "bg-slate-400",
-    emptyState: "No collection rows match the current filters.",
+  submitted: {
+    label: "Submitted",
+    dotClassName: "bg-slate-300",
+    emptyState: "No submitted or approved rows match the current filters.",
   },
 };
 
-const FEED_SECTION_ORDER: FeedSection[] = ["action", "blocked", "done", "all"];
+const FEED_SECTION_ORDER: FeedSection[] = ["action", "blocked", "ready", "submitted"];
+const ONLY_MINE_STORAGE_KEY = "collection-v5-only-mine";
 
 function buildContextKey(
   sharedElementId?: number | null,
@@ -329,12 +380,6 @@ function isForbidden(error: Error | null) {
   return code === "FORBIDDEN" || /not allowed|access denied|forbidden/i.test(error?.message || "");
 }
 
-function getFeedSection(row: DataPoint): FeedSection {
-  if (row.boundary_status !== "included") return "blocked";
-  if (row.collection_status === "complete") return "done";
-  return "action";
-}
-
 function getRoleLabel(roles: string[]) {
   if (roles.includes("collector")) return "Collector";
   if (roles.includes("esg_manager")) return "ESG Manager";
@@ -345,6 +390,18 @@ function getRoleLabel(roles: string[]) {
 
 function hasCreatedEntry(row: DataPoint) {
   return Boolean(getResolvedDataPointId(row));
+}
+
+function isSubmittedStatus(status?: string | null) {
+  return ["submitted", "in_review", "approved"].includes(status ?? "");
+}
+
+function hasContextValid(row: DataPoint) {
+  return row.boundary_status === "included";
+}
+
+function hasReviewer(row: DataPoint) {
+  return Boolean(row.reviewer_id);
 }
 
 function hasValue(detail: DataPointDetail | null | undefined, row: DataPoint) {
@@ -390,31 +447,22 @@ function getNeedsText(
   detail?: DataPointDetail | null,
   hasMethodologyCatalog = true
 ) {
-  if (row.boundary_status === "excluded") {
-    return "Excluded from reporting boundary";
-  }
-  if (row.boundary_status === "partial") {
-    return "Boundary review recommended";
-  }
-
   const missing: string[] = [];
-  if (!hasCreatedEntry(row)) missing.push("Draft");
   if (!hasValue(detail, row)) missing.push("Value");
-  if (detail && !hasMethodology(detail, row, hasMethodologyCatalog)) {
+  if (!hasMethodology(detail, row, hasMethodologyCatalog)) {
     missing.push("Methodology");
   }
   if (!hasEvidence(detail, row)) missing.push("Evidence");
-  if (missing.length > 0) return missing.join(", ");
-  if (!detail && row.collection_status !== "complete") return "Continue entry";
+  if (missing.length > 0) return `Needs: ${missing.join(", ")}`;
   return "All required inputs look complete";
 }
 
 function getProgressCount(row: DataPoint, detail?: DataPointDetail | null) {
   let count = 0;
-  if (hasCreatedEntry(row)) count += 1;
-  if (row.boundary_status === "included") count += 1;
   if (hasValue(detail, row)) count += 1;
+  if (hasMethodology(detail, row)) count += 1;
   if (hasEvidence(detail, row)) count += 1;
+  if (hasContextValid(row)) count += 1;
   return count;
 }
 
@@ -422,28 +470,181 @@ function formatContext(row: Pick<DataPoint, "entity_name" | "facility_name">) {
   return row.facility_name ? `${row.entity_name} / ${row.facility_name}` : row.entity_name;
 }
 
-function ReadinessIcon({ tone }: { tone: ReadinessTone }) {
-  if (tone === "done") {
-    return (
-      <span className="flex h-5 w-5 items-center justify-center rounded-md bg-green-500 text-white">
-        <CheckCircle2 className="h-3.5 w-3.5" />
-      </span>
-    );
-  }
+function getBlockingReason(row: DataPoint) {
+  if (row.boundary_status === "excluded") return "Excluded from reporting boundary";
+  if (row.boundary_status === "partial") return "Boundary needs review";
+  if (!hasReviewer(row)) return "Reviewer is not assigned";
+  return "Needs review before submission";
+}
 
-  if (tone === "warning") {
-    return (
-      <span className="flex h-5 w-5 items-center justify-center rounded-md border border-amber-300 bg-amber-50 text-amber-700">
-        <TriangleAlert className="h-3.5 w-3.5" />
-      </span>
-    );
-  }
-
+function isReadyToSubmit(row: DataPoint, detail?: DataPointDetail | null, hasMethodologyCatalog = true) {
   return (
-    <span className="flex h-5 w-5 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-400">
-      <Circle className="h-3.5 w-3.5" />
-    </span>
+    !isSubmittedStatus(detail?.status ?? row.status) &&
+    hasContextValid(row) &&
+    hasReviewer(row) &&
+    hasValue(detail, row) &&
+    hasMethodology(detail, row, hasMethodologyCatalog) &&
+    hasEvidence(detail, row)
   );
+}
+
+function isBlockedRow(row: DataPoint) {
+  return row.boundary_status !== "included" || !hasReviewer(row);
+}
+
+function getFeedSection(
+  row: DataPoint,
+  detail?: DataPointDetail | null,
+  hasMethodologyCatalog = true
+): FeedSection {
+  if (isSubmittedStatus(detail?.status ?? row.status) || row.collection_status === "complete") {
+    return "submitted";
+  }
+  if (isBlockedRow(row)) return "blocked";
+  if (isReadyToSubmit(row, detail, hasMethodologyCatalog)) return "ready";
+  return "action";
+}
+
+function getStatusBadgeMeta(
+  row: DataPoint,
+  detail?: DataPointDetail | null,
+  hasMethodologyCatalog = true
+) {
+  const rawStatus = detail?.status ?? row.status;
+  if (isSubmittedStatus(rawStatus) || row.collection_status === "complete") {
+    if (rawStatus === "submitted" || rawStatus === "in_review") {
+      return {
+        label: rawStatus === "in_review" ? "In review" : "Submitted",
+        className: "border-cyan-200 bg-cyan-50 text-cyan-700",
+      };
+    }
+    return {
+      label: "Approved",
+      className: "border-green-200 bg-green-50 text-green-700",
+    };
+  }
+  if (isBlockedRow(row)) {
+    return {
+      label: "Blocked",
+      className: "border-red-200 bg-red-50 text-red-700",
+    };
+  }
+  if (isReadyToSubmit(row, detail, hasMethodologyCatalog)) {
+    return {
+      label: "Ready",
+      className: "border-green-200 bg-green-50 text-green-700",
+    };
+  }
+  if (row.collection_status === "missing") {
+    return {
+      label: "Not started",
+      className: "border-red-200 bg-red-50 text-red-700",
+    };
+  }
+  return {
+    label: "Draft",
+    className: "border-amber-200 bg-amber-50 text-amber-700",
+  };
+}
+
+function getRowActionMeta(
+  row: DataPoint,
+  detail?: DataPointDetail | null,
+  hasMethodologyCatalog = true
+) {
+  if (isSubmittedStatus(detail?.status ?? row.status) || row.collection_status === "complete") {
+    return { label: "View", variant: "outline" as const, intent: "wizard" as const };
+  }
+  if (isReadyToSubmit(row, detail, hasMethodologyCatalog)) {
+    return { label: "Submit", variant: "default" as const, intent: "submit" as const };
+  }
+  if (row.collection_status === "missing") {
+    return {
+      label: isBlockedRow(row) ? (row.boundary_status === "excluded" ? "Review" : "Open") : "Open",
+      variant: isBlockedRow(row) ? "outline" as const : "default" as const,
+      intent:
+        isBlockedRow(row) && row.boundary_status === "excluded"
+          ? ("wizard" as const)
+          : ("quick" as const),
+    };
+  }
+  return {
+    label: isBlockedRow(row) ? (row.boundary_status === "excluded" ? "Review" : "Continue") : "Continue",
+    variant: isBlockedRow(row) ? "outline" as const : "default" as const,
+    intent:
+      isBlockedRow(row) && row.boundary_status === "excluded"
+        ? ("wizard" as const)
+        : ("quick" as const),
+  };
+}
+
+function getOverdueLabel(daysOverdue?: number | null) {
+  if (!daysOverdue || daysOverdue <= 0) return null;
+  return `${daysOverdue}D OVERDUE`;
+}
+
+function getUserInitials(name?: string | null) {
+  const parts = (name ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2);
+  if (parts.length === 0) return "NA";
+  return parts.map((part) => part[0]?.toUpperCase() ?? "").join("");
+}
+
+function getUserAvatarStyle(id?: number | null, name?: string | null) {
+  const seed = `${id ?? 0}-${name ?? ""}`;
+  let hash = 0;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = seed.charCodeAt(index) + ((hash << 5) - hash);
+  }
+  const hue = Math.abs(hash) % 360;
+  return { backgroundColor: `hsl(${hue} 72% 54%)` };
+}
+
+function isImportPseudoStandard(code?: string | null, name?: string | null) {
+  const normalizedCode = (code ?? "").toUpperCase();
+  const normalizedName = (name ?? "").toLowerCase();
+  return normalizedCode.includes("DATASHEET") || normalizedName.includes("proxy import");
+}
+
+function getDisplayFrameworks(
+  standards: Array<{ code: string; name: string }>
+): DisplayFramework[] {
+  const realStandards = standards.filter(
+    (standard) => !isImportPseudoStandard(standard.code, standard.name)
+  );
+
+  if (realStandards.length > 0) {
+    return realStandards.map((standard) => ({
+      code: standard.code,
+      name: standard.name,
+      tone: "framework",
+    }));
+  }
+
+  if (standards.length > 0) {
+    return [{ code: "CUSTOM", name: "Imported mapping", tone: "custom" }];
+  }
+
+  return [{ code: "NOT DEFINED", name: "No framework mapping", tone: "custom" }];
+}
+
+function formatFileSize(bytes?: number | null): string | null {
+  if (bytes == null) return null;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatEvidenceDate(date?: string | null): string {
+  if (!date) return "Unknown";
+  return new Date(date).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 export default function CollectionPage() {
@@ -461,11 +662,14 @@ export default function CollectionPage() {
   const [guidedField, setGuidedField] = useState<FormConfigField | null>(null);
   const [guidedRowKey, setGuidedRowKey] = useState<string | null>(null);
   const [resolvedDataPointIds, setResolvedDataPointIds] = useState<Record<string, number>>({});
-  const [configActionMessage, setConfigActionMessage] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("feed");
   const [feedSection, setFeedSection] = useState<FeedSection>("action");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
+  const [checkedRowKeys, setCheckedRowKeys] = useState<string[]>([]);
+  const [onlyMine, setOnlyMine] = useState(false);
+  const [evidencePreviewTarget, setEvidencePreviewTarget] =
+    useState<EvidencePreviewTarget | null>(null);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | DataPointStatus>("all");
@@ -477,14 +681,27 @@ export default function CollectionPage() {
   >("element_code");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
-  const { data: me, isLoading: meLoading } = useApiQuery<{
-    roles: Array<{ role: string }>;
-  }>(["auth-me"], "/auth/me");
+  const { data: me, isLoading: meLoading } = useApiQuery<AuthMe>(["auth-me"], "/auth/me");
 
   const roles = me?.roles?.map((binding) => binding.role) ?? [];
   const canAccess = roles.some((role) =>
     ["collector", "esg_manager", "admin", "platform_admin"].includes(role)
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined" || roles.length === 0) return;
+    const stored = window.localStorage.getItem(ONLY_MINE_STORAGE_KEY);
+    if (stored === "true" || stored === "false") {
+      setOnlyMine(stored === "true");
+      return;
+    }
+    setOnlyMine(roles.includes("collector"));
+  }, [roles]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(ONLY_MINE_STORAGE_KEY, String(onlyMine));
+  }, [onlyMine]);
 
   const {
     data: assignmentsData,
@@ -510,16 +727,6 @@ export default function CollectionPage() {
     },
     enabled: canAccess && projectId !== null,
   });
-
-  const {
-    data: activeFormConfig,
-    isLoading: configLoading,
-    error: configError,
-  } = useApiQuery<ActiveFormConfig | null>(
-    ["active-form-config", projectId],
-    `/form-configs/projects/${projectId}/active`,
-    { enabled: canAccess && projectId !== null }
-  );
 
   const { data: methodologies } = useApiQuery<MethodologyReference[]>(
     ["reference-methodologies"],
@@ -591,6 +798,10 @@ export default function CollectionPage() {
           (assignment.boundary_included ? "included" : "excluded"),
         consolidation_method:
           point?.consolidation_method ?? assignment.consolidation_method ?? "full",
+        collector_id: assignment.collector_id ?? null,
+        collector_name: assignment.collector_name ?? null,
+        reviewer_id: assignment.reviewer_id ?? null,
+        reviewer_name: assignment.reviewer_name ?? null,
         reused_across_standards: point?.reused_across_standards ?? false,
         standards: point?.standards ?? [],
         status: point?.status ?? null,
@@ -601,6 +812,9 @@ export default function CollectionPage() {
         evidence_required: point?.evidence_required ?? false,
         evidence_count: point?.evidence_count ?? 0,
         element_type: point?.element_type ?? null,
+        deadline: assignment.deadline ?? null,
+        days_overdue: assignment.days_overdue ?? 0,
+        days_until_deadline: assignment.days_until_deadline ?? null,
       } satisfies DataPoint;
     });
   }, [assignmentsData?.assignments, data?.items, resolvedDataPointIds]);
@@ -611,64 +825,6 @@ export default function CollectionPage() {
     (!!assignmentsError && isForbidden(assignmentsError)) ||
     (!!error && isForbidden(error));
 
-  const rowsByElement = useMemo(() => {
-    const map = new Map<number, DataPoint[]>();
-    for (const item of items) {
-      if (!item.shared_element_id) continue;
-      const current = map.get(item.shared_element_id) ?? [];
-      current.push(item);
-      map.set(item.shared_element_id, current);
-    }
-    return map;
-  }, [items]);
-
-  const rowsByAssignment = useMemo(() => {
-    const map = new Map<number, DataPoint>();
-    for (const item of items) {
-      if (item.assignment_id) {
-        map.set(item.assignment_id, item);
-      }
-    }
-    return map;
-  }, [items]);
-
-  const rowsByContext = useMemo(() => {
-    const map = new Map<string, DataPoint[]>();
-    for (const item of items) {
-      const key = buildContextKey(
-        item.shared_element_id ?? 0,
-        item.entity_id ?? 0,
-        item.facility_id ?? 0
-      );
-      const current = map.get(key) ?? [];
-      current.push(item);
-      map.set(key, current);
-    }
-    return map;
-  }, [items]);
-
-  const resolveFieldMatches = useCallback(
-    (field: FormConfigField) => {
-      if (field.assignment_id) {
-        const match = rowsByAssignment.get(field.assignment_id);
-        return match ? [match] : [];
-      }
-      if (field.entity_id != null || field.facility_id != null) {
-        return (
-          rowsByContext.get(
-            buildContextKey(
-              field.shared_element_id,
-              field.entity_id ?? 0,
-              field.facility_id ?? 0
-            )
-          ) ?? []
-        );
-      }
-      return rowsByElement.get(field.shared_element_id) ?? [];
-    },
-    [rowsByAssignment, rowsByContext, rowsByElement]
-  );
-
   const entities = useMemo(
     () => Array.from(new Set(items.map((item) => item.entity_name))).sort(),
     [items]
@@ -678,9 +834,12 @@ export default function CollectionPage() {
     [items]
   );
 
-  const filtered = useMemo(() => {
+  const filteredItems = useMemo(() => {
     let result = items;
 
+    if (onlyMine && me?.id != null) {
+      result = result.filter((item) => item.collector_id === me.id);
+    }
     if (statusFilter !== "all") {
       result = result.filter((item) => item.collection_status === statusFilter);
     }
@@ -696,26 +855,40 @@ export default function CollectionPage() {
     if (search.trim()) {
       const query = search.trim().toLowerCase();
       result = result.filter((item) =>
-        [item.element_code, item.element_name, item.entity_name, item.facility_name ?? ""]
+        [
+          item.element_code,
+          item.element_name,
+          item.entity_name,
+          item.facility_name ?? "",
+          item.collector_name ?? "",
+        ]
           .join(" ")
           .toLowerCase()
           .includes(query)
       );
     }
 
-    return [...result].sort((left, right) => {
+    return result;
+  }, [
+    items,
+    onlyMine,
+    me?.id,
+    statusFilter,
+    boundaryFilter,
+    entityFilter,
+    standardFilter,
+    search,
+  ]);
+
+  const filtered = useMemo(() => {
+    return [...filteredItems].sort((left, right) => {
       const leftValue = String(left[sortField] ?? "");
       const rightValue = String(right[sortField] ?? "");
       const comparison = leftValue.localeCompare(rightValue);
       return sortDir === "asc" ? comparison : -comparison;
     });
   }, [
-    items,
-    statusFilter,
-    boundaryFilter,
-    entityFilter,
-    standardFilter,
-    search,
+    filteredItems,
     sortField,
     sortDir,
   ]);
@@ -724,42 +897,53 @@ export default function CollectionPage() {
     const priority: Record<FeedSection, number> = {
       action: 0,
       blocked: 1,
-      done: 2,
-      all: 3,
+      ready: 2,
+      submitted: 3,
     };
 
-    return [...filtered].sort((left, right) => {
-      const sectionCompare = priority[getFeedSection(left)] - priority[getFeedSection(right)];
+    return [...filteredItems].sort((left, right) => {
+      const sectionCompare =
+        priority[getFeedSection(left, undefined, hasMethodologyCatalog)] -
+        priority[getFeedSection(right, undefined, hasMethodologyCatalog)];
       if (sectionCompare !== 0) return sectionCompare;
 
-      const leftValue = String(left[sortField] ?? "");
-      const rightValue = String(right[sortField] ?? "");
-      const comparison = leftValue.localeCompare(rightValue);
-      return sortDir === "asc" ? comparison : -comparison;
+      const overdueCompare = (right.days_overdue ?? 0) - (left.days_overdue ?? 0);
+      if (overdueCompare !== 0) return overdueCompare;
+
+      const leftDeadline = left.deadline ?? "";
+      const rightDeadline = right.deadline ?? "";
+      if (leftDeadline !== rightDeadline) {
+        if (!leftDeadline) return 1;
+        if (!rightDeadline) return -1;
+        return leftDeadline.localeCompare(rightDeadline);
+      }
+
+      return left.element_code.localeCompare(right.element_code);
     });
-  }, [filtered, sortField, sortDir]);
+  }, [filteredItems, hasMethodologyCatalog]);
 
   const feedCounts = useMemo(() => {
     return orderedFeedItems.reduce(
       (current, item) => {
-        current[getFeedSection(item)] += 1;
-        current.all += 1;
+        current[getFeedSection(item, undefined, hasMethodologyCatalog)] += 1;
         return current;
       },
-      { action: 0, blocked: 0, done: 0, all: 0 } satisfies Record<FeedSection, number>
+      { action: 0, blocked: 0, ready: 0, submitted: 0 } satisfies Record<FeedSection, number>
     );
-  }, [orderedFeedItems]);
+  }, [orderedFeedItems, hasMethodologyCatalog]);
 
   useEffect(() => {
-    if (feedCounts[feedSection] > 0 || feedCounts.all === 0) return;
-    const next = FEED_SECTION_ORDER.find((section) => feedCounts[section] > 0) ?? "all";
+    const totalVisible = Object.values(feedCounts).reduce((sum, count) => sum + count, 0);
+    if (feedCounts[feedSection] > 0 || totalVisible === 0) return;
+    const next = FEED_SECTION_ORDER.find((section) => feedCounts[section] > 0) ?? "action";
     setFeedSection(next);
   }, [feedCounts, feedSection]);
 
   const visibleFeedItems = useMemo(() => {
-    if (feedSection === "all") return orderedFeedItems;
-    return orderedFeedItems.filter((item) => getFeedSection(item) === feedSection);
-  }, [feedSection, orderedFeedItems]);
+    return orderedFeedItems.filter(
+      (item) => getFeedSection(item, undefined, hasMethodologyCatalog) === feedSection
+    );
+  }, [feedSection, hasMethodologyCatalog, orderedFeedItems]);
 
   const visibleFeedRowKeys = useMemo(
     () => new Set(visibleFeedItems.map((item) => buildRowKey(item))),
@@ -774,7 +958,21 @@ export default function CollectionPage() {
     return map;
   }, [items]);
 
-  const filteredRowKeys = useMemo(() => new Set(filtered.map((item) => buildRowKey(item))), [filtered]);
+  const filteredRowKeys = useMemo(
+    () => new Set(filteredItems.map((item) => buildRowKey(item))),
+    [filteredItems]
+  );
+  const checkedRowKeySet = useMemo(() => new Set(checkedRowKeys), [checkedRowKeys]);
+  const checkedRows = useMemo(
+    () => checkedRowKeys.map((rowKey) => rowsByKey.get(rowKey)).filter(Boolean) as DataPoint[],
+    [checkedRowKeys, rowsByKey]
+  );
+  const allCheckedRowsReady = useMemo(
+    () =>
+      checkedRows.length > 0 &&
+      checkedRows.every((row) => isReadyToSubmit(row, undefined, hasMethodologyCatalog)),
+    [checkedRows, hasMethodologyCatalog]
+  );
 
   useEffect(() => {
     if (!selectedRowKey) return;
@@ -782,6 +980,20 @@ export default function CollectionPage() {
       setSelectedRowKey(null);
     }
   }, [filteredRowKeys, selectedRowKey]);
+
+  useEffect(() => {
+    setCheckedRowKeys((current) => current.filter((rowKey) => filteredRowKeys.has(rowKey)));
+  }, [filteredRowKeys]);
+
+  useEffect(() => {
+    if (viewMode !== "feed") return;
+    setCheckedRowKeys((current) => current.filter((rowKey) => visibleFeedRowKeys.has(rowKey)));
+  }, [viewMode, visibleFeedRowKeys]);
+
+  useEffect(() => {
+    if (viewMode === "feed" || !selectedRowKey) return;
+    setSelectedRowKey(null);
+  }, [selectedRowKey, viewMode]);
 
   useEffect(() => {
     if (viewMode !== "feed" || !selectedRowKey) return;
@@ -793,53 +1005,27 @@ export default function CollectionPage() {
   const selectedRow = selectedRowKey ? rowsByKey.get(selectedRowKey) ?? null : null;
   const selectedDataPointId = selectedRow ? getResolvedDataPointId(selectedRow) : null;
 
-  const {
-    data: selectedDetail,
-    isLoading: selectedDetailLoading,
-    error: selectedDetailError,
-  } = useApiQuery<DataPointDetail>(
+  const { data: selectedDetail } = useApiQuery<DataPointDetail>(
     ["collection-selected-detail", selectedDataPointId],
     `/data-points/${selectedDataPointId}`,
     { enabled: canAccess && Boolean(selectedDataPointId) }
   );
-
-  const readinessItems = useMemo<ReadinessItem[]>(() => {
-    if (!selectedRow) return [];
-
-    const contextTone: ReadinessTone =
-      selectedRow.boundary_status === "included"
-        ? "done"
-        : selectedRow.boundary_status === "partial"
-          ? "warning"
-          : "warning";
-
-    return [
-      { label: "Draft created", tone: hasCreatedEntry(selectedRow) ? "done" : "pending" },
-      { label: "Value entered", tone: hasValue(selectedDetail, selectedRow) ? "done" : "pending" },
-      {
-        label: "Methodology selected",
-        tone: hasMethodology(selectedDetail, selectedRow, hasMethodologyCatalog)
-          ? "done"
-          : "pending",
-      },
-      {
-        label: "Evidence attached",
-        tone: hasEvidence(selectedDetail, selectedRow) ? "done" : "pending",
-      },
-      {
-        label:
-          selectedRow.boundary_status === "included"
-            ? "Context in boundary"
-            : selectedRow.boundary_status === "partial"
-              ? "Boundary needs review"
-              : "Outside reporting boundary",
-        tone: contextTone,
-      },
-    ];
-  }, [hasMethodologyCatalog, selectedDetail, selectedRow]);
-
-  const missingReadinessCount = readinessItems.filter((item) => item.tone !== "done").length;
+  const { data: selectedEvidence, isLoading: selectedEvidenceLoading } =
+    useApiQuery<EvidenceItem[]>(
+      ["collection-selected-evidence", selectedDataPointId],
+      `/data-points/${selectedDataPointId}/evidences`,
+      { enabled: canAccess && Boolean(selectedDataPointId) }
+    );
+  const evidencePreviewId = evidencePreviewTarget?.item.id ?? null;
+  const { data: evidencePreviewDetail, isLoading: evidencePreviewLoading } =
+    useApiQuery<EvidenceItem>(
+      ["collection-evidence-preview", evidencePreviewId],
+      `/evidences/${evidencePreviewId ?? 0}`,
+      { enabled: canAccess && Boolean(evidencePreviewId) }
+    );
+  const activeEvidencePreview = evidencePreviewDetail ?? evidencePreviewTarget?.item ?? null;
   const hasActiveFilters =
+    onlyMine ||
     Boolean(search.trim()) ||
     statusFilter !== "all" ||
     boundaryFilter !== "all" ||
@@ -855,29 +1041,6 @@ export default function CollectionPage() {
     setSortField(field);
     setSortDir("asc");
   };
-
-  const scrollToTable = useCallback(() => {
-    if (typeof window === "undefined") return;
-    window.setTimeout(() => {
-      document.getElementById("collection-table")?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    }, 50);
-  }, []);
-
-  const showFieldInTable = useCallback(
-    (sharedElementId?: number) => {
-      const firstMatch = sharedElementId ? rowsByElement.get(sharedElementId)?.[0] : undefined;
-      if (firstMatch) {
-        setSearch(firstMatch.element_code || firstMatch.element_name);
-        setSelectedRowKey(buildRowKey(firstMatch));
-      }
-      setViewMode("table");
-      scrollToTable();
-    },
-    [rowsByElement, scrollToTable]
-  );
 
   const openQuickEntry = useCallback((row: DataPoint, helpText?: string | null) => {
     if (!row.shared_element_id) {
@@ -898,8 +1061,25 @@ export default function CollectionPage() {
     });
     const rowKey = buildRowKey(row);
     setGuidedRowKey(rowKey);
-    setSelectedRowKey(rowKey);
   }, []);
+
+  const openEvidencePreview = useCallback((row: DataPoint, item: EvidenceItem) => {
+    setEvidencePreviewTarget({ row, item });
+  }, []);
+
+  const openEvidenceRepository = useCallback(
+    (evidenceId?: number | null) => {
+      const params = new URLSearchParams();
+      params.set("projectId", String(projectId));
+      if (evidenceId) {
+        params.set("evidenceId", String(evidenceId));
+        router.push(`/evidence?${params.toString()}`);
+        return;
+      }
+      router.push(`/evidence?${params.toString()}`);
+    },
+    [projectId, router]
+  );
 
   const openDataEntry = async (row: DataPoint) => {
     setActionError(null);
@@ -938,31 +1118,37 @@ export default function CollectionPage() {
     }
   };
 
-  const resumeGuidedSession = useCallback(() => {
-    const steps = activeFormConfig?.config?.steps ?? [];
-    if (steps.length === 0) return;
-
-    setConfigActionMessage(null);
-
-    for (const step of steps) {
-      for (const field of step.fields.filter((entry) => entry.visible)) {
-        const matches = resolveFieldMatches(field);
-        if (matches.length === 1 && matches[0].collection_status !== "complete") {
-          openQuickEntry(matches[0], field.help_text);
-          return;
-        }
-        if (matches.length > 1) {
-          showFieldInTable(field.shared_element_id);
-          setConfigActionMessage(
-            "This guided field maps to multiple contexts, so the table view was opened for a precise selection."
-          );
-          return;
-        }
+  const submitRow = useCallback(
+    async (row: DataPoint) => {
+      const dataPointId = getResolvedDataPointId(row);
+      if (!dataPointId) {
+        setActionError("Create a draft entry before submitting this metric.");
+        return;
       }
-    }
 
-    setConfigActionMessage("All guided collection fields currently look complete.");
-  }, [activeFormConfig, openQuickEntry, resolveFieldMatches, showFieldInTable]);
+      setActionError(null);
+      setOpeningRowId(row.assignment_id ?? row.id);
+      try {
+        await api.post(`/data-points/${dataPointId}/submit`);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["data-points", projectId, "all"] }),
+          queryClient.invalidateQueries({ queryKey: ["collection-assignments", projectId] }),
+          queryClient.invalidateQueries({
+            queryKey: ["collection-selected-detail", dataPointId],
+          }),
+        ]);
+      } catch (submitError) {
+        setActionError(
+          submitError instanceof Error
+            ? submitError.message
+            : "Unable to submit this row. Please try again."
+        );
+      } finally {
+        setOpeningRowId(null);
+      }
+    },
+    [projectId, queryClient]
+  );
 
   const resetFilters = () => {
     setSearch("");
@@ -973,6 +1159,86 @@ export default function CollectionPage() {
     setSortField("element_code");
     setSortDir("asc");
   };
+
+  const toggleCheckedRow = useCallback((rowKey: string, checked: boolean) => {
+    setCheckedRowKeys((current) => {
+      if (checked) {
+        if (current.includes(rowKey)) return current;
+        return [...current, rowKey];
+      }
+      return current.filter((entry) => entry !== rowKey);
+    });
+  }, []);
+
+  const clearCheckedRows = useCallback(() => {
+    setCheckedRowKeys([]);
+  }, []);
+
+  const submitCheckedRows = useCallback(async () => {
+    if (checkedRows.length === 0) return;
+
+    const nonReady = checkedRows.filter(
+      (row) => !isReadyToSubmit(row, undefined, hasMethodologyCatalog)
+    );
+    if (nonReady.length > 0) {
+      setActionError("Only rows that are ready to submit can be submitted in batch.");
+      return;
+    }
+
+    setActionError(null);
+
+    try {
+      for (const row of checkedRows) {
+        const dataPointId = getResolvedDataPointId(row);
+        if (!dataPointId) {
+          throw new Error("One of the selected rows does not have a draft yet.");
+        }
+        await api.post(`/data-points/${dataPointId}/submit`);
+      }
+      clearCheckedRows();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["data-points", projectId, "all"] }),
+        queryClient.invalidateQueries({ queryKey: ["collection-assignments", projectId] }),
+      ]);
+      if (selectedDataPointId) {
+        await queryClient.invalidateQueries({
+          queryKey: ["collection-selected-detail", selectedDataPointId],
+        });
+      }
+    } catch (submitError) {
+      setActionError(
+        submitError instanceof Error
+          ? submitError.message
+          : "Unable to submit the selected rows. Please try again."
+      );
+    }
+  }, [
+    checkedRows,
+    clearCheckedRows,
+    hasMethodologyCatalog,
+    projectId,
+    queryClient,
+    selectedDataPointId,
+  ]);
+
+  const headerSubtitle = [activeProject?.name ?? `Project #${projectId}`, roleLabel]
+    .filter(Boolean)
+    .join(" · ");
+
+  const runRowAction = useCallback(
+    (row: DataPoint, intent: "quick" | "wizard" | "submit") => {
+      if (intent === "submit") {
+        void submitRow(row);
+        return;
+      }
+      if (intent === "wizard") {
+        void openDataEntry(row);
+        return;
+      }
+      openQuickEntry(row);
+    },
+    [openQuickEntry, submitRow]
+  );
 
   const emptyTableMessage = hasActiveFilters
     ? "No data points match the current filters."
@@ -987,7 +1253,7 @@ export default function CollectionPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-[1400px] space-y-5">
       <GuidedEntryDialog
         open={Boolean(guidedField && guidedRowKey)}
         onOpenChange={(open) => {
@@ -997,6 +1263,9 @@ export default function CollectionPage() {
             if (selectedDataPointId) {
               void queryClient.invalidateQueries({
                 queryKey: ["collection-selected-detail", selectedDataPointId],
+              });
+              void queryClient.invalidateQueries({
+                queryKey: ["collection-selected-evidence", selectedDataPointId],
               });
             }
           }
@@ -1012,38 +1281,21 @@ export default function CollectionPage() {
         }}
       />
 
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900">Data Collection</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            {activeProject?.name ?? `Project #${projectId}`} · {roleLabel}
-          </p>
+          <h2 className="text-[20px] font-bold tracking-tight text-slate-950">Data Collection</h2>
+          <p className="mt-1 text-[12px] text-slate-500">{headerSubtitle}</p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {!configLoading && !configError && activeFormConfig?.config?.steps?.length ? (
-            <Button size="sm" variant="outline" onClick={() => resumeGuidedSession()}>
-              <Sparkles className="h-4 w-4" />
-              Guided mode
-            </Button>
-          ) : null}
-          <Button
-            size="sm"
-            variant={viewMode === "feed" ? "secondary" : "outline"}
-            onClick={() => setViewMode("feed")}
-          >
-            <Rows3 className="h-4 w-4" />
-            Task feed
-          </Button>
-          <Button
-            size="sm"
-            variant={viewMode === "table" ? "secondary" : "outline"}
-            onClick={() => setViewMode("table")}
-          >
-            <Table2 className="h-4 w-4" />
-            Table view
-          </Button>
-        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setViewMode((current) => (current === "feed" ? "table" : "feed"))}
+          className="h-8 rounded-lg px-3 text-[11px]"
+        >
+          <LayoutGrid className="h-4 w-4" />
+          {viewMode === "feed" ? "Table" : "Compact feed"}
+        </Button>
       </div>
 
       {actionError && (
@@ -1051,134 +1303,6 @@ export default function CollectionPage() {
           <AlertTriangle className="h-4 w-4 shrink-0" />
           {actionError}
         </div>
-      )}
-
-      {configActionMessage && (
-        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
-          {configActionMessage}
-        </div>
-      )}
-
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div className="relative max-w-xl flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search metrics, codes, entities, or facilities..."
-            className="pl-9"
-          />
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600">
-            {roles.includes("collector") ? "Your assigned work" : "Project-wide collection"}
-          </div>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => setFiltersOpen((current) => !current)}
-            aria-label="Toggle advanced filters"
-          >
-            <Filter className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-
-      {(filtersOpen || hasActiveFilters) && (
-        <Card className="border-slate-200 p-4">
-          <div className="grid gap-4 xl:grid-cols-6">
-            <div className="grid gap-1.5">
-              <label className="text-sm font-medium text-slate-700">Status</label>
-              <select
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
-                className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-950"
-              >
-                <option value="all">All statuses</option>
-                <option value="missing">Not started</option>
-                <option value="partial">In progress</option>
-                <option value="complete">Complete</option>
-              </select>
-            </div>
-
-            <div className="grid gap-1.5">
-              <label className="text-sm font-medium text-slate-700">Boundary</label>
-              <select
-                value={boundaryFilter}
-                onChange={(event) => setBoundaryFilter(event.target.value as typeof boundaryFilter)}
-                className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-950"
-              >
-                <option value="all">All contexts</option>
-                <option value="included">Included</option>
-                <option value="partial">Partial</option>
-                <option value="excluded">Excluded</option>
-              </select>
-            </div>
-
-            <div className="grid gap-1.5">
-              <label className="text-sm font-medium text-slate-700">Entity</label>
-              <select
-                value={entityFilter}
-                onChange={(event) => setEntityFilter(event.target.value)}
-                className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-950"
-              >
-                <option value="">All entities</option>
-                {entities.map((entity) => (
-                  <option key={entity} value={entity}>
-                    {entity}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="grid gap-1.5">
-              <label className="text-sm font-medium text-slate-700">Standard</label>
-              <select
-                value={standardFilter}
-                onChange={(event) => setStandardFilter(event.target.value)}
-                className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-950"
-              >
-                <option value="">All standards</option>
-                {standards.map((standard) => (
-                  <option key={standard} value={standard}>
-                    {standard}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="grid gap-1.5">
-              <label className="text-sm font-medium text-slate-700">Sort by</label>
-              <select
-                value={sortField}
-                onChange={(event) => setSortField(event.target.value as typeof sortField)}
-                className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-950"
-              >
-                <option value="element_code">Metric code</option>
-                <option value="element_name">Metric name</option>
-                <option value="collection_status">Progress</option>
-              </select>
-            </div>
-
-            <div className="grid gap-1.5">
-              <label className="text-sm font-medium text-slate-700">Order</label>
-              <div className="flex items-center gap-2">
-                <select
-                  value={sortDir}
-                  onChange={(event) => setSortDir(event.target.value as typeof sortDir)}
-                  className="h-9 flex-1 rounded-md border border-slate-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-950"
-                >
-                  <option value="asc">Ascending</option>
-                  <option value="desc">Descending</option>
-                </select>
-                <Button variant="ghost" size="sm" onClick={resetFilters}>
-                  Reset
-                </Button>
-              </div>
-            </div>
-          </div>
-        </Card>
       )}
 
       {meLoading || assignmentsLoading || isLoading ? (
@@ -1202,23 +1326,178 @@ export default function CollectionPage() {
           </p>
         </Card>
       ) : viewMode === "feed" ? (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
           <div className="space-y-4">
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="relative w-full max-w-[260px]">
+                  <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Search metrics..."
+                    className="h-8 rounded-lg border-slate-200 pl-8 text-[12px]"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5">
+                  <Rows3 className="h-3.5 w-3.5 text-slate-400" />
+                  <span className="text-[12px] font-medium text-slate-600">Only mine</span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={onlyMine}
+                    onClick={() => setOnlyMine((current) => !current)}
+                    className={cn(
+                      "relative ml-1 inline-flex h-4 w-7 items-center rounded-full transition-colors",
+                      onlyMine ? "bg-blue-500" : "bg-slate-200"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "inline-block h-3 w-3 rounded-full bg-white shadow transition-transform",
+                        onlyMine ? "translate-x-3.5" : "translate-x-0.5"
+                      )}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              <div className="relative">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setFiltersOpen((current) => !current)}
+                  aria-label="Toggle advanced filters"
+                  className={cn("h-8 w-8 rounded-lg", filtersOpen && "border-slate-300 bg-slate-50")}
+                >
+                  <Filter className="h-4 w-4" />
+                </Button>
+
+                {filtersOpen && (
+                  <div className="absolute right-0 top-12 z-20 w-[320px] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+                    <div className="grid gap-4">
+                      <div className="grid gap-1.5">
+                        <label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                          Entity
+                        </label>
+                        <select
+                          value={entityFilter}
+                          onChange={(event) => setEntityFilter(event.target.value)}
+                          className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-1 focus:ring-slate-950"
+                        >
+                          <option value="">All entities</option>
+                          {entities.map((entity) => (
+                            <option key={entity} value={entity}>
+                              {entity}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="grid gap-1.5">
+                        <label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                          Standard
+                        </label>
+                        <select
+                          value={standardFilter}
+                          onChange={(event) => setStandardFilter(event.target.value)}
+                          className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-1 focus:ring-slate-950"
+                        >
+                          <option value="">All standards</option>
+                          {standards.map((standard) => (
+                            <option key={standard} value={standard}>
+                              {standard}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="grid gap-1.5">
+                        <label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                          Boundary
+                        </label>
+                        <select
+                          value={boundaryFilter}
+                          onChange={(event) =>
+                            setBoundaryFilter(event.target.value as typeof boundaryFilter)
+                          }
+                          className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-1 focus:ring-slate-950"
+                        >
+                          <option value="all">All contexts</option>
+                          <option value="included">Included</option>
+                          <option value="partial">Partial</option>
+                          <option value="excluded">Excluded</option>
+                        </select>
+                      </div>
+
+                      <div className="grid gap-1.5">
+                        <label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                          Status
+                        </label>
+                        <select
+                          value={statusFilter}
+                          onChange={(event) =>
+                            setStatusFilter(event.target.value as typeof statusFilter)
+                          }
+                          className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-1 focus:ring-slate-950"
+                        >
+                          <option value="all">All statuses</option>
+                          <option value="missing">Not started</option>
+                          <option value="partial">In progress</option>
+                          <option value="complete">Complete</option>
+                        </select>
+                      </div>
+
+                      <div className="flex justify-end">
+                        <Button variant="ghost" size="sm" onClick={resetFilters}>
+                          Reset filters
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {checkedRowKeys.length > 0 && (
+              <div className="flex flex-wrap items-center gap-3 rounded-xl bg-blue-500 px-4 py-3 text-sm text-white">
+                <span>
+                  <span className="font-semibold">{checkedRowKeys.length}</span> selected
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!allCheckedRowsReady}
+                  className="border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                  onClick={() => void submitCheckedRows()}
+                >
+                  Submit selected
+                </Button>
+                <button
+                  type="button"
+                  className="ml-auto text-sm font-medium text-white/90 transition hover:text-white"
+                  onClick={clearCheckedRows}
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+
+            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
               <div className="grid grid-cols-2 sm:grid-cols-4">
                 {FEED_SECTION_ORDER.map((section) => (
                   <button
                     key={section}
                     type="button"
                     className={cn(
-                      "flex items-center justify-center gap-2 border-r border-slate-200 px-4 py-3 text-sm font-medium text-slate-500 transition-colors last:border-r-0 hover:bg-slate-50",
+                      "flex items-center justify-center gap-2 border-r border-slate-200 px-4 py-2.5 text-[12px] font-medium text-slate-500 transition-colors last:border-r-0 hover:bg-slate-50",
                       feedSection === section && "bg-slate-900 text-white hover:bg-slate-900"
                     )}
                     onClick={() => setFeedSection(section)}
                   >
                     <span
                       className={cn(
-                        "h-2.5 w-2.5 rounded-full",
+                        "h-2 w-2 rounded-full",
                         FEED_SECTION_CONFIG[section].dotClassName,
                         feedSection === section && "opacity-80"
                       )}
@@ -1242,283 +1521,481 @@ export default function CollectionPage() {
                 {FEED_SECTION_CONFIG[feedSection].emptyState}
               </Card>
             ) : (
-              <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
-                {visibleFeedItems.map((row) => {
-                  const rowKey = buildRowKey(row);
-                  const statusConfig = STATUS_CONFIG[row.collection_status];
-                  const boundaryConfig = BOUNDARY_CONFIG[row.boundary_status];
-                  const cardSection = getFeedSection(row);
-                  const progressCount = getProgressCount(row);
-                  const needsText = getNeedsText(row, undefined, hasMethodologyCatalog);
-                  const isSelected = selectedRowKey === rowKey;
-                  const valuePreview = getValuePreview(row);
-                  const actionLabel =
-                    cardSection === "blocked"
-                      ? "Review"
-                      : row.collection_status === "complete"
-                        ? "Open"
-                        : hasCreatedEntry(row)
-                          ? "Continue"
-                          : "Start";
+              <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                <div className="overflow-x-auto">
+                  <div className="min-w-[860px]">
+                    <div className="grid grid-cols-[28px_minmax(200px,1fr)_130px_120px_52px_68px_78px] border-b border-slate-200 px-4 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      <div className="py-3.5" />
+                      <div className="py-3.5">Metric</div>
+                      <div className="py-3.5">Entity</div>
+                      <div className="py-3.5">Assignee</div>
+                      <div className="py-3.5" />
+                      <div className="py-3.5">Status</div>
+                      <div className="py-3.5" />
+                    </div>
 
-                  return (
-                    <Card
-                      key={rowKey}
-                      className={cn(
-                        "flex h-full cursor-pointer flex-col justify-between border-slate-200 p-5 transition-all hover:border-cyan-300 hover:shadow-md",
-                        isSelected && "border-cyan-400 shadow-md ring-2 ring-cyan-100"
-                      )}
-                      onClick={() => setSelectedRowKey(rowKey)}
-                    >
-                      <div className="space-y-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <h3 className="line-clamp-2 text-base font-semibold text-slate-900">
-                              {row.element_name}
-                            </h3>
-                            <p className="mt-1 truncate font-mono text-[11px] text-slate-500">
-                              {row.element_code}
-                            </p>
-                          </div>
-                          <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>
-                        </div>
+                    {visibleFeedItems.map((row) => {
+                      const rowKey = buildRowKey(row);
+                      const isSelected = selectedRowKey === rowKey;
+                      const detailForRow = isSelected ? selectedDetail : null;
+                      const valueMissing = !hasValue(detailForRow, row);
+                      const methodologyRequired = Boolean(
+                        detailForRow &&
+                          methodologySelectionRequired(detailForRow, hasMethodologyCatalog)
+                      );
+                      const methodologySelected = Boolean(
+                        detailForRow?.methodology?.trim() || row.methodology?.trim()
+                      );
+                      const evidenceItems = isSelected ? selectedEvidence ?? [] : [];
+                      const evidenceCount =
+                        detailForRow?.evidence_count ?? row.evidence_count ?? evidenceItems.length ?? 0;
+                      const visibleEvidenceItems = evidenceItems.slice(0, 2);
+                      const hasEvidenceItems = evidenceItems.length > 0 || evidenceCount > 0;
+                      const rowStatus = getStatusBadgeMeta(
+                        row,
+                        detailForRow,
+                        hasMethodologyCatalog
+                      );
+                      const actionMeta = getRowActionMeta(
+                        row,
+                        detailForRow,
+                        hasMethodologyCatalog
+                      );
+                      const progressCount = getProgressCount(row, detailForRow);
+                      const overdueLabel = getOverdueLabel(row.days_overdue);
+                      const openingThisRow = openingRowId === (row.assignment_id ?? row.id);
+                      const displayFrameworks = getDisplayFrameworks(
+                        selectedDetail?.related_standards?.length
+                          ? selectedDetail.related_standards
+                          : row.standards.map((standard) => ({ code: standard, name: "" }))
+                      );
 
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                            Reported value
-                          </p>
-                          <p
+                      return (
+                        <div key={rowKey}>
+                          <div
                             className={cn(
-                              "mt-2 text-xl font-semibold text-slate-900",
-                              !hasValue(undefined, row) && "text-slate-400"
+                              "grid cursor-pointer grid-cols-[28px_minmax(200px,1fr)_130px_120px_52px_68px_78px] items-center border-b border-slate-100 px-4 transition-colors hover:bg-slate-50",
+                              row.days_overdue ? "border-l-4 border-l-red-500 pl-3" : "border-l-4 border-l-transparent",
+                              isSelected && "bg-blue-50/70"
                             )}
-                          >
-                            {valuePreview}
-                          </p>
-                          <p className="mt-2 text-sm text-slate-500">{formatContext(row)}</p>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-2">
-                          {row.standards.map((standard) => (
-                            <Badge
-                              key={`${rowKey}-${standard}`}
-                              variant="outline"
-                              className="text-[10px] uppercase tracking-wide"
-                            >
-                              {standard}
-                            </Badge>
-                          ))}
-                          <Badge variant={boundaryConfig.variant}>{boundaryConfig.label}</Badge>
-                          {row.reused_across_standards && (
-                            <Badge variant="secondary" className="text-[10px]">
-                              <Repeat2 className="mr-1 h-3 w-3" />
-                              Reused
-                            </Badge>
-                          )}
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2 text-xs">
-                          <div className="rounded-lg border border-slate-200 px-3 py-2">
-                            <p className="text-slate-500">Draft</p>
-                            <p className="mt-1 font-medium text-slate-900">
-                              {hasCreatedEntry(row) ? "Created" : "Missing"}
-                            </p>
-                          </div>
-                          <div className="rounded-lg border border-slate-200 px-3 py-2">
-                            <p className="text-slate-500">Evidence</p>
-                            <p className="mt-1 font-medium text-slate-900">
-                              {row.evidence_required
-                                ? `${row.evidence_count ?? 0} attached`
-                                : "Not required"}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div
-                          className={cn(
-                            "flex items-center gap-2 text-xs font-medium",
-                            cardSection === "blocked" ? "text-red-700" : "text-amber-700"
-                          )}
-                        >
-                          <TriangleAlert className="h-4 w-4 shrink-0" />
-                          <span>{needsText}</span>
-                        </div>
-                      </div>
-
-                      <div className="mt-5 flex items-center justify-between gap-3 border-t border-slate-100 pt-4">
-                        <div className="flex items-center gap-1">
-                          {Array.from({ length: 4 }).map((_, index) => (
-                            <span
-                              key={index}
-                              className={cn(
-                                "h-2.5 w-2.5 rounded-full",
-                                index < progressCount ? "bg-green-500" : "bg-slate-200"
-                              )}
-                            />
-                          ))}
-                          <span className="ml-1 text-xs font-medium text-slate-500">
-                            {progressCount}/4
-                          </span>
-                        </div>
-
-                        <Button
-                          size="sm"
-                          variant={cardSection === "blocked" ? "outline" : "default"}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setSelectedRowKey(rowKey);
-                            if (cardSection === "blocked") return;
-                            if (row.collection_status === "complete") {
-                              void openDataEntry(row);
-                              return;
+                            onClick={() =>
+                              setSelectedRowKey((current) => (current === rowKey ? null : rowKey))
                             }
-                            openQuickEntry(row);
-                          }}
-                        >
-                          {actionLabel}
-                        </Button>
-                      </div>
-                    </Card>
-                  );
-                })}
+                          >
+                            <div className="flex items-center justify-center py-3">
+                              <input
+                                type="checkbox"
+                                checked={checkedRowKeySet.has(rowKey)}
+                                disabled={feedSection === "blocked" || feedSection === "submitted"}
+                                onClick={(event) => event.stopPropagation()}
+                                onChange={(event) => toggleCheckedRow(rowKey, event.target.checked)}
+                                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
+                              />
+                            </div>
+
+                            <div className="py-3 pr-3">
+                              <div className="flex items-center gap-2 text-[13px] font-medium leading-[1.25] text-slate-900">
+                                <span className="truncate" title={row.element_name}>
+                                  {row.element_name}
+                                </span>
+                                {overdueLabel && (
+                                  <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.12em] text-red-500">
+                                    {overdueLabel}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="mt-0.5 truncate font-mono text-[10px] text-slate-400">
+                                {row.element_code}
+                              </div>
+                            </div>
+
+                            <div className="truncate py-3 pr-3 text-[11px] text-slate-500">
+                              {formatContext(row)}
+                            </div>
+
+                            <div className="py-3 pr-3">
+                              <div className="flex items-center gap-2 overflow-hidden">
+                                <span
+                                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
+                                  style={getUserAvatarStyle(row.collector_id, row.collector_name)}
+                                >
+                                  {getUserInitials(row.collector_name)}
+                                </span>
+                                <span className="truncate text-[11px] text-slate-500">
+                                  {row.collector_name ?? "Unassigned"}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="py-3 pr-3">
+                              <div className="flex items-center gap-1">
+                                {Array.from({ length: 4 }).map((_, index) => (
+                                  <span
+                                    key={index}
+                                    className={cn(
+                                      "h-2 w-2 rounded-full",
+                                      index < progressCount ? "bg-green-500" : "bg-slate-200"
+                                    )}
+                                  />
+                                ))}
+                                <span className="ml-1 text-[10px] font-medium text-slate-400">
+                                  {progressCount}/4
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="py-3 pr-3">
+                              <span
+                                className={cn(
+                                  "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                                  rowStatus.className
+                                )}
+                              >
+                                {rowStatus.label}
+                              </span>
+                            </div>
+
+                            <div className="flex justify-end py-3">
+                              <Button
+                                size="sm"
+                                variant={actionMeta.variant}
+                                disabled={openingThisRow}
+                                className="h-7 min-w-[72px] px-2.5 text-[11px]"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  runRowAction(row, actionMeta.intent);
+                                }}
+                              >
+                                {openingThisRow ? (
+                                  <>
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    Opening...
+                                  </>
+                                ) : (
+                                  actionMeta.label
+                                )}
+                              </Button>
+                            </div>
+                          </div>
+
+                          {isSelected && (
+                            <div className="border-b border-slate-200 bg-slate-50/80 py-3 pl-[34px] pr-3">
+                              <div className="space-y-3.5">
+                                <div className="max-w-[760px] space-y-3.5">
+                                  <div className="text-[13px] font-semibold leading-[1.35] text-slate-900">
+                                    {row.element_name} · {row.element_code}
+                                  </div>
+
+                                  <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
+                                    <div>
+                                      <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                                        Entity / Facility
+                                      </div>
+                                      <div className="mt-1 text-[11px] font-medium text-slate-900">
+                                        {formatContext(row)}
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                                        Boundary
+                                      </div>
+                                      <div className="mt-1 text-[11px] font-medium text-slate-900">
+                                        {BOUNDARY_CONFIG[row.boundary_status].label} ·{" "}
+                                        {row.consolidation_method.replace(/_/g, " ")}
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <div
+                                        className={cn(
+                                          "text-[10px] font-semibold uppercase tracking-[0.16em]",
+                                          valueMissing ? "text-red-400" : "text-slate-400"
+                                        )}
+                                      >
+                                        Value
+                                      </div>
+                                      <div
+                                        className={cn(
+                                          "mt-1 text-[11px] font-medium",
+                                          valueMissing ? "text-red-600" : "text-slate-900"
+                                        )}
+                                      >
+                                        {getValuePreview(row, detailForRow)}
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <div
+                                        className={cn(
+                                          "text-[10px] font-semibold uppercase tracking-[0.16em]",
+                                          methodologyRequired && !methodologySelected
+                                            ? "text-amber-500"
+                                            : "text-slate-400"
+                                        )}
+                                      >
+                                        Methodology
+                                      </div>
+                                      <div
+                                        className={cn(
+                                          "mt-1 text-[11px] font-medium",
+                                          methodologySelected
+                                            ? "text-slate-900"
+                                            : methodologyRequired
+                                              ? "text-amber-700"
+                                              : "text-slate-400"
+                                        )}
+                                      >
+                                        {detailForRow?.methodology ??
+                                          row.methodology ??
+                                          "Not selected"}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
+                                    <div>
+                                      <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                                        Frameworks
+                                      </div>
+                                      <div className="mt-2 flex flex-wrap gap-1.5">
+                                        {displayFrameworks.map((standard) => (
+                                          <span
+                                            key={`${rowKey}-${standard.code}`}
+                                            className={cn(
+                                              "inline-flex max-w-full items-center rounded-full border px-2 py-0.5 text-[10px]",
+                                              standard.tone === "framework"
+                                                ? "border-slate-200 bg-white text-slate-600"
+                                                : "border-slate-200 bg-slate-100 text-slate-500"
+                                            )}
+                                          >
+                                            <span
+                                              className={cn(
+                                                "mr-1 font-mono font-semibold",
+                                                standard.tone === "framework"
+                                                  ? "text-slate-900"
+                                                  : "text-slate-700"
+                                              )}
+                                            >
+                                              {standard.code}
+                                            </span>
+                                            {standard.name ? (
+                                              <span className="truncate">{standard.name}</span>
+                                            ) : null}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+
+                                    <div>
+                                      <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                                        Evidence
+                                      </div>
+                                      <div className="mt-2 space-y-2">
+                                        {selectedDataPointId && selectedEvidenceLoading ? (
+                                          <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                            Loading evidence...
+                                          </div>
+                                        ) : hasEvidenceItems ? (
+                                          <>
+                                            <div className="text-[10px] text-slate-400">
+                                              Linked evidence ({evidenceCount})
+                                            </div>
+                                            <div className="space-y-2">
+                                              {(visibleEvidenceItems.length > 0
+                                                ? visibleEvidenceItems
+                                                : [
+                                                    {
+                                                      id: 0,
+                                                      type: "file" as const,
+                                                      title: `${evidenceCount} linked evidence`,
+                                                    },
+                                                  ]
+                                              ).map((item) => (
+                                                <div
+                                                  key={`${rowKey}-evidence-${item.id}-${item.title}`}
+                                                  className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2"
+                                                >
+                                                  <button
+                                                    type="button"
+                                                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                                    onClick={(event) => {
+                                                      event.stopPropagation();
+                                                      if (!selectedDataPointId || item.id === 0) {
+                                                        openQuickEntry(row);
+                                                        return;
+                                                      }
+                                                      openEvidencePreview(row, item);
+                                                    }}
+                                                  >
+                                                    {item.type === "file" ? (
+                                                      <FileText className="h-3.5 w-3.5 shrink-0 text-cyan-600" />
+                                                    ) : (
+                                                      <Link2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                                                    )}
+                                                    <div className="min-w-0">
+                                                      <div className="truncate text-[11px] font-medium text-slate-700">
+                                                        {item.title || item.file_name || "Evidence item"}
+                                                      </div>
+                                                      {item.id !== 0 ? (
+                                                        <div className="truncate text-[10px] text-slate-400">
+                                                          Click to preview evidence details
+                                                        </div>
+                                                      ) : (
+                                                        <div className="truncate text-[10px] text-slate-400">
+                                                          Open this metric to manage linked evidence
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                  </button>
+
+                                                  {item.id !== 0 ? (
+                                                    <div className="flex items-center gap-1">
+                                                      <button
+                                                        type="button"
+                                                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+                                                        title="Preview evidence"
+                                                        onClick={(event) => {
+                                                          event.stopPropagation();
+                                                          openEvidencePreview(row, item);
+                                                        }}
+                                                      >
+                                                        <Eye className="h-3.5 w-3.5" />
+                                                      </button>
+                                                      <button
+                                                        type="button"
+                                                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+                                                        title={
+                                                          item.type === "file"
+                                                            ? "Download evidence"
+                                                            : "Open evidence link"
+                                                        }
+                                                        onClick={(event) => {
+                                                          event.stopPropagation();
+                                                          if (item.type === "file") {
+                                                            void triggerFileDownload(
+                                                              `/api/evidences/${item.id}/download`
+                                                            );
+                                                            return;
+                                                          }
+                                                          if (item.url) {
+                                                            window.open(item.url, "_blank");
+                                                          }
+                                                        }}
+                                                      >
+                                                        {item.type === "file" ? (
+                                                          <Download className="h-3.5 w-3.5" />
+                                                        ) : (
+                                                          <ExternalLink className="h-3.5 w-3.5" />
+                                                        )}
+                                                      </button>
+                                                    </div>
+                                                  ) : null}
+                                                </div>
+                                              ))}
+                                            </div>
+
+                                            <div className="flex flex-wrap items-center gap-3">
+                                              <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="outline"
+                                                className="h-7 px-2.5 text-[11px]"
+                                                onClick={(event) => {
+                                                  event.stopPropagation();
+                                                  openEvidenceRepository(evidenceItems[0]?.id);
+                                                }}
+                                              >
+                                                Manage evidence
+                                              </Button>
+                                              {evidenceItems.length > 2 && (
+                                                <button
+                                                  type="button"
+                                                  className="text-[10px] font-medium text-slate-500 transition hover:text-slate-700"
+                                                  onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    openEvidenceRepository(evidenceItems[0]?.id);
+                                                  }}
+                                                >
+                                                  +{evidenceItems.length - 2} more in repository
+                                                </button>
+                                              )}
+                                            </div>
+                                          </>
+                                        ) : (
+                                          <div className="flex flex-wrap items-center gap-3">
+                                            <span className="text-[11px] font-medium text-amber-700">
+                                              Missing evidence
+                                            </span>
+                                            <Button
+                                              type="button"
+                                              size="sm"
+                                              variant="outline"
+                                              className="h-7 border-amber-200 px-2.5 text-[11px] text-amber-700 hover:bg-amber-50 hover:text-amber-800"
+                                              onClick={(event) => {
+                                                event.stopPropagation();
+                                                openQuickEntry(row);
+                                              }}
+                                            >
+                                              <Plus className="h-3.5 w-3.5" />
+                                              Add evidence
+                                            </Button>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div
+                                    className={cn(
+                                      "flex items-center gap-2 text-[11px] font-medium",
+                                      getFeedSection(row, detailForRow, hasMethodologyCatalog) ===
+                                        "blocked"
+                                        ? "text-red-700"
+                                        : "text-amber-700"
+                                    )}
+                                  >
+                                    <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
+                                    <span>
+                                      {getFeedSection(row, detailForRow, hasMethodologyCatalog) ===
+                                      "blocked"
+                                        ? getBlockingReason(row)
+                                        : getNeedsText(row, detailForRow, hasMethodologyCatalog)}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="flex justify-end pt-1 pr-1">
+                                  <Button
+                                    size="sm"
+                                    variant={actionMeta.variant}
+                                    disabled={openingThisRow}
+                                    className="h-8 min-w-[88px] px-3 text-[11px]"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      runRowAction(row, actionMeta.intent);
+                                    }}
+                                  >
+                                    {openingThisRow ? (
+                                      <>
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        Opening...
+                                      </>
+                                    ) : (
+                                      actionMeta.label
+                                    )}
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             )}
           </div>
-
-          <aside className="xl:sticky xl:top-6 xl:self-start">
-            <Card className="overflow-hidden border-slate-200">
-              {!selectedRow ? (
-                <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 p-6 text-center text-sm text-slate-500">
-                  <Rows3 className="h-8 w-8 text-slate-300" />
-                  Click any task to see readiness and next actions.
-                </div>
-              ) : (
-                <div className="space-y-5 p-5">
-                  <div className="space-y-1">
-                    <h3 className="text-base font-semibold text-slate-900">
-                      {selectedRow.element_name}
-                    </h3>
-                    <p className="font-mono text-xs text-slate-500">{selectedRow.element_code}</p>
-                  </div>
-
-                  <p className="text-sm text-slate-600">{formatContext(selectedRow)}</p>
-
-                  <div className="rounded-xl border border-slate-200 bg-white p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-                      Current value
-                    </p>
-                    <p className="mt-2 text-2xl font-semibold text-slate-900">
-                      {getValuePreview(selectedRow, selectedDetail)}
-                    </p>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    {(selectedDetail?.related_standards?.length
-                      ? selectedDetail.related_standards.map((standard) => standard.code)
-                      : selectedRow.standards
-                    ).map((standard) => (
-                      <Badge key={`${selectedRowKey}-${standard}`} variant="outline" className="text-[10px] uppercase tracking-wide">
-                        {standard}
-                      </Badge>
-                    ))}
-                    <Badge variant={BOUNDARY_CONFIG[selectedRow.boundary_status].variant}>
-                      {BOUNDARY_CONFIG[selectedRow.boundary_status].label}
-                    </Badge>
-                  </div>
-
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="mb-3 flex items-center justify-between">
-                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-                        Readiness
-                      </p>
-                      {selectedDetailLoading && (
-                        <div className="flex items-center gap-1 text-xs text-slate-400">
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          Loading
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="space-y-3">
-                      {readinessItems.map((item) => (
-                        <div
-                          key={item.label}
-                          className="flex items-center gap-3 border-b border-slate-200/80 pb-3 last:border-b-0 last:pb-0"
-                        >
-                          <ReadinessIcon tone={item.tone} />
-                          <span className="text-sm text-slate-700">{item.label}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-3">
-                      <span className="text-xs text-slate-500">Missing</span>
-                      <span className="text-sm font-semibold text-amber-700">
-                        {missingReadinessCount}
-                      </span>
-                    </div>
-                  </div>
-
-                  {selectedRow.boundary_status !== "included" && (
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                      This row is not fully inside the reporting boundary, so it should be reviewed before submission.
-                    </div>
-                  )}
-
-                  {selectedDetailError && (
-                    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-                      {selectedDetailError.message}
-                    </div>
-                  )}
-
-                  <div className="space-y-2">
-                    <Button
-                      className="w-full"
-                      disabled={selectedRow.boundary_status === "excluded"}
-                      onClick={() => {
-                        if (selectedRow.collection_status === "complete") {
-                          void openDataEntry(selectedRow);
-                          return;
-                        }
-                        openQuickEntry(selectedRow);
-                      }}
-                    >
-                      {selectedRow.collection_status === "complete"
-                        ? "Open entry"
-                        : hasCreatedEntry(selectedRow)
-                          ? "Continue quick entry"
-                          : "Start quick entry"}
-                    </Button>
-
-                    <Button
-                      className="w-full"
-                      variant="ghost"
-                      disabled={
-                        selectedRow.boundary_status === "excluded" &&
-                        !getResolvedDataPointId(selectedRow)
-                      }
-                      onClick={() => void openDataEntry(selectedRow)}
-                    >
-                      Open full wizard
-                      <ArrowRight className="h-4 w-4" />
-                    </Button>
-
-                    <Button
-                      className="w-full"
-                      variant="ghost"
-                      onClick={() => {
-                        setViewMode("table");
-                        scrollToTable();
-                      }}
-                    >
-                      Show in table
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </Card>
-          </aside>
-        </div>
       ) : (
         <Card id="collection-table" className="border-slate-200">
           <div className="overflow-x-auto">
@@ -1553,6 +2030,7 @@ export default function CollectionPage() {
                     </button>
                   </th>
                   <th className="px-4 py-3">Entity</th>
+                  <th className="px-4 py-3">Responsible</th>
                   <th className="px-4 py-3">Facility</th>
                   <th className="px-4 py-3">Reporting Boundary</th>
                   <th className="px-4 py-3">Consolidation</th>
@@ -1562,14 +2040,13 @@ export default function CollectionPage() {
               <tbody className="divide-y divide-slate-100">
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-12 text-center text-slate-400">
+                    <td colSpan={9} className="px-4 py-12 text-center text-slate-400">
                       {emptyTableMessage}
                     </td>
                   </tr>
                 ) : (
                   filtered.map((row) => {
                     const rowKey = buildRowKey(row);
-                    const statusConfig = STATUS_CONFIG[row.collection_status];
                     const boundaryConfig = BOUNDARY_CONFIG[row.boundary_status];
                     const isRowOpening = openingRowId === (row.assignment_id ?? row.id);
 
@@ -1592,29 +2069,55 @@ export default function CollectionPage() {
                               {row.reused_across_standards && (
                                 <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
                                   <Repeat2 className="mr-0.5 h-3 w-3" />
-                                  Reused
+                                  Used in {row.standards.length} standards
                                 </Badge>
                               )}
                             </div>
                             {row.standards.length > 0 && (
-                              <div className="flex flex-wrap gap-1.5">
-                                {row.standards.map((standard) => (
-                                  <Badge
-                                    key={`${rowKey}-${standard}`}
-                                    variant="outline"
-                                    className="text-[10px] uppercase tracking-wide"
-                                  >
-                                    {standard}
-                                  </Badge>
-                                ))}
+                              <div className="space-y-1">
+                                <div className="flex flex-wrap gap-1.5">
+                                  {row.standards.map((standard) => (
+                                    <Badge
+                                      key={`${rowKey}-${standard}`}
+                                      variant="outline"
+                                      className="text-[10px] uppercase tracking-wide"
+                                    >
+                                      {standard}
+                                    </Badge>
+                                  ))}
+                                </div>
+                                {row.reused_across_standards && (
+                                  <p className="text-xs text-slate-500">
+                                    One shared data point stays in sync across these linked standards.
+                                  </p>
+                                )}
                               </div>
                             )}
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>
+                          {(() => {
+                            const rowStatus = getStatusBadgeMeta(
+                              row,
+                              undefined,
+                              hasMethodologyCatalog
+                            );
+                            return (
+                              <span
+                                className={cn(
+                                  "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold",
+                                  rowStatus.className
+                                )}
+                              >
+                                {rowStatus.label}
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td className="px-4 py-3 text-slate-600">{row.entity_name}</td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {row.collector_name ?? "—"}
+                        </td>
                         <td className="px-4 py-3 text-slate-600">{row.facility_name ?? "—"}</td>
                         <td className="px-4 py-3">
                           <Badge variant={boundaryConfig.variant}>{boundaryConfig.label}</Badge>
@@ -1654,6 +2157,169 @@ export default function CollectionPage() {
           </div>
         </Card>
       )}
+
+      <Dialog
+        open={Boolean(evidencePreviewTarget)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEvidencePreviewTarget(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-2xl">
+          {activeEvidencePreview ? (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  {activeEvidencePreview.type === "file" ? (
+                    <FileText className="h-5 w-5 text-cyan-500" />
+                  ) : (
+                    <Link2 className="h-5 w-5 text-emerald-500" />
+                  )}
+                  {activeEvidencePreview.title || activeEvidencePreview.file_name || "Evidence"}
+                </DialogTitle>
+                <DialogDescription>
+                  {activeEvidencePreview.description?.trim() ||
+                    "Review this evidence, download it, or open it in the evidence repository."}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4">
+                {evidencePreviewLoading ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading evidence details...
+                  </div>
+                ) : null}
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <div className="text-xs font-medium text-slate-500">Type</div>
+                    <div className="mt-1 text-sm capitalize text-slate-900">
+                      {activeEvidencePreview.type}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-medium text-slate-500">Binding status</div>
+                    <div className="mt-1">
+                      <Badge
+                        variant={
+                          activeEvidencePreview.binding_status === "bound"
+                            ? "success"
+                            : "secondary"
+                        }
+                      >
+                        {activeEvidencePreview.binding_status ?? "linked"}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-medium text-slate-500">Uploaded</div>
+                    <div className="mt-1 text-sm text-slate-900">
+                      {formatEvidenceDate(activeEvidencePreview.upload_date)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-medium text-slate-500">Created by</div>
+                    <div className="mt-1 text-sm text-slate-900">
+                      {activeEvidencePreview.created_by_name ?? "Unknown"}
+                    </div>
+                  </div>
+                </div>
+
+                {activeEvidencePreview.type === "file" ? (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="text-xs font-medium text-slate-500">File</div>
+                    <div className="mt-1 text-sm font-medium text-slate-900">
+                      {activeEvidencePreview.file_name ??
+                        activeEvidencePreview.title ??
+                        "Attached file"}
+                    </div>
+                    {formatFileSize(activeEvidencePreview.file_size) ? (
+                      <div className="mt-1 text-xs text-slate-500">
+                        {formatFileSize(activeEvidencePreview.file_size)}
+                        {activeEvidencePreview.mime_type
+                          ? ` · ${activeEvidencePreview.mime_type}`
+                          : ""}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : activeEvidencePreview.url ? (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="text-xs font-medium text-slate-500">Link</div>
+                    <a
+                      href={activeEvidencePreview.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-cyan-700 hover:underline"
+                    >
+                      {activeEvidencePreview.url}
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  </div>
+                ) : null}
+
+                <div>
+                  <div className="text-xs font-medium text-slate-500">
+                    Linked data points (
+                    {(activeEvidencePreview.linked_data_points ?? []).length})
+                  </div>
+                  {(activeEvidencePreview.linked_data_points ?? []).length === 0 ? (
+                    <div className="mt-1 text-xs text-slate-400">None</div>
+                  ) : (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {(activeEvidencePreview.linked_data_points ?? []).map((point) => (
+                        <Badge key={point.data_point_id} variant="outline" className="text-[10px]">
+                          {point.code} · {point.label}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <DialogFooter className="gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    if (!activeEvidencePreview) return;
+                    setEvidencePreviewTarget(null);
+                    openEvidenceRepository(activeEvidencePreview.id);
+                  }}
+                >
+                  Manage evidence
+                </Button>
+                {activeEvidencePreview.type === "file" ? (
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      void triggerFileDownload(
+                        `/api/evidences/${activeEvidencePreview.id}/download`
+                      );
+                    }}
+                  >
+                    <Download className="h-4 w-4" />
+                    Download
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      if (activeEvidencePreview.url) {
+                        window.open(activeEvidencePreview.url, "_blank");
+                      }
+                    }}
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Open link
+                  </Button>
+                )}
+              </DialogFooter>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -22,6 +22,9 @@ class BaseStorage:
     async def get_url(self, key: str, expires: int = 3600) -> str:
         raise NotImplementedError
 
+    async def download(self, key: str) -> bytes:
+        raise NotImplementedError
+
     async def delete(self, key: str) -> None:
         raise NotImplementedError
 
@@ -42,6 +45,9 @@ class LocalStorage(BaseStorage):
 
     async def get_url(self, key: str, expires: int = 3600) -> str:
         return f"file://{self.base_dir / key}"
+
+    async def download(self, key: str) -> bytes:
+        return (self.base_dir / key).read_bytes()
 
     async def delete(self, key: str) -> None:
         path = self.base_dir / key
@@ -85,6 +91,18 @@ class MinIOStorage(BaseStorage):
         from datetime import timedelta
 
         return await self.client.presigned_get_object(self.bucket, key, expires=timedelta(seconds=expires))
+
+    async def download(self, key: str) -> bytes:
+        response = await self.client.get_object(self.bucket, key)
+        try:
+            return await response.read()
+        finally:
+            close = getattr(response, "close", None)
+            if callable(close):
+                close()
+            release_conn = getattr(response, "release_conn", None)
+            if callable(release_conn):
+                release_conn()
 
     async def delete(self, key: str) -> None:
         await self.client.remove_object(self.bucket, key)

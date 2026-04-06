@@ -156,6 +156,32 @@ async def test_get_data_point(client: AsyncClient, ctx: dict):
     assert resp.json()["numeric_value"] == 42
 
 
+@pytest.mark.asyncio
+async def test_update_data_point_saves_draft_without_internal_error(client: AsyncClient, ctx: dict):
+    create = await client.post(
+        f"/api/projects/{ctx['project_id']}/data-points",
+        json={
+            "shared_element_id": ctx["element_id"],
+            "numeric_value": 42,
+            "unit_code": "tCO2e",
+        },
+        headers=ctx["headers"],
+    )
+    assert create.status_code == 201
+    dp_id = create.json()["id"]
+
+    resp = await client.patch(
+        f"/api/data-points/{dp_id}",
+        json={"numeric_value": 67, "unit_code": "kt"},
+        headers=ctx["headers"],
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "draft"
+    assert data["numeric_value"] == 67
+    assert data["unit_code"] == "kt"
+
+
 # --- Evidence ---
 @pytest.mark.asyncio
 async def test_create_evidence_file(client: AsyncClient, ctx: dict):
@@ -174,6 +200,49 @@ async def test_create_evidence_file(client: AsyncClient, ctx: dict):
     assert resp.status_code == 201
     assert resp.json()["type"] == "file"
     assert resp.json()["title"] == "Emissions Report"
+
+
+@pytest.mark.asyncio
+async def test_create_evidence_file_accepts_json_mime(client: AsyncClient, ctx: dict):
+    resp = await client.post(
+        "/api/evidences",
+        json={
+            "type": "file",
+            "title": "Service Account JSON",
+            "file_name": "service-account.json",
+            "file_uri": "s3://bucket/service-account.json",
+            "mime_type": "application/json",
+            "file_size": 4096,
+        },
+        headers=ctx["headers"],
+    )
+    assert resp.status_code == 201
+    assert resp.json()["type"] == "file"
+    assert resp.json()["title"] == "Service Account JSON"
+
+
+@pytest.mark.asyncio
+async def test_download_evidence_file_returns_attachment(client: AsyncClient, ctx: dict):
+    file_body = b"metric,value\nscope1,42\n"
+    upload = await client.post(
+        "/api/evidences/upload",
+        files={"file": ("report.csv", file_body, "text/csv")},
+        data={"title": "Uploaded CSV", "description": ""},
+        headers=ctx["headers"],
+    )
+    assert upload.status_code == 201
+
+    evidence_id = upload.json()["id"]
+    response = await client.get(
+        f"/api/evidences/{evidence_id}/download",
+        headers=ctx["headers"],
+    )
+
+    assert response.status_code == 200
+    assert response.content == file_body
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "attachment;" in response.headers["content-disposition"]
+    assert "report.csv" in response.headers["content-disposition"]
 
 
 @pytest.mark.asyncio

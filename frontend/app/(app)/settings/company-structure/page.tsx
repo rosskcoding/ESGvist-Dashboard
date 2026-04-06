@@ -12,8 +12,6 @@ import {
   type Connection,
   Handle,
   Position,
-  useNodesState,
-  useEdgesState,
   MarkerType,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -1465,8 +1463,8 @@ export default function CompanyStructurePage() {
     controlLinks,
   ]);
 
-  const [nodes, , onNodesChange] = useNodesState(flowNodes);
-  const [edges, , onEdgesChange] = useEdgesState(flowEdges);
+  const nodes = flowNodes;
+  const edges = flowEdges;
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
@@ -1480,7 +1478,7 @@ export default function CompanyStructurePage() {
     { parent_entity_id: number; child_entity_id: number; ownership_percent: number }
   >("/ownership-links", "POST", {
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["entity-tree"] });
+      queryClient.invalidateQueries({ queryKey: ["entities", "tree"] });
       queryClient.invalidateQueries({ queryKey: ["entities"] });
     },
   });
@@ -1688,8 +1686,6 @@ export default function CompanyStructurePage() {
             <ReactFlow
               nodes={nodes}
               edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
               onNodeClick={onNodeClick}
               onConnect={canManage ? onConnect : undefined}
               nodeTypes={nodeTypes}
