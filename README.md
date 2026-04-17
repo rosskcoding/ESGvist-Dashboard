@@ -6,7 +6,7 @@ This repository contains:
 - a FastAPI backend,
 - a Next.js frontend,
 - product and architecture documentation,
-- demo and Playwright regression artifacts.
+- demo, database snapshots, and Playwright regression artifacts.
 
 The most detailed product specifications live under `docs/` and are primarily written in Russian.
 
@@ -16,6 +16,15 @@ The most detailed product specifications live under `docs/` and are primarily wr
 - `frontend/` - Next.js application, UI components, Playwright suites, and frontend utilities
 - `docs/` - architecture, technical specs, role-specific requirements, backlog, sprint plan, runtime notes
 - `artifacts/` - demo materials, screen summaries, and generated regression outputs
+
+## Canonical Database Snapshots
+
+The repository keeps two canonical PostgreSQL SQL snapshots under `artifacts/db/`:
+
+- `esgvist_standards_snapshot_2026-04-17.sql` - the standards-heavy catalog database (`esgvist`)
+- `esgvist_bp_proxy_case_snapshot_2026-04-17.sql` - the tenant/data-entry database (`esgvist_bp_proxy_case`)
+
+These snapshots are the publishable reference copies for local restore and environment sync.
 
 ## Quick Start
 
