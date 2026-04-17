@@ -8,7 +8,7 @@ import asyncpg
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://postgres:postgres@127.0.0.1:5432/esgvist_bp_proxy_case",
+    "postgresql://postgres:postgres@127.0.0.1:5432/esgvist",
 ).replace("+asyncpg", "")
 PROJECT_ID = int(os.getenv("PROJECT_ID", "6"))
 

@@ -17,14 +17,13 @@ The most detailed product specifications live under `docs/` and are primarily wr
 - `docs/` - architecture, technical specs, role-specific requirements, backlog, sprint plan, runtime notes
 - `artifacts/` - demo materials, screen summaries, and generated regression outputs
 
-## Canonical Database Snapshots
+## Canonical Database Snapshot
 
-The repository keeps two canonical PostgreSQL SQL snapshots under `artifacts/db/`:
+The repository keeps one canonical PostgreSQL SQL snapshot under `artifacts/db/`:
 
-- `esgvist_standards_snapshot_2026-04-17.sql` - the standards-heavy catalog database (`esgvist`)
-- `esgvist_bp_proxy_case_snapshot_2026-04-17.sql` - the tenant/data-entry database (`esgvist_bp_proxy_case`)
+- `esgvist_snapshot_2026-04-17.sql` - the current primary application database (`esgvist`)
 
-These snapshots are the publishable reference copies for local restore and environment sync.
+This snapshot is the publishable reference copy for local restore and environment sync.
 
 ## Quick Start
 
@@ -43,10 +42,10 @@ cp .env.example backend/.env
 docker compose up -d postgres redis minio
 ```
 
-By default, local startup now points the backend at the main imported proxy dataset database:
+By default, local startup points the backend at the current primary database:
 
-- `esgvist_bp_proxy_case`
-- DSN: `postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/esgvist_bp_proxy_case`
+- `esgvist`
+- DSN: `postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/esgvist`
 
 If you switch databases for a one-off task, restore this value in `backend/.env` before the next normal app launch.
 

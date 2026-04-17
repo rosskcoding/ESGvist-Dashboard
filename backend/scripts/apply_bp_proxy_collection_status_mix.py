@@ -11,7 +11,7 @@ from app.core.security import hash_password, verify_password
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://postgres:postgres@127.0.0.1:5432/esgvist_bp_proxy_case",
+    "postgresql://postgres:postgres@127.0.0.1:5432/esgvist",
 )
 PROJECT_ID = int(os.getenv("PROJECT_ID", "6"))
 SHARED_PASSWORD = os.getenv("COLLECTOR_PASSWORD", "Test1234")

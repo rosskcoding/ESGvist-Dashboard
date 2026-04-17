@@ -54,7 +54,7 @@ DATA_SHEETS = (
 )
 DEFAULT_DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/esgvist_bp_proxy_case",
+    "postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/esgvist",
 )
 DEFAULT_PASSWORD = os.getenv("BP_PROXY_IMPORT_PASSWORD", "Test1234")
 DEFAULT_ORG_NAME = "Atlas Energy Group"

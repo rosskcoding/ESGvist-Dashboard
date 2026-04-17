@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     app_env: Literal["local", "staging", "production"] = "local"
 
     # Database
-    database_url: str = "postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/esgvist_bp_proxy_case"
+    database_url: str = "postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/esgvist"
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
