@@ -1,0 +1,110 @@
+# Project Start
+
+## Current canonical database
+
+- Database: `esgvist`
+- Default DSN: `postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/esgvist`
+- Canonical snapshot in repo: `artifacts/db/esgvist_snapshot_2026-04-17.sql`
+
+## One-time setup
+
+1. Start infrastructure:
+
+```bash
+cd /Users/ross.kurinko/Desktop/Code/ESGDashBoard
+docker compose up -d postgres redis minio
+```
+
+2. Create backend env if needed:
+
+```bash
+cd /Users/ross.kurinko/Desktop/Code/ESGDashBoard
+cp .env.example backend/.env
+```
+
+3. Make sure `backend/.env` points to `esgvist`:
+
+```bash
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/esgvist
+```
+
+4. Install backend dependencies if `.venv` does not exist yet:
+
+```bash
+cd /Users/ross.kurinko/Desktop/Code/ESGDashBoard/backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+```
+
+5. Install frontend dependencies if `node_modules` does not exist yet:
+
+```bash
+cd /Users/ross.kurinko/Desktop/Code/ESGDashBoard/frontend
+pnpm install
+```
+
+## Everyday start
+
+### 1. Start backend
+
+Recommended local port for this project: `8003`
+
+```bash
+cd /Users/ross.kurinko/Desktop/Code/ESGDashBoard/backend
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/esgvist ./.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8003
+```
+
+### 2. Start frontend
+
+```bash
+cd /Users/ross.kurinko/Desktop/Code/ESGDashBoard/frontend
+API_PORT=8003 ./node_modules/.bin/next dev --port 3000
+```
+
+## URLs
+
+- App: `http://localhost:3000`
+- Login: `http://localhost:3000/login`
+- API health: `http://127.0.0.1:8003/api/health`
+- Swagger: `http://127.0.0.1:8003/docs`
+- MinIO console: `http://localhost:9001`
+
+## Quick check after start
+
+Backend health should return:
+
+```bash
+curl http://127.0.0.1:8003/api/health
+```
+
+Frontend should open:
+
+```bash
+http://localhost:3000/login
+```
+
+## If the database is empty
+
+Create/update schema first:
+
+```bash
+cd /Users/ross.kurinko/Desktop/Code/ESGDashBoard/backend
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/esgvist ./.venv/bin/alembic upgrade head
+```
+
+Then restore the canonical snapshot:
+
+```bash
+/opt/homebrew/opt/postgresql@16/bin/psql postgresql://postgres:postgres@127.0.0.1:5432/esgvist < /Users/ross.kurinko/Desktop/Code/ESGDashBoard/artifacts/db/esgvist_snapshot_2026-04-17.sql
+```
+
+## Stop
+
+- If running in terminals: `Ctrl+C` in backend and frontend tabs
+- Infra:
+
+```bash
+cd /Users/ross.kurinko/Desktop/Code/ESGDashBoard
+docker compose down
+```

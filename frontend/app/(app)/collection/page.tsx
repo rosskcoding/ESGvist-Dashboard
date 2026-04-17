@@ -683,7 +683,8 @@ export default function CollectionPage() {
 
   const { data: me, isLoading: meLoading } = useApiQuery<AuthMe>(["auth-me"], "/auth/me");
 
-  const roles = me?.roles?.map((binding) => binding.role) ?? [];
+  const roles = useMemo(() => me?.roles?.map((binding) => binding.role) ?? [], [me?.roles]);
+  const isCollector = roles.includes("collector");
   const canAccess = roles.some((role) =>
     ["collector", "esg_manager", "admin", "platform_admin"].includes(role)
   );
@@ -691,12 +692,10 @@ export default function CollectionPage() {
   useEffect(() => {
     if (typeof window === "undefined" || roles.length === 0) return;
     const stored = window.localStorage.getItem(ONLY_MINE_STORAGE_KEY);
-    if (stored === "true" || stored === "false") {
-      setOnlyMine(stored === "true");
-      return;
-    }
-    setOnlyMine(roles.includes("collector"));
-  }, [roles]);
+    const nextOnlyMine =
+      stored === "true" || stored === "false" ? stored === "true" : isCollector;
+    setOnlyMine((current) => (current === nextOnlyMine ? current : nextOnlyMine));
+  }, [isCollector, roles.length]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
