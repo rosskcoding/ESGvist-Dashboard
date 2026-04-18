@@ -115,10 +115,18 @@ function flattenTree(nodes: EntityTreeNode[], depth = 0): Array<EntityTreeNode &
   return rows;
 }
 
-async function safeGet<T>(path: string): Promise<T | null> {
+interface LoadError {
+  path: string;
+  message: string;
+}
+
+async function safeGet<T>(path: string, errors?: LoadError[]): Promise<T | null> {
   try {
     return await api.get<T>(path);
-  } catch {
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[demo] GET ${path} failed:`, err);
+    errors?.push({ path, message });
     return null;
   }
 }
@@ -141,14 +149,16 @@ export default function DemoPage() {
   }>>([]);
   const [entityTree, setEntityTree] = useState<EntityTreeNode[]>([]);
   const [auditLog, setAuditLog] = useState<AuditListResponse | null>(null);
+  const [loadErrors, setLoadErrors] = useState<LoadError[]>([]);
 
   useEffect(() => {
     async function load() {
       setLoading(true);
+      const errors: LoadError[] = [];
       const me = await getMe();
       setUser(me);
 
-      const projects = await safeGet<ProjectListResponse>("/projects");
+      const projects = await safeGet<ProjectListResponse>("/projects", errors);
       const currentProject = projects?.items?.[0] ?? null;
       setProject(currentProject);
 
@@ -161,14 +171,14 @@ export default function DemoPage() {
         pointData,
         completenessData,
       ] = await Promise.all([
-        safeGet<EntityTreeNode[]>("/entities/tree"),
-        safeGet<StandardListResponse>("/standards"),
-        safeGet<UsersResponse>("/auth/organization/users"),
-        safeGet<AuditListResponse>("/audit-log?page=1&page_size=10"),
-        currentProject ? safeGet<AssignmentMatrixResponse>(`/projects/${currentProject.id}/assignments`) : Promise.resolve(null),
-        currentProject ? safeGet<DataPointListResponse>(`/projects/${currentProject.id}/data-points`) : Promise.resolve(null),
+        safeGet<EntityTreeNode[]>("/entities/tree", errors),
+        safeGet<StandardListResponse>("/standards", errors),
+        safeGet<UsersResponse>("/auth/organization/users", errors),
+        safeGet<AuditListResponse>("/audit-log?page=1&page_size=10", errors),
+        currentProject ? safeGet<AssignmentMatrixResponse>(`/projects/${currentProject.id}/assignments`, errors) : Promise.resolve(null),
+        currentProject ? safeGet<DataPointListResponse>(`/projects/${currentProject.id}/data-points`, errors) : Promise.resolve(null),
         currentProject
-          ? safeGet<CompletenessResponse>(`/projects/${currentProject.id}/completeness?boundaryContext=true`)
+          ? safeGet<CompletenessResponse>(`/projects/${currentProject.id}/completeness?boundaryContext=true`, errors)
           : Promise.resolve(null),
       ]);
 
@@ -184,15 +194,21 @@ export default function DemoPage() {
             standardsResponse.items.map(async (standard) => ({
               ...standard,
               disclosures:
-                (await safeGet<DisclosureListResponse>(`/standards/${standard.id}/disclosures`))?.items ?? [],
+                (await safeGet<DisclosureListResponse>(`/standards/${standard.id}/disclosures`, errors))?.items ?? [],
             }))
           )
         : [];
       setStandards(standardsWithDisclosures);
+      setLoadErrors(errors);
       setLoading(false);
     }
 
-    load().catch(() => setLoading(false));
+    load().catch((err) => {
+      console.error("[demo] load failed:", err);
+      const message = err instanceof Error ? err.message : String(err);
+      setLoadErrors((prev) => [...prev, { path: "getMe", message }]);
+      setLoading(false);
+    });
   }, []);
 
   const currentRole = user?.roles?.find((role) => role.scope_type === "organization")?.role
@@ -219,6 +235,19 @@ export default function DemoPage() {
           Read-only view over the seeded demo tenant and scenario outputs.
         </p>
       </div>
+
+      {loadErrors.length > 0 && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <div className="font-medium">Some data failed to load ({loadErrors.length})</div>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs">
+            {loadErrors.map((e, i) => (
+              <li key={`${e.path}-${i}`}>
+                <span className="font-mono">{e.path}</span> — {e.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-4">
         <Card>

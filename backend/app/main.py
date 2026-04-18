@@ -76,6 +76,11 @@ def create_app() -> FastAPI:
             )
         except ImportError:
             pass  # alembic not installed — skip runtime schema check (tests, minimal envs)
+
+        # Pre-build the storage singleton so the first request doesn't race on init.
+        from app.infrastructure.storage import get_storage
+
+        get_storage()
         yield
 
     app = FastAPI(

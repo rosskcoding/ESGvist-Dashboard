@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import os
+import re
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
 from app.core.config import settings
+
+_SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
 @dataclass
@@ -34,23 +37,30 @@ class BaseStorage:
 
 class LocalStorage(BaseStorage):
     def __init__(self, base_dir: str = "/tmp/esg-uploads"):
-        self.base_dir = Path(base_dir)
+        self.base_dir = Path(base_dir).resolve()
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
+    def _resolve_key(self, key: str) -> Path:
+        # Guard against path traversal: reject keys that resolve outside base_dir.
+        candidate = (self.base_dir / key).resolve()
+        if not candidate.is_relative_to(self.base_dir):
+            raise ValueError(f"Invalid storage key: {key!r}")
+        return candidate
+
     async def upload(self, key: str, data: bytes, content_type: str) -> UploadResult:
-        path = self.base_dir / key
+        path = self._resolve_key(key)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
         return UploadResult(key=key, uri=f"file://{path}", size=len(data))
 
     async def get_url(self, key: str, expires: int = 3600) -> str:
-        return f"file://{self.base_dir / key}"
+        return f"file://{self._resolve_key(key)}"
 
     async def download(self, key: str) -> bytes:
-        return (self.base_dir / key).read_bytes()
+        return self._resolve_key(key).read_bytes()
 
     async def delete(self, key: str) -> None:
-        path = self.base_dir / key
+        path = self._resolve_key(key)
         if path.exists():
             path.unlink()
 
@@ -116,7 +126,10 @@ class MinIOStorage(BaseStorage):
 
 
 def generate_storage_key(org_id: int, filename: str) -> str:
-    safe_name = filename.replace("/", "_").replace("\\", "_")
+    # Strip directory components and collapse unsafe characters so the resulting
+    # key cannot escape the org's storage prefix.
+    basename = Path(filename).name
+    safe_name = _SAFE_FILENAME_RE.sub("_", basename).strip("._") or "file"
     return f"{org_id}/{uuid.uuid4().hex}_{safe_name}"
 
 
