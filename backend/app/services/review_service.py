@@ -327,6 +327,8 @@ class ReviewService:
             .where(
                 ReportingProjectStandard.reporting_project_id.in_(project_ids),
                 RequirementItemSharedElement.shared_element_id.in_(shared_element_ids),
+                RequirementItem.is_current == True,  # noqa: E712
+                RequirementItemSharedElement.is_current == True,  # noqa: E712
             )
             .order_by(Standard.code, RequirementItem.id)
         )

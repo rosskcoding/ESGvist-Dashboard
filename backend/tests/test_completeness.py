@@ -27,7 +27,7 @@ async def ctx(client: AsyncClient) -> dict:
 
     # Standard + disclosure
     std = await client.post(
-        "/api/standards", json={"code": "GRI", "name": "GRI"}, headers=headers
+        "/api/standards", json={"code": "GRI 305", "name": "GRI 305 Emissions"}, headers=headers
     )
     disc = await client.post(
         f"/api/standards/{std.json()['id']}/disclosures",
@@ -345,6 +345,36 @@ async def test_project_completeness_per_standard(client: AsyncClient, ctx: dict)
     data = resp.json()
     assert data["standard_id"] == ctx["standard_id"]
     assert data["overall_percent"] == 50.0
+
+
+@pytest.mark.asyncio
+async def test_project_completeness_ignores_retired_requirement_items(
+    client: AsyncClient,
+    ctx: dict,
+):
+    from app.db.models.requirement_item import RequirementItem
+
+    async with TestSessionLocal() as session:
+        session.add(
+            RequirementItem(
+                disclosure_requirement_id=ctx["disclosure_id"],
+                item_code="RETIRED-ITEM",
+                name="Retired item",
+                item_type="metric",
+                value_type="number",
+                is_required=True,
+                version=1,
+                is_current=False,
+            )
+        )
+        await session.commit()
+
+    resp = await client.get(
+        f"/api/projects/{ctx['project_id']}/completeness",
+        headers=ctx["headers"],
+    )
+    assert resp.status_code == 200
+    assert len(resp.json()["items"]) == 2
 
 
 @pytest.mark.asyncio

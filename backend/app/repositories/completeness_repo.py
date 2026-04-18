@@ -169,6 +169,7 @@ class CompletenessRepository:
         q = select(RequirementItem).where(
             RequirementItem.disclosure_requirement_id == disclosure_id,
             RequirementItem.is_required == True,
+            RequirementItem.is_current == True,  # noqa: E712
         )
         result = await self.session.execute(q)
         return list(result.scalars().all())
@@ -189,6 +190,7 @@ class CompletenessRepository:
             .where(
                 ReportingProjectStandard.reporting_project_id == project_id,
                 RequirementItem.is_required == True,
+                RequirementItem.is_current == True,  # noqa: E712
             )
             .order_by(DisclosureRequirement.id, RequirementItem.sort_order, RequirementItem.id)
         )

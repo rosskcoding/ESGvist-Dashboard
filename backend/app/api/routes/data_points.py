@@ -2,7 +2,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import RequestContext, get_current_context
@@ -241,7 +241,7 @@ async def get_evidence(
 
 
 class EvidenceUpdate(BaseModel):
-    title: str | None = None
+    title: str | None = Field(default=None, min_length=1)
     description: str | None = None
 
 
@@ -289,6 +289,7 @@ async def list_evidence_for_dp(
 # --- Evidence: bind to requirement item ---
 class RequirementItemBindRequest(BaseModel):
     requirement_item_id: int
+    project_id: int | None = None
 
 
 @router.post("/api/evidence/{evidence_id}/bind-requirement")
@@ -302,6 +303,7 @@ async def bind_evidence_to_requirement(
         evidence_id,
         payload.requirement_item_id,
         ctx,
+        project_id=payload.project_id,
     )
 
 

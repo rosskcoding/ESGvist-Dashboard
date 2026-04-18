@@ -4,13 +4,17 @@ from collections import defaultdict
 from dataclasses import dataclass
 
 from sqlalchemy import select
+from sqlalchemy.orm import aliased
 
 from app.core.access import get_data_point_for_ctx
 from app.core.dashboard_cache import invalidate_dashboard_project
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError
+from app.db.models.company_entity import CompanyEntity
+from app.db.models.completeness import RequirementItemDataPoint
 from app.db.models.data_point import DataPoint
 from app.db.models.evidence import DataPointEvidence, EvidenceFile, EvidenceLink
+from app.db.models.mapping import RequirementItemSharedElement
 from app.db.models.project import ReportingProject, ReportingProjectStandard
 from app.db.models.requirement_item import RequirementItem
 from app.db.models.requirement_item_evidence import RequirementItemEvidence
@@ -66,6 +70,47 @@ class EvidenceService:
                 changes=changes,
                 performed_by_platform_admin=ctx.is_platform_admin,
             )
+
+    async def _evidence_visible_via_accessible_data_point(
+        self,
+        evidence_id: int,
+        ctx: RequestContext,
+    ) -> bool:
+        result = await self.repo.session.execute(
+            select(DataPointEvidence.data_point_id).where(DataPointEvidence.evidence_id == evidence_id)
+        )
+        for data_point_id in result.scalars().all():
+            try:
+                await get_data_point_for_ctx(self.repo.session, data_point_id, ctx)
+                return True
+            except AppError as exc:
+                if exc.status_code in {403, 404}:
+                    continue
+                raise
+        return False
+
+    async def _ensure_read_access_to_evidence(self, ev, ctx: RequestContext) -> None:
+        if ev.organization_id != ctx.organization_id and not ctx.is_platform_admin:
+            raise AppError("FORBIDDEN", 403, "Evidence belongs to another organization")
+        if ctx.is_platform_admin or ctx.role in {"admin", "esg_manager", "auditor"}:
+            return
+        if ctx.role == "collector" and ev.created_by == ctx.user_id:
+            return
+        if ctx.role in {"collector", "reviewer"} and await self._evidence_visible_via_accessible_data_point(
+            ev.id,
+            ctx,
+        ):
+            return
+        raise AppError("FORBIDDEN", 403, "You don't have permission to access this evidence")
+
+    async def _ensure_mutation_access_to_evidence(self, ev, ctx: RequestContext) -> None:
+        if ev.organization_id != ctx.organization_id and not ctx.is_platform_admin:
+            raise AppError("FORBIDDEN", 403, "Evidence belongs to another organization")
+        if ctx.is_platform_admin or ctx.role in {"admin", "esg_manager"}:
+            return
+        if ctx.role == "collector" and ev.created_by == ctx.user_id:
+            return
+        raise AppError("FORBIDDEN", 403, "You don't have permission to modify this evidence")
 
     async def create(self, payload: EvidenceCreate, ctx: RequestContext) -> EvidenceOut:
         EvidencePolicy().can_create(ctx)
@@ -187,8 +232,7 @@ class EvidenceService:
 
     async def get_download_file(self, evidence_id: int, ctx: RequestContext) -> EvidenceDownloadPayload:
         ev = await self.repo.get_or_raise(evidence_id)
-        if ev.organization_id != ctx.organization_id and not ctx.is_platform_admin:
-            raise AppError("FORBIDDEN", 403, "Evidence belongs to another organization")
+        await self._ensure_read_access_to_evidence(ev, ctx)
         if ev.type != "file":
             raise AppError("INVALID_INPUT", 422, "Download URL is only available for file-type evidence")
         file_row = await self.repo.session.execute(
@@ -210,8 +254,7 @@ class EvidenceService:
 
     async def get_evidence(self, evidence_id: int, ctx: RequestContext) -> EvidenceOut:
         ev = await self.repo.get_or_raise(evidence_id)
-        if ev.organization_id != ctx.organization_id and not ctx.is_platform_admin:
-            raise AppError("FORBIDDEN", 403, "Evidence belongs to another organization")
+        await self._ensure_read_access_to_evidence(ev, ctx)
         context = await self._load_context([ev])
         return self._serialize(ev, context)
 
@@ -227,8 +270,7 @@ class EvidenceService:
     ) -> EvidenceOut:
         EvidencePolicy().can_create(ctx)
         ev = await self.repo.get_or_raise(evidence_id)
-        if ev.organization_id != ctx.organization_id and not ctx.is_platform_admin:
-            raise AppError("FORBIDDEN", 403, "Evidence belongs to another organization")
+        await self._ensure_mutation_access_to_evidence(ev, ctx)
         applied: dict = {}
         for key, value in changes.items():
             if key in self._UPDATABLE_FIELDS:
@@ -311,8 +353,7 @@ class EvidenceService:
     ) -> dict:
         EvidencePolicy().can_create(ctx)
         evidence = await self.repo.get_or_raise(evidence_id)
-        if evidence.organization_id != ctx.organization_id and not ctx.is_platform_admin:
-            raise AppError("FORBIDDEN", 403, "Evidence belongs to another organization")
+        await self._ensure_mutation_access_to_evidence(evidence, ctx)
 
         data_point, _project, _assignment = await get_data_point_for_ctx(
             self.repo.session,
@@ -331,13 +372,14 @@ class EvidenceService:
         )
         return {"data_point_id": dp_id, "evidence_id": evidence_id, "linked": True}
 
-    async def _require_bindable_requirement_item(
+    async def _resolve_bindable_requirement_context(
         self,
         requirement_item_id: int,
         ctx: RequestContext,
         *,
         evidence_id: int | None = None,
-    ) -> RequirementItem:
+        project_id: int | None = None,
+    ) -> tuple[RequirementItem, int]:
         if not ctx.organization_id:
             raise AppError("ORG_HEADER_REQUIRED", 400, "Organization context required")
 
@@ -385,6 +427,7 @@ class EvidenceService:
                 "Requirement item is not active in the current organization reporting context",
             )
 
+        candidate_project_ids = set(item_project_ids)
         if evidence_id is not None:
             evidence_project_result = await self.repo.session.execute(
                 select(DataPoint.reporting_project_id)
@@ -403,27 +446,48 @@ class EvidenceService:
                     422,
                     "Requirement item is not active for all projects linked to this evidence",
                 )
+            if evidence_project_ids:
+                candidate_project_ids = item_project_ids.intersection(evidence_project_ids)
 
-        return requirement_item
+        if project_id is not None:
+            if project_id not in candidate_project_ids:
+                raise AppError(
+                    "INVALID_REQUIREMENT_ITEM_CONTEXT",
+                    422,
+                    "Requirement item is not active for the selected project context",
+                )
+            return requirement_item, project_id
+
+        if len(candidate_project_ids) == 1:
+            return requirement_item, next(iter(candidate_project_ids))
+
+        raise AppError(
+            "AMBIGUOUS_PROJECT_CONTEXT",
+            422,
+            "Select a project when binding evidence to a requirement item that is active in multiple projects",
+        )
 
     async def bind_to_requirement(
         self,
         evidence_id: int,
         requirement_item_id: int,
         ctx: RequestContext,
+        *,
+        project_id: int | None = None,
     ) -> dict:
         EvidencePolicy().can_create(ctx)
         evidence = await self.repo.get_or_raise(evidence_id)
-        if evidence.organization_id != ctx.organization_id and not ctx.is_platform_admin:
-            raise AppError("FORBIDDEN", 403, "Evidence belongs to another organization")
+        await self._ensure_mutation_access_to_evidence(evidence, ctx)
 
-        requirement_item = await self._require_bindable_requirement_item(
+        requirement_item, resolved_project_id = await self._resolve_bindable_requirement_context(
             requirement_item_id,
             ctx,
             evidence_id=evidence_id,
+            project_id=project_id,
         )
         existing = await self.repo.session.execute(
             select(RequirementItemEvidence).where(
+                RequirementItemEvidence.reporting_project_id == resolved_project_id,
                 RequirementItemEvidence.requirement_item_id == requirement_item.id,
                 RequirementItemEvidence.evidence_id == evidence_id,
             )
@@ -436,6 +500,7 @@ class EvidenceService:
             )
 
         binding = RequirementItemEvidence(
+            reporting_project_id=resolved_project_id,
             requirement_item_id=requirement_item.id,
             evidence_id=evidence_id,
             linked_by=ctx.user_id,
@@ -446,11 +511,15 @@ class EvidenceService:
             "evidence_linked_requirement",
             evidence_id,
             ctx,
-            {"requirement_item_id": requirement_item.id},
+            {
+                "requirement_item_id": requirement_item.id,
+                "project_id": resolved_project_id,
+            },
         )
         return {
             "evidence_id": evidence_id,
             "requirement_item_id": requirement_item.id,
+            "project_id": resolved_project_id,
             "linked": True,
         }
 
@@ -461,8 +530,7 @@ class EvidenceService:
         to suggest improvements.
         """
         ev = await self.repo.get_or_raise(evidence_id)
-        if ev.organization_id != ctx.organization_id and not ctx.is_platform_admin:
-            raise AppError("FORBIDDEN", 403, "Evidence belongs to another organization")
+        await self._ensure_read_access_to_evidence(ev, ctx)
 
         suggestions: list[dict] = []
 
@@ -579,33 +647,198 @@ class EvidenceService:
             for user_id, full_name, email in result.all()
         }
 
+        entity = aliased(CompanyEntity)
+        facility = aliased(CompanyEntity)
         result = await self.repo.session.execute(
             select(
                 DataPointEvidence.evidence_id,
                 DataPointEvidence.data_point_id,
                 SharedElement.code,
                 SharedElement.name,
+                SharedElement.element_key,
+                SharedElement.owner_layer,
+                SharedElement.is_custom,
+                ReportingProject.id,
+                ReportingProject.name,
+                entity.name,
+                facility.name,
             )
             .join(DataPoint, DataPoint.id == DataPointEvidence.data_point_id)
             .join(SharedElement, SharedElement.id == DataPoint.shared_element_id)
+            .join(ReportingProject, ReportingProject.id == DataPoint.reporting_project_id)
+            .outerjoin(entity, entity.id == DataPoint.entity_id)
+            .outerjoin(facility, facility.id == DataPoint.facility_id)
             .where(DataPointEvidence.evidence_id.in_(evidence_ids))
         )
         linked_data_points: dict[int, list[dict]] = defaultdict(list)
-        for evidence_id, data_point_id, code, name in result.all():
-            linked_data_points[evidence_id].append(
+        linked_data_points_by_id: dict[tuple[int, int], dict] = {}
+        for (
+            evidence_id,
+            data_point_id,
+            code,
+            name,
+            element_key,
+            owner_layer,
+            is_custom,
+            project_id,
+            project_name,
+            entity_name,
+            facility_name,
+        ) in result.all():
+            item = {
+                "data_point_id": data_point_id,
+                "code": code or f"DP-{data_point_id}",
+                "label": name or f"Data point {data_point_id}",
+                "project_id": project_id,
+                "project_name": project_name,
+                "entity_name": entity_name,
+                "facility_name": facility_name,
+                "element_key": element_key,
+                "owner_layer": owner_layer,
+                "is_custom": bool(is_custom),
+                "requirement_contexts": [],
+            }
+            linked_data_points[evidence_id].append(item)
+            linked_data_points_by_id[(evidence_id, data_point_id)] = item
+
+        result = await self.repo.session.execute(
+            select(
+                DataPointEvidence.evidence_id,
+                DataPointEvidence.data_point_id,
+                RequirementItem.id,
+                RequirementItem.item_code,
+                RequirementItem.name,
+                DisclosureRequirement.code,
+                DisclosureRequirement.title,
+                Standard.code,
+                Standard.name,
+            )
+            .join(DataPoint, DataPoint.id == DataPointEvidence.data_point_id)
+            .join(
+                RequirementItemDataPoint,
+                RequirementItemDataPoint.data_point_id == DataPoint.id,
+            )
+            .join(
+                RequirementItem,
+                RequirementItem.id == RequirementItemDataPoint.requirement_item_id,
+            )
+            .join(
+                DisclosureRequirement,
+                DisclosureRequirement.id == RequirementItem.disclosure_requirement_id,
+            )
+            .join(Standard, Standard.id == DisclosureRequirement.standard_id)
+            .where(DataPointEvidence.evidence_id.in_(evidence_ids))
+        )
+        seen_requirement_contexts: set[tuple[int, int, int]] = set()
+        for (
+            evidence_id,
+            data_point_id,
+            requirement_item_id,
+            item_code,
+            item_name,
+            disclosure_code,
+            disclosure_title,
+            standard_code,
+            standard_name,
+        ) in result.all():
+            item = linked_data_points_by_id.get((evidence_id, data_point_id))
+            if not item:
+                continue
+            dedupe_key = (evidence_id, data_point_id, requirement_item_id)
+            if dedupe_key in seen_requirement_contexts:
+                continue
+            seen_requirement_contexts.add(dedupe_key)
+            item["requirement_contexts"].append(
                 {
-                    "data_point_id": data_point_id,
-                    "code": code or f"DP-{data_point_id}",
-                    "label": name or f"Data point {data_point_id}",
+                    "requirement_item_id": requirement_item_id,
+                    "item_code": item_code,
+                    "item_name": item_name,
+                    "disclosure_code": disclosure_code,
+                    "disclosure_title": disclosure_title,
+                    "standard_code": standard_code,
+                    "standard_name": standard_name,
+                }
+            )
+
+        result = await self.repo.session.execute(
+            select(
+                DataPointEvidence.evidence_id,
+                DataPointEvidence.data_point_id,
+                RequirementItem.id,
+                RequirementItem.item_code,
+                RequirementItem.name,
+                DisclosureRequirement.code,
+                DisclosureRequirement.title,
+                Standard.code,
+                Standard.name,
+            )
+            .join(DataPoint, DataPoint.id == DataPointEvidence.data_point_id)
+            .join(
+                RequirementItemSharedElement,
+                RequirementItemSharedElement.shared_element_id == DataPoint.shared_element_id,
+            )
+            .join(
+                RequirementItem,
+                RequirementItem.id == RequirementItemSharedElement.requirement_item_id,
+            )
+            .join(
+                DisclosureRequirement,
+                DisclosureRequirement.id == RequirementItem.disclosure_requirement_id,
+            )
+            .join(Standard, Standard.id == DisclosureRequirement.standard_id)
+            .join(
+                ReportingProjectStandard,
+                ReportingProjectStandard.reporting_project_id == DataPoint.reporting_project_id,
+            )
+            .where(
+                DataPointEvidence.evidence_id.in_(evidence_ids),
+                RequirementItem.is_current == True,  # noqa: E712
+                RequirementItemSharedElement.is_current == True,  # noqa: E712
+                ReportingProjectStandard.standard_id == Standard.id,
+            )
+        )
+        for (
+            evidence_id,
+            data_point_id,
+            requirement_item_id,
+            item_code,
+            item_name,
+            disclosure_code,
+            disclosure_title,
+            standard_code,
+            standard_name,
+        ) in result.all():
+            item = linked_data_points_by_id.get((evidence_id, data_point_id))
+            if not item:
+                continue
+            dedupe_key = (evidence_id, data_point_id, requirement_item_id)
+            if dedupe_key in seen_requirement_contexts:
+                continue
+            seen_requirement_contexts.add(dedupe_key)
+            item["requirement_contexts"].append(
+                {
+                    "requirement_item_id": requirement_item_id,
+                    "item_code": item_code,
+                    "item_name": item_name,
+                    "disclosure_code": disclosure_code,
+                    "disclosure_title": disclosure_title,
+                    "standard_code": standard_code,
+                    "standard_name": standard_name,
                 }
             )
 
         result = await self.repo.session.execute(
             select(
                 RequirementItemEvidence.evidence_id,
+                RequirementItemEvidence.reporting_project_id,
+                ReportingProject.name,
                 RequirementItem.id,
                 RequirementItem.item_code,
                 RequirementItem.name,
+            )
+            .outerjoin(
+                ReportingProject,
+                ReportingProject.id == RequirementItemEvidence.reporting_project_id,
             )
             .join(
                 RequirementItem,
@@ -614,9 +847,11 @@ class EvidenceService:
             .where(RequirementItemEvidence.evidence_id.in_(evidence_ids))
         )
         linked_requirements: dict[int, list[dict]] = defaultdict(list)
-        for evidence_id, requirement_item_id, code, name in result.all():
+        for evidence_id, reporting_project_id, project_name, requirement_item_id, code, name in result.all():
             linked_requirements[evidence_id].append(
                 {
+                    "project_id": reporting_project_id,
+                    "project_name": project_name,
                     "requirement_item_id": requirement_item_id,
                     "code": code or f"ITEM-{requirement_item_id}",
                     "description": name,

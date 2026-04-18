@@ -93,19 +93,32 @@ class EvidenceRepository:
         )
         return (await self.session.execute(q)).scalar_one()
 
-    async def requirement_item_link_exists(self, requirement_item_id: int, evidence_id: int) -> bool:
+    async def requirement_item_link_exists(
+        self,
+        requirement_item_id: int,
+        evidence_id: int,
+        reporting_project_id: int | None = None,
+    ) -> bool:
+        filters = [
+            RequirementItemEvidence.requirement_item_id == requirement_item_id,
+            RequirementItemEvidence.evidence_id == evidence_id,
+        ]
+        if reporting_project_id is not None:
+            filters.append(RequirementItemEvidence.reporting_project_id == reporting_project_id)
         result = await self.session.execute(
-            select(RequirementItemEvidence).where(
-                RequirementItemEvidence.requirement_item_id == requirement_item_id,
-                RequirementItemEvidence.evidence_id == evidence_id,
-            )
+            select(RequirementItemEvidence).where(*filters)
         )
         return result.scalar_one_or_none() is not None
 
     async def link_to_requirement_item(
-        self, requirement_item_id: int, evidence_id: int, user_id: int
+        self,
+        requirement_item_id: int,
+        evidence_id: int,
+        user_id: int,
+        reporting_project_id: int | None = None,
     ) -> RequirementItemEvidence:
         binding = RequirementItemEvidence(
+            reporting_project_id=reporting_project_id,
             requirement_item_id=requirement_item_id,
             evidence_id=evidence_id,
             linked_by=user_id,

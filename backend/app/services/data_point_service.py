@@ -113,6 +113,27 @@ class DataPointService:
             return "gas_type"
         return normalized
 
+    async def _validate_entity_in_project_org(
+        self,
+        entity_id: int | None,
+        organization_id: int | None,
+        label: str,
+    ) -> None:
+        if entity_id is None:
+            return
+        entity_result = await self.repo.session.execute(
+            select(CompanyEntity).where(CompanyEntity.id == entity_id)
+        )
+        entity = entity_result.scalar_one_or_none()
+        if not entity:
+            raise AppError("NOT_FOUND", 404, f"{label} {entity_id} not found")
+        if organization_id is not None and entity.organization_id != organization_id:
+            raise AppError(
+                "FORBIDDEN",
+                403,
+                f"{label} {entity_id} does not belong to this organization",
+            )
+
     async def _validate_dimensions(
         self,
         shared_element_id: int,
@@ -164,6 +185,8 @@ class DataPointService:
     ) -> DataPointOut:
         AuthPolicy.require_collector_or_manager(ctx)
         project = await get_project_for_ctx(self.repo.session, project_id, ctx)
+        await self._validate_entity_in_project_org(payload.entity_id, project.organization_id, "Entity")
+        await self._validate_entity_in_project_org(payload.facility_id, project.organization_id, "Facility")
         if ctx.role == "collector":
             assignments = await get_user_assignments(
                 self.repo.session, project_id, ctx.user_id, "collector"
@@ -371,6 +394,7 @@ class DataPointService:
         context = await self._load_context(
             project_id=project.id,
             boundary_definition_id=project.boundary_definition_id,
+            data_point_ids=[dp.id],
             shared_element_ids=[dp.shared_element_id],
             entity_ids=[entity_id for entity_id in (dp.entity_id, dp.facility_id) if entity_id is not None],
             methodology_ids=[dp.methodology_id] if detail and dp.methodology_id else [],
@@ -390,11 +414,13 @@ class DataPointService:
         *,
         project_id: int,
         boundary_definition_id: int | None,
+        data_point_ids: list[int],
         shared_element_ids: list[int],
         entity_ids: list[int],
         methodology_ids: list[int],
         include_detail: bool,
     ) -> dict:
+        data_point_ids = list({data_point_id for data_point_id in data_point_ids if data_point_id is not None})
         shared_element_ids = list({sid for sid in shared_element_ids if sid is not None})
         entity_ids = list({eid for eid in entity_ids if eid is not None})
         methodology_ids = list({mid for mid in methodology_ids if mid is not None})
@@ -455,7 +481,11 @@ class DataPointService:
                     (ReportingProjectStandard.standard_id == Standard.id)
                     & (ReportingProjectStandard.reporting_project_id == project_id),
                 )
-                .where(RequirementItemSharedElement.shared_element_id.in_(shared_element_ids))
+                .where(
+                    RequirementItemSharedElement.shared_element_id.in_(shared_element_ids),
+                    RequirementItem.is_current == True,  # noqa: E712
+                    RequirementItemSharedElement.is_current == True,  # noqa: E712
+                )
                 .order_by(Standard.code, RequirementItem.id)
             )
             standard_rows = list(result.all())
@@ -484,10 +514,26 @@ class DataPointService:
         dimension_flags: dict[int, dict[str, bool]] = defaultdict(
             lambda: {"scope": False, "gas_type": False, "category": False}
         )
+        dimension_values: dict[int, dict[str, str | None]] = defaultdict(
+            lambda: {"scope": None, "gas_type": None, "category": None}
+        )
         unit_options: list[str] = []
         methodology_options: list[str] = []
         methodology_names: dict[int, str] = {}
         if include_detail:
+            if data_point_ids:
+                result = await self.repo.session.execute(
+                    select(
+                        DataPointDimension.data_point_id,
+                        DataPointDimension.dimension_type,
+                        DataPointDimension.dimension_value,
+                    ).where(DataPointDimension.data_point_id.in_(data_point_ids))
+                )
+                for data_point_id, dimension_type, dimension_value in result.all():
+                    normalized_type = self._normalize_dimension_type(dimension_type)
+                    if normalized_type in {"scope", "gas_type", "category"}:
+                        dimension_values[data_point_id][normalized_type] = dimension_value
+
             if shared_element_ids:
                 result = await self.repo.session.execute(
                     select(
@@ -523,6 +569,7 @@ class DataPointService:
             "standards_by_element": standards_by_element,
             "element_meta": element_meta,
             "dimension_flags": dimension_flags,
+            "dimension_values": dimension_values,
             "unit_options": unit_options,
             "methodology_options": methodology_options,
             "methodology_names": methodology_names,
@@ -547,7 +594,7 @@ class DataPointService:
             boundary_status = "included" if membership[0] else "excluded"
             consolidation_method = membership[1] or "full"
         elif scope_entity_id is None:
-            boundary_status = "excluded" if boundary_definition_id else "included"
+            boundary_status = "included"
             consolidation_method = "full"
         else:
             boundary_status = "partial" if boundary_definition_id else "included"
@@ -592,6 +639,10 @@ class DataPointService:
             "dimensions": context["dimension_flags"].get(
                 dp.shared_element_id,
                 {"scope": False, "gas_type": False, "category": False},
+            ),
+            "dimension_values": context["dimension_values"].get(
+                dp.id,
+                {"scope": None, "gas_type": None, "category": None},
             ),
             "unit_options": unit_options,
             "methodology_options": list(context["methodology_options"]) if detail else [],

@@ -8,6 +8,12 @@ class RequirementItemEvidence(Base, TimestampMixin):
     __tablename__ = "requirement_item_evidences"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    reporting_project_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("reporting_projects.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     requirement_item_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("requirement_items.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -19,5 +25,10 @@ class RequirementItemEvidence(Base, TimestampMixin):
     )
 
     __table_args__ = (
-        UniqueConstraint("requirement_item_id", "evidence_id", name="uq_ri_evidence"),
+        UniqueConstraint(
+            "reporting_project_id",
+            "requirement_item_id",
+            "evidence_id",
+            name="uq_ri_evidence_project",
+        ),
     )
