@@ -48,12 +48,20 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio:
+        condition: service_started
     volumes:
       - ./backend:/app
     environment:
       APP_ENV: ${APP_ENV:-local}
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/esgvist
       REDIS_URL: redis://redis:6379/0
+      STORAGE_BACKEND: minio
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET: esg-evidence
+      MINIO_SECURE: "false"
       JWT_SECRET: dev-secret-change-in-production
       CORS_ORIGINS: '["http://localhost:3000"]'
       DEBUG: "true"

@@ -77,6 +77,14 @@ Endpoints:
 
 `docker-compose.yml` exposes the API on port `8000`, while the frontend rewrite defaults to `8001`. If you use the Dockerized API, start the frontend with `API_PORT=8000`.
 
+In this mode the API talks to:
+
+- PostgreSQL at `postgres:5432`
+- Redis at `redis:6379`
+- MinIO at `minio:9000`
+
+Evidence uploads use MinIO by default in the Dockerized API flow, so files survive API container restarts via the `minio_data` volume.
+
 ```bash
 docker compose up --build api postgres redis minio
 cd frontend
