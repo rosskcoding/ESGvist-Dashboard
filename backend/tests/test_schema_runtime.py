@@ -17,6 +17,9 @@ try:
         get_current_revisions,
         get_head_revisions,
         get_schema_status,
+        stamp_database_async,
+        stamp_database,
+        upgrade_database,
     )
 
     _alembic_available = True
@@ -128,6 +131,17 @@ async def test_create_app_lifespan_auto_upgrades_outdated_schema(tmp_path, monke
     monkeypatch.setattr(settings, "db_auto_upgrade", True)
     monkeypatch.setattr(settings, "db_require_current_revision", True)
 
+    async def fake_upgrade_database_async(db_url: str, revision: str = "heads") -> None:
+        # SQLite in tests cannot apply some Postgres-oriented Alembic migrations
+        # (for example ALTER-based constraint changes), so we simulate the
+        # runtime auto-upgrade path by stamping all heads.
+        await stamp_database_async(db_url, revision)
+
+    monkeypatch.setattr(
+        "app.core.schema_runtime.upgrade_database_async",
+        fake_upgrade_database_async,
+    )
+
     app = create_app()
 
     async with app.router.lifespan_context(app):
@@ -156,3 +170,29 @@ async def test_ensure_database_schema_rejects_unbootstrapped_database(tmp_path):
             auto_upgrade=True,
             require_current=True,
         )
+
+
+def test_upgrade_database_targets_all_heads_by_default(monkeypatch):
+    captured: dict[str, str] = {}
+
+    def fake_upgrade(config, revision):
+        captured["revision"] = revision
+
+    monkeypatch.setattr("app.core.schema_runtime.command.upgrade", fake_upgrade)
+
+    upgrade_database("sqlite+aiosqlite:///ignored.db")
+
+    assert captured["revision"] == "heads"
+
+
+def test_stamp_database_targets_all_heads_by_default(monkeypatch):
+    captured: dict[str, str] = {}
+
+    def fake_stamp(config, revision):
+        captured["revision"] = revision
+
+    monkeypatch.setattr("app.core.schema_runtime.command.stamp", fake_stamp)
+
+    stamp_database("sqlite+aiosqlite:///ignored.db")
+
+    assert captured["revision"] == "heads"

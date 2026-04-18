@@ -1,110 +1,229 @@
-# Project Start
+#!/usr/bin/env bash
 
-## Current canonical database
+set -euo pipefail
 
-- Database: `esgvist`
-- Default DSN: `postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/esgvist`
-- Canonical snapshot in repo: `artifacts/db/esgvist_snapshot_2026-04-17.sql`
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_NAME="esgdashboard"
+DEFAULT_DATABASE="esgvist"
+DEFAULT_DSN="postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/${DEFAULT_DATABASE}"
 
-## One-time setup
+PORTS=(3000 8000 5432 6379 9000 9001)
 
-1. Start infrastructure:
+port_label() {
+  case "$1" in
+    3000) echo "Frontend app" ;;
+    8000) echo "API" ;;
+    5432) echo "PostgreSQL" ;;
+    6379) echo "Redis" ;;
+    9000) echo "MinIO API" ;;
+    9001) echo "MinIO Console" ;;
+    *) echo "Unknown" ;;
+  esac
+}
 
-```bash
-cd /Users/ross.kurinko/Desktop/Code/ESGDashBoard
-docker compose up -d postgres redis minio
-```
+print_help() {
+  cat <<EOF
+ESGDashBoard default local runtime
 
-2. Create backend env if needed:
+Default stack: Docker Compose project '${PROJECT_NAME}'
 
-```bash
-cd /Users/ross.kurinko/Desktop/Code/ESGDashBoard
-cp .env.example backend/.env
-```
+Published ports:
+  3000  Frontend app
+  8000  API
+  5432  PostgreSQL
+  6379  Redis
+  9000  MinIO API
+  9001  MinIO Console
 
-3. Make sure `backend/.env` points to `esgvist`:
+Default endpoints:
+  App            http://localhost:3000
+  Login          http://localhost:3000/login
+  API health     http://127.0.0.1:8000/api/health
+  Swagger        http://127.0.0.1:8000/docs
+  MinIO Console  http://127.0.0.1:9001
 
-```bash
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/esgvist
-```
+Default database:
+  Name  ${DEFAULT_DATABASE}
+  DSN   ${DEFAULT_DSN}
 
-4. Install backend dependencies if `.venv` does not exist yet:
+Commands:
+  ./start          Check ports, then start/rebuild the default Docker stack
+  ./start up       Same as above
+  ./start check    Validate that required ports are free or already owned by ${PROJECT_NAME}
+  ./start status   Show ${PROJECT_NAME} container status
+  ./start stop     Stop the ${PROJECT_NAME} stack
+  ./start help     Show this help
 
-```bash
-cd /Users/ross.kurinko/Desktop/Code/ESGDashBoard/backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-```
+If one of the default ports is occupied by another process or another Docker project,
+this script exits with a warning instead of starting the wrong stack on the wrong ports.
+EOF
+}
 
-5. Install frontend dependencies if `node_modules` does not exist yet:
+require_docker() {
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "error: docker is not installed or not on PATH" >&2
+    exit 1
+  fi
+  if ! docker version >/dev/null 2>&1; then
+    echo "error: Docker daemon is not reachable. Start Docker Desktop first." >&2
+    exit 1
+  fi
+}
 
-```bash
-cd /Users/ross.kurinko/Desktop/Code/ESGDashBoard/frontend
-pnpm install
-```
+docker_owner_for_port() {
+  local port="$1"
+  python3 - "$port" <<'PY'
+import re
+import subprocess
+import sys
 
-## Everyday start
+port = int(sys.argv[1])
+result = subprocess.run(
+    ["docker", "ps", "--format", "{{.Names}}\t{{.Ports}}"],
+    capture_output=True,
+    text=True,
+    check=False,
+)
+for line in result.stdout.splitlines():
+    line = line.rstrip("\n")
+    if not line:
+        continue
+    try:
+        name, ports = line.split("\t", 1)
+    except ValueError:
+        continue
+    for chunk in ports.split(","):
+        chunk = chunk.strip()
+        m = re.search(r":(\d+)(?:-(\d+))?->", chunk)
+        if not m:
+            continue
+        start = int(m.group(1))
+        end = int(m.group(2) or m.group(1))
+        if start <= port <= end:
+            print(name)
+            raise SystemExit(0)
+PY
+}
 
-### 1. Start backend
+local_owner_for_port() {
+  local port="$1"
+  lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null | awk 'NR==2 { printf "%s (pid %s)", $1, $2 }'
+}
 
-Recommended local port for this project: `8003`
+check_ports() {
+  local conflicts=0
 
-```bash
-cd /Users/ross.kurinko/Desktop/Code/ESGDashBoard/backend
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/esgvist ./.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8003
-```
+  echo "Checking default ${PROJECT_NAME} ports..."
+  for port in "${PORTS[@]}"; do
+    local label
+    label="$(port_label "$port")"
 
-### 2. Start frontend
+    local docker_owner=""
+    docker_owner="$(docker_owner_for_port "$port" || true)"
+    if [[ -n "$docker_owner" ]]; then
+      if [[ "$docker_owner" == "${PROJECT_NAME}-"* ]]; then
+        echo "ok: ${label} port ${port} is already owned by ${docker_owner}"
+      else
+        echo "warning: ${label} port ${port} is occupied by Docker container ${docker_owner}, not ${PROJECT_NAME}" >&2
+        conflicts=1
+      fi
+      continue
+    fi
 
-```bash
-cd /Users/ross.kurinko/Desktop/Code/ESGDashBoard/frontend
-API_PORT=8003 ./node_modules/.bin/next dev --port 3000
-```
+    local process_owner=""
+    process_owner="$(local_owner_for_port "$port" || true)"
+    if [[ -n "$process_owner" ]]; then
+      echo "warning: ${label} port ${port} is occupied by local process ${process_owner}, not ${PROJECT_NAME}" >&2
+      conflicts=1
+      continue
+    fi
 
-## URLs
+    echo "ok: ${label} port ${port} is free"
+  done
 
-- App: `http://localhost:3000`
-- Login: `http://localhost:3000/login`
-- API health: `http://127.0.0.1:8003/api/health`
-- Swagger: `http://127.0.0.1:8003/docs`
-- MinIO console: `http://localhost:9001`
+  if [[ "$conflicts" -ne 0 ]]; then
+    cat >&2 <<EOF
 
-## Quick check after start
+Port conflict detected.
+Free or stop the conflicting process/container first, then rerun:
+  ./start
 
-Backend health should return:
+Expected default stack:
+  frontend -> 3000
+  api      -> 8000
+  postgres -> 5432
+  redis    -> 6379
+  minio    -> 9000
+  console  -> 9001
+EOF
+    exit 1
+  fi
+}
 
-```bash
-curl http://127.0.0.1:8003/api/health
-```
+compose() {
+  (
+    cd "${ROOT_DIR}"
+    docker compose -p "${PROJECT_NAME}" "$@"
+  )
+}
 
-Frontend should open:
+show_status() {
+  compose ps
+}
 
-```bash
-http://localhost:3000/login
-```
+start_stack() {
+  require_docker
+  check_ports
 
-## If the database is empty
+  echo
+  echo "Starting default Docker stack '${PROJECT_NAME}'..."
+  (
+    cd "${ROOT_DIR}"
+    DB_AUTO_UPGRADE=true docker compose -p "${PROJECT_NAME}" up -d --build frontend api postgres redis minio
+  )
 
-Create/update schema first:
+  echo
+  show_status
+  echo
+  cat <<EOF
+Ready.
 
-```bash
-cd /Users/ross.kurinko/Desktop/Code/ESGDashBoard/backend
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/esgvist ./.venv/bin/alembic upgrade head
-```
+Open:
+  App            http://localhost:3000
+  API health     http://127.0.0.1:8000/api/health
+  Swagger        http://127.0.0.1:8000/docs
+  MinIO Console  http://127.0.0.1:9001
+EOF
+}
 
-Then restore the canonical snapshot:
+stop_stack() {
+  require_docker
+  compose down
+}
 
-```bash
-/opt/homebrew/opt/postgresql@16/bin/psql postgresql://postgres:postgres@127.0.0.1:5432/esgvist < /Users/ross.kurinko/Desktop/Code/ESGDashBoard/artifacts/db/esgvist_snapshot_2026-04-17.sql
-```
-
-## Stop
-
-- If running in terminals: `Ctrl+C` in backend and frontend tabs
-- Infra:
-
-```bash
-cd /Users/ross.kurinko/Desktop/Code/ESGDashBoard
-docker compose down
-```
+command="${1:-up}"
+case "${command}" in
+  up|start)
+    start_stack
+    ;;
+  check)
+    require_docker
+    check_ports
+    ;;
+  status)
+    require_docker
+    show_status
+    ;;
+  stop|down)
+    stop_stack
+    ;;
+  help|-h|--help)
+    print_help
+    ;;
+  *)
+    echo "error: unknown command '${command}'" >&2
+    echo >&2
+    print_help
+    exit 1
+    ;;
+esac

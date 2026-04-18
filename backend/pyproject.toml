@@ -23,6 +23,8 @@ dependencies = [
     "structlog>=24.1.0",
     "redis>=5.0.0",
     "openai>=1.0.0",
+    "miniopy-async>=1.23.4",
+    "prometheus-client>=0.20.0",
 ]
 
 [project.optional-dependencies]

@@ -89,19 +89,19 @@ async def get_schema_status(database_url: str) -> SchemaStatus:
     )
 
 
-def upgrade_database(database_url: str, revision: str = "head") -> None:
+def upgrade_database(database_url: str, revision: str = "heads") -> None:
     command.upgrade(_build_alembic_config(database_url), revision)
 
 
-def stamp_database(database_url: str, revision: str = "head") -> None:
+def stamp_database(database_url: str, revision: str = "heads") -> None:
     command.stamp(_build_alembic_config(database_url), revision)
 
 
-async def upgrade_database_async(database_url: str, revision: str = "head") -> None:
+async def upgrade_database_async(database_url: str, revision: str = "heads") -> None:
     await asyncio.to_thread(upgrade_database, database_url, revision)
 
 
-async def stamp_database_async(database_url: str, revision: str = "head") -> None:
+async def stamp_database_async(database_url: str, revision: str = "heads") -> None:
     await asyncio.to_thread(stamp_database, database_url, revision)
 
 
