@@ -1,4 +1,5 @@
 import logging
+from types import SimpleNamespace
 
 from sqlalchemy import select
 
@@ -263,6 +264,32 @@ class WorkflowService:
             "boundary_entity_included": boundary_entity_included,
         }
 
+    @staticmethod
+    def _build_preview_data_point(dp, draft: dict | None):
+        if not draft:
+            return dp
+
+        preview_payload = {
+            "id": dp.id,
+            "reporting_project_id": dp.reporting_project_id,
+            "shared_element_id": dp.shared_element_id,
+            "entity_id": getattr(dp, "entity_id", None),
+            "facility_id": getattr(dp, "facility_id", None),
+            "status": dp.status,
+            "numeric_value": dp.numeric_value,
+            "text_value": dp.text_value,
+            "unit_code": getattr(dp, "unit_code", None),
+            "methodology_id": getattr(dp, "methodology_id", None),
+        }
+        preview_payload.update(draft)
+
+        if draft.get("numeric_value") is not None and "text_value" not in draft:
+            preview_payload["text_value"] = None
+        if draft.get("text_value") is not None and "numeric_value" not in draft:
+            preview_payload["numeric_value"] = None
+
+        return SimpleNamespace(**preview_payload)
+
     async def submit(self, dp_id: int, ctx: RequestContext) -> dict:
         self._require_submit_access(ctx)
         dp, project, _ = await get_data_point_for_ctx(self.dp_repo.session, dp_id, ctx)
@@ -410,7 +437,16 @@ class WorkflowService:
         await invalidate_dashboard_project(dp.reporting_project_id)
         return {"id": dp.id, "status": dp.status, **gate_result}
 
-    async def gate_check(self, action: str, dp_id: int, ctx: RequestContext, comment: str | None = None) -> dict:
+    async def gate_check(
+        self,
+        action: str,
+        dp_id: int,
+        ctx: RequestContext,
+        comment: str | None = None,
+        *,
+        draft: dict | None = None,
+        pending_evidence_count: int = 0,
+    ) -> dict:
         dp, project, _ = await get_data_point_for_ctx(self.dp_repo.session, dp_id, ctx)
         target_map = {
             "submit_data_point": "submitted",
@@ -421,6 +457,8 @@ class WorkflowService:
         }
         target = target_map.get(action, "")
         context = await self._build_gate_context(dp, project, ctx, target, comment)
+        context["data_point"] = self._build_preview_data_point(dp, draft)
+        context["pending_evidence_count"] = pending_evidence_count
         result = await self.gate_engine.check(action, context)
 
         # Log gate check

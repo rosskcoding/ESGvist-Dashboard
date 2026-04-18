@@ -2,6 +2,46 @@ import pytest
 from httpx import AsyncClient
 
 
+async def _create_requirement_item(
+    client: AsyncClient,
+    headers: dict,
+    *,
+    suffix: str,
+    requires_evidence: bool = False,
+) -> int:
+    standard = await client.post(
+        "/api/standards",
+        json={"code": f"WF-{suffix}", "name": f"Workflow {suffix}"},
+        headers=headers,
+    )
+    assert standard.status_code == 201
+
+    disclosure = await client.post(
+        f"/api/standards/{standard.json()['id']}/disclosures",
+        json={
+            "code": f"DISC-{suffix}",
+            "title": f"Workflow disclosure {suffix}",
+            "requirement_type": "quantitative",
+            "mandatory_level": "mandatory",
+        },
+        headers=headers,
+    )
+    assert disclosure.status_code == 201
+
+    item = await client.post(
+        f"/api/disclosures/{disclosure.json()['id']}/items",
+        json={
+            "name": f"Workflow item {suffix}",
+            "item_type": "metric",
+            "value_type": "number",
+            "requires_evidence": requires_evidence,
+        },
+        headers=headers,
+    )
+    assert item.status_code == 201
+    return item.json()["id"]
+
+
 @pytest.fixture
 async def ctx(client: AsyncClient) -> dict:
     """Full setup: register, org, project, shared element, data point (draft)."""
@@ -159,6 +199,66 @@ async def test_gate_check_allowed(client: AsyncClient, ctx: dict):
     )
     assert resp.status_code == 200
     assert resp.json()["allowed"] is True
+
+
+@pytest.mark.asyncio
+async def test_gate_check_uses_preview_draft_without_persisting(client: AsyncClient, ctx: dict):
+    resp = await client.post(
+        "/api/gate-check",
+        json={
+            "action": "submit_data_point",
+            "data_point_id": ctx["dp_id"],
+            "draft": {"numeric_value": 999.5},
+        },
+        headers=ctx["headers"],
+    )
+    assert resp.status_code == 200
+    assert resp.json()["allowed"] is True
+
+    current = await client.get(f"/api/data-points/{ctx['dp_id']}", headers=ctx["headers"])
+    assert current.status_code == 200
+    assert current.json()["numeric_value"] == 100
+
+
+@pytest.mark.asyncio
+async def test_gate_check_counts_pending_evidence_without_upload_side_effect(client: AsyncClient, ctx: dict):
+    item_id = await _create_requirement_item(
+        client,
+        ctx["headers"],
+        suffix=str(ctx["dp_id"]),
+        requires_evidence=True,
+    )
+    binding = await client.post(
+        f"/api/projects/{ctx['project_id']}/bindings",
+        json={"requirement_item_id": item_id, "data_point_id": ctx["dp_id"]},
+        headers=ctx["headers"],
+    )
+    assert binding.status_code == 201
+
+    blocked = await client.post(
+        "/api/gate-check",
+        json={"action": "submit_data_point", "data_point_id": ctx["dp_id"]},
+        headers=ctx["headers"],
+    )
+    assert blocked.status_code == 200
+    assert blocked.json()["allowed"] is False
+    assert any(gate["code"] == "EVIDENCE_REQUIRED" for gate in blocked.json()["failedGates"])
+
+    allowed = await client.post(
+        "/api/gate-check",
+        json={
+            "action": "submit_data_point",
+            "data_point_id": ctx["dp_id"],
+            "pending_evidence_count": 1,
+        },
+        headers=ctx["headers"],
+    )
+    assert allowed.status_code == 200
+    assert allowed.json()["allowed"] is True
+
+    current = await client.get(f"/api/data-points/{ctx['dp_id']}", headers=ctx["headers"])
+    assert current.status_code == 200
+    assert current.json()["evidence_count"] == 0
 
 
 @pytest.mark.asyncio

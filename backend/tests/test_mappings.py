@@ -1,5 +1,9 @@
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.exc import IntegrityError
+
+from app.db.models.mapping import RequirementItemSharedElement
+from tests.conftest import TestSessionLocal
 
 
 @pytest.fixture
@@ -191,6 +195,49 @@ async def test_cross_standard_query(client: AsyncClient, admin_headers: dict):
 
 
 @pytest.mark.asyncio
+async def test_cross_standard_query_ignores_historical_mapping_versions(
+    client: AsyncClient, admin_headers: dict
+):
+    el_resp = await client.post(
+        "/api/shared-elements",
+        json={"code": "GHG_S1_HIST", "name": "Scope 1 Total Historic"},
+        headers=admin_headers,
+    )
+    el_id = el_resp.json()["id"]
+
+    gri_item = await _create_item(client, admin_headers, "GRI_HIST", "305-1", "GRI Scope 1")
+    first = await client.post(
+        "/api/mappings",
+        json={"requirement_item_id": gri_item, "shared_element_id": el_id, "mapping_type": "full"},
+        headers=admin_headers,
+    )
+    assert first.status_code == 201
+
+    second = await client.post(
+        "/api/mappings",
+        json={"requirement_item_id": gri_item, "shared_element_id": el_id, "mapping_type": "partial"},
+        headers=admin_headers,
+    )
+    assert second.status_code == 201
+
+    ifrs_item = await _create_item(client, admin_headers, "IFRS_HIST", "S2.29", "IFRS Scope 1")
+    third = await client.post(
+        "/api/mappings",
+        json={"requirement_item_id": ifrs_item, "shared_element_id": el_id, "mapping_type": "full"},
+        headers=admin_headers,
+    )
+    assert third.status_code == 201
+
+    resp = await client.get("/api/mappings/cross-standard", headers=admin_headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["shared_element_code"] == "GHG_S1_HIST"
+    assert set(data[0]["standards"]) == {"GRI_HIST", "IFRS_HIST"}
+    assert data[0]["mapping_count"] == 2
+
+
+@pytest.mark.asyncio
 async def test_list_mappings(client: AsyncClient, admin_headers: dict):
     el_resp = await client.post(
         "/api/shared-elements",
@@ -238,3 +285,37 @@ async def test_one_element_multiple_items(client: AsyncClient, admin_headers: di
     )
     assert r1.status_code == 201
     assert r2.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_current_mapping_unique_index_blocks_two_current_versions(
+    client: AsyncClient, admin_headers: dict
+):
+    item_id = await _create_item(client, admin_headers, "GRI_CURR", "305-7", "Scope 7")
+
+    el_resp = await client.post(
+        "/api/shared-elements",
+        json={"code": "GHG_S7", "name": "Scope 7 Total"},
+        headers=admin_headers,
+    )
+    el_id = el_resp.json()["id"]
+
+    first = await client.post(
+        "/api/mappings",
+        json={"requirement_item_id": item_id, "shared_element_id": el_id},
+        headers=admin_headers,
+    )
+    assert first.status_code == 201
+
+    with pytest.raises(IntegrityError):
+        async with TestSessionLocal() as session:
+            session.add(
+                RequirementItemSharedElement(
+                    requirement_item_id=item_id,
+                    shared_element_id=el_id,
+                    mapping_type="derived",
+                    version=99,
+                    is_current=True,
+                )
+            )
+            await session.commit()

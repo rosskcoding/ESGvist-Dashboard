@@ -4,11 +4,11 @@ const frontendPort = process.env.PLAYWRIGHT_FRONTEND_PORT || "3003";
 const apiPort = process.env.PLAYWRIGHT_API_PORT || "8003";
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || `http://localhost:${frontendPort}`;
 const databaseUrl =
-  process.env.DATABASE_URL || "postgresql+asyncpg://postgres:postgres@localhost:5432/esgdashboard_demo_20260323";
+  process.env.DATABASE_URL || "sqlite+aiosqlite:///./playwright_collection_guided.db";
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: ["collection-screen.spec.ts"],
+  testMatch: ["collection-screen.spec.ts", "data-entry-screen.spec.ts"],
   timeout: 90_000,
   fullyParallel: false,
   workers: 1,

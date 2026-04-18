@@ -106,6 +106,59 @@ class DataPointService:
         self.project_repo = project_repo
         self.audit_repo = audit_repo
 
+    @staticmethod
+    def _normalize_dimension_type(dimension_type: str) -> str:
+        normalized = dimension_type.strip().lower()
+        if normalized in {"gas", "gas_type"}:
+            return "gas_type"
+        return normalized
+
+    async def _validate_dimensions(
+        self,
+        shared_element_id: int,
+        dimensions,
+    ) -> list[tuple[str, str]]:
+        if dimensions is None:
+            return []
+
+        normalized_dimensions: list[tuple[str, str]] = []
+        seen_types: set[str] = set()
+        for dim in dimensions:
+            normalized_type = self._normalize_dimension_type(dim.dimension_type)
+            if normalized_type in seen_types:
+                raise AppError(
+                    "DUPLICATE_DIMENSION_TYPE",
+                    422,
+                    f"Duplicate dimension_type '{normalized_type}' is not allowed for one data point",
+                )
+            seen_types.add(normalized_type)
+            normalized_dimensions.append((normalized_type, dim.dimension_value))
+
+        result = await self.repo.session.execute(
+            select(SharedElementDimension.dimension_type).where(
+                SharedElementDimension.shared_element_id == shared_element_id
+            )
+        )
+        allowed_types = {
+            self._normalize_dimension_type(dimension_type)
+            for (dimension_type,) in result.all()
+        }
+        invalid_types = sorted(
+            normalized_type
+            for normalized_type, _ in normalized_dimensions
+            if normalized_type not in allowed_types
+        )
+        if invalid_types:
+            raise AppError(
+                "INVALID_DIMENSION_TYPE",
+                422,
+                "Dimensions "
+                + ", ".join(f"'{dimension_type}'" for dimension_type in invalid_types)
+                + " are not configured for this shared element",
+            )
+
+        return normalized_dimensions
+
     async def create(
         self, project_id: int, payload: DataPointCreate, ctx: RequestContext
     ) -> DataPointOut:
@@ -120,8 +173,13 @@ class DataPointService:
                 and (assignment.entity_id is None or assignment.entity_id == payload.entity_id)
                 and (assignment.facility_id is None or assignment.facility_id == payload.facility_id)
                 for assignment in assignments
-            ):
-                raise AppError("FORBIDDEN", 403, "Collectors can only create assigned data points")
+                ):
+                    raise AppError("FORBIDDEN", 403, "Collectors can only create assigned data points")
+
+        validated_dimensions = await self._validate_dimensions(
+            payload.shared_element_id,
+            payload.dimensions,
+        )
 
         dp = await self.repo.create(
             project_id=project_id,
@@ -135,8 +193,8 @@ class DataPointService:
             status="draft",
         )
 
-        for dim in payload.dimensions:
-            await self.repo.add_dimension(dp.id, dim.dimension_type, dim.dimension_value)
+        for dimension_type, dimension_value in validated_dimensions:
+            await self.repo.add_dimension(dp.id, dimension_type, dimension_value)
 
         if self.audit_repo:
             await self.audit_repo.log(
@@ -168,53 +226,91 @@ class DataPointService:
                 f"Data point in status '{dp.status}' cannot be edited",
             )
 
-        methodology_id = dp.methodology_id
-        if payload.methodology:
-            methodology = await self._resolve_methodology(payload.methodology)
-            if methodology is None:
-                raise AppError("METHODOLOGY_NOT_FOUND", 422, "Selected methodology was not found")
-            methodology_id = methodology.id
+        provided_fields = set(payload.model_fields_set)
+        if (
+            "numeric_value" in provided_fields
+            and "text_value" in provided_fields
+            and payload.numeric_value is not None
+            and payload.text_value is not None
+        ):
+            raise AppError(
+                "INVALID_DATA_POINT_UPDATE",
+                422,
+                "numeric_value and text_value cannot both be set in the same update",
+            )
 
-        update_fields: dict[str, object | None] = {
-            "unit_code": payload.unit_code,
-            "methodology_id": methodology_id,
-        }
-        if payload.numeric_value is not None:
+        update_fields: dict[str, object | None] = {}
+        if "unit_code" in provided_fields:
+            update_fields["unit_code"] = payload.unit_code
+
+        if "methodology" in provided_fields:
+            if payload.methodology:
+                methodology = await self._resolve_methodology(payload.methodology)
+                if methodology is None:
+                    raise AppError("METHODOLOGY_NOT_FOUND", 422, "Selected methodology was not found")
+                update_fields["methodology_id"] = methodology.id
+            else:
+                update_fields["methodology_id"] = None
+
+        if "numeric_value" in provided_fields:
             update_fields["numeric_value"] = payload.numeric_value
-            update_fields["text_value"] = None
-        elif payload.text_value is not None:
+            if payload.numeric_value is not None and "text_value" not in provided_fields:
+                update_fields["text_value"] = None
+        if "text_value" in provided_fields:
             update_fields["text_value"] = payload.text_value
-            update_fields["numeric_value"] = None
+            if payload.text_value is not None and "numeric_value" not in provided_fields:
+                update_fields["numeric_value"] = None
 
-        dp = await self.repo.update(dp_id, **update_fields)
+        validated_dimensions: list[tuple[str, str]] | None = None
+        if "dimensions" in provided_fields:
+            validated_dimensions = await self._validate_dimensions(
+                dp.shared_element_id,
+                payload.dimensions,
+            )
 
-        # Snapshot version after value change
-        await create_data_point_version(
-            self.repo.session, dp,
-            changed_by=ctx.user_id,
-            change_reason="value_updated",
-        )
+        if update_fields:
+            dp = await self.repo.update(dp_id, **update_fields)
 
-        if payload.dimensions is not None:
+        if update_fields or "dimensions" in provided_fields:
+            await create_data_point_version(
+                self.repo.session,
+                dp,
+                changed_by=ctx.user_id,
+                change_reason="value_updated",
+            )
+
+        if "dimensions" in provided_fields:
             await self.repo.session.execute(
                 delete(DataPointDimension).where(DataPointDimension.data_point_id == dp_id)
             )
-            for dim in payload.dimensions:
-                await self.repo.add_dimension(dp_id, dim.dimension_type, dim.dimension_value)
+            for dimension_type, dimension_value in validated_dimensions or []:
+                await self.repo.add_dimension(dp_id, dimension_type, dimension_value)
 
         if self.audit_repo:
+            changes: dict[str, object | None] = {}
+            if "unit_code" in provided_fields:
+                changes["unit_code"] = payload.unit_code
+            if "methodology" in provided_fields:
+                changes["methodology"] = payload.methodology
+            if "numeric_value" in provided_fields:
+                changes["numeric_value"] = payload.numeric_value
+            if "text_value" in provided_fields:
+                changes["text_value"] = payload.text_value
+            if "dimensions" in provided_fields:
+                changes["dimensions"] = [
+                    {
+                        "dimension_type": dimension_type,
+                        "dimension_value": dimension_value,
+                    }
+                    for dimension_type, dimension_value in validated_dimensions or []
+                ]
             await self.audit_repo.log(
                 entity_type="DataPoint",
                 entity_id=dp_id,
                 action="data_point_updated",
                 user_id=ctx.user_id,
                 organization_id=ctx.organization_id,
-                changes={
-                    "unit_code": payload.unit_code,
-                    "methodology": payload.methodology,
-                    "numeric_value": payload.numeric_value,
-                    "text_value": payload.text_value,
-                },
+                changes=changes,
                 performed_by_platform_admin=ctx.is_platform_admin,
             )
 

@@ -1,5 +1,9 @@
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
+
+from app.db.models.data_point import DataPointDimension
+from tests.conftest import TestSessionLocal
 
 
 @pytest.fixture
@@ -47,9 +51,10 @@ async def _create_requirement_item(
     project_id: int,
     attach_to_project: bool,
 ) -> int:
+    suffix = f"{project_id}-{'attached' if attach_to_project else 'detached'}"
     standard = await client.post(
         "/api/standards",
-        json={"code": "GRI", "name": "GRI"},
+        json={"code": f"GRI-{suffix}", "name": f"GRI {suffix}"},
         headers=headers,
     )
     assert standard.status_code == 201
@@ -57,8 +62,8 @@ async def _create_requirement_item(
     disclosure = await client.post(
         f"/api/standards/{standard.json()['id']}/disclosures",
         json={
-            "code": "305-1",
-            "title": "Gross direct GHG emissions",
+            "code": f"305-1-{suffix}",
+            "title": f"Gross direct GHG emissions {suffix}",
             "requirement_type": "quantitative",
             "mandatory_level": "mandatory",
         },
@@ -69,11 +74,11 @@ async def _create_requirement_item(
     item = await client.post(
         f"/api/disclosures/{disclosure.json()['id']}/items",
         json={
-            "name": "Scope 1 total",
+            "name": f"Scope 1 total {suffix}",
             "item_type": "metric",
             "value_type": "number",
             "unit_code": "tCO2e",
-            "item_code": "305-1.a",
+            "item_code": f"305-1.a-{suffix}",
         },
         headers=headers,
     )
@@ -110,6 +115,17 @@ async def test_create_data_point(client: AsyncClient, ctx: dict):
 
 @pytest.mark.asyncio
 async def test_create_data_point_with_dimensions(client: AsyncClient, ctx: dict):
+    await client.post(
+        f"/api/shared-elements/{ctx['element_id']}/dimensions",
+        json={"dimension_type": "scope", "is_required": True},
+        headers=ctx["headers"],
+    )
+    await client.post(
+        f"/api/shared-elements/{ctx['element_id']}/dimensions",
+        json={"dimension_type": "gas", "is_required": False},
+        headers=ctx["headers"],
+    )
+
     resp = await client.post(
         f"/api/projects/{ctx['project_id']}/data-points",
         json={
@@ -123,6 +139,66 @@ async def test_create_data_point_with_dimensions(client: AsyncClient, ctx: dict)
         headers=ctx["headers"],
     )
     assert resp.status_code == 201
+
+    dp_id = resp.json()["id"]
+    async with TestSessionLocal() as session:
+        dimensions = (
+            await session.execute(
+                select(DataPointDimension)
+                .where(DataPointDimension.data_point_id == dp_id)
+                .order_by(DataPointDimension.dimension_type)
+            )
+        ).scalars().all()
+
+    assert [(dimension.dimension_type, dimension.dimension_value) for dimension in dimensions] == [
+        ("gas_type", "CO2"),
+        ("scope", "Scope 1"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_create_data_point_rejects_dimensions_not_configured_for_shared_element(
+    client: AsyncClient, ctx: dict
+):
+    resp = await client.post(
+        f"/api/projects/{ctx['project_id']}/data-points",
+        json={
+            "shared_element_id": ctx["element_id"],
+            "numeric_value": 100,
+            "dimensions": [{"dimension_type": "scope", "dimension_value": "Scope 1"}],
+        },
+        headers=ctx["headers"],
+    )
+
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "INVALID_DIMENSION_TYPE"
+
+
+@pytest.mark.asyncio
+async def test_create_data_point_rejects_duplicate_dimension_types(
+    client: AsyncClient, ctx: dict
+):
+    await client.post(
+        f"/api/shared-elements/{ctx['element_id']}/dimensions",
+        json={"dimension_type": "gas", "is_required": False},
+        headers=ctx["headers"],
+    )
+
+    resp = await client.post(
+        f"/api/projects/{ctx['project_id']}/data-points",
+        json={
+            "shared_element_id": ctx["element_id"],
+            "numeric_value": 100,
+            "dimensions": [
+                {"dimension_type": "gas", "dimension_value": "CO2"},
+                {"dimension_type": "gas_type", "dimension_value": "CH4"},
+            ],
+        },
+        headers=ctx["headers"],
+    )
+
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "DUPLICATE_DIMENSION_TYPE"
 
 
 @pytest.mark.asyncio
@@ -180,6 +256,55 @@ async def test_update_data_point_saves_draft_without_internal_error(client: Asyn
     assert data["status"] == "draft"
     assert data["numeric_value"] == 67
     assert data["unit_code"] == "kt"
+
+
+@pytest.mark.asyncio
+async def test_partial_patch_preserves_omitted_unit_code(client: AsyncClient, ctx: dict):
+    create = await client.post(
+        f"/api/projects/{ctx['project_id']}/data-points",
+        json={
+            "shared_element_id": ctx["element_id"],
+            "numeric_value": 42,
+            "unit_code": "tCO2e",
+        },
+        headers=ctx["headers"],
+    )
+    assert create.status_code == 201
+    dp_id = create.json()["id"]
+
+    resp = await client.patch(
+        f"/api/data-points/{dp_id}",
+        json={"numeric_value": 67},
+        headers=ctx["headers"],
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["numeric_value"] == 67
+    assert resp.json()["unit_code"] == "tCO2e"
+
+
+@pytest.mark.asyncio
+async def test_partial_patch_allows_explicit_unit_code_clear(client: AsyncClient, ctx: dict):
+    create = await client.post(
+        f"/api/projects/{ctx['project_id']}/data-points",
+        json={
+            "shared_element_id": ctx["element_id"],
+            "numeric_value": 42,
+            "unit_code": "tCO2e",
+        },
+        headers=ctx["headers"],
+    )
+    assert create.status_code == 201
+    dp_id = create.json()["id"]
+
+    resp = await client.patch(
+        f"/api/data-points/{dp_id}",
+        json={"unit_code": None},
+        headers=ctx["headers"],
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["unit_code"] is None
 
 
 # --- Evidence ---

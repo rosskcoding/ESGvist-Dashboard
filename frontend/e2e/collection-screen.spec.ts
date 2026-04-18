@@ -148,6 +148,70 @@ test.describe("Screen 13 - Collection Table", () => {
     await expect(dialog.getByText("in_review").first()).toBeVisible();
   });
 
+  test("guided readiness check does not persist the draft or upload evidence", async ({
+    page,
+    request,
+  }) => {
+    const suffix = `guided-preview-safe-${Date.now()}`;
+    const journey = await createJourneyAssignment(request, suffix);
+    await createGuidedCollectionConfig(request, suffix, [
+      {
+        shared_element_id: journey.sharedElementId,
+        assignment_id: journey.assignmentId,
+        entity_id: journey.entityId,
+        help_text: `Readiness check for ${journey.code}`,
+        tooltip: `${journey.code}: ${journey.name}`,
+      },
+    ]);
+
+    let patchCalls = 0;
+    let uploadCalls = 0;
+    let linkCalls = 0;
+    await page.route("**/api/data-points/*", async (route) => {
+      if (route.request().method() === "PATCH") {
+        patchCalls += 1;
+      }
+      await route.continue();
+    });
+    await page.route("**/api/evidences/upload", async (route) => {
+      uploadCalls += 1;
+      await route.continue();
+    });
+    await page.route("**/api/data-points/*/evidences", async (route) => {
+      if (route.request().method() === "POST") {
+        linkCalls += 1;
+      }
+      await route.continue();
+    });
+
+    await loginThroughUi(page, demoState.users.collector_energy.email, demoState.password);
+    await page.goto(`/collection?projectId=${demoState.project.id}`);
+
+    const guidedCard = page
+      .locator("div.rounded-2xl", { has: page.getByText(journey.code, { exact: true }) })
+      .first();
+    await guidedCard.getByRole("button", { name: "Quick entry" }).click();
+
+    const dialog = page.locator("dialog[open]");
+    await dialog.getByLabel("Value").fill("130000.7");
+    await dialog.getByLabel("Unit").selectOption("MWH");
+    await dialog.getByLabel("Methodology").selectOption("Utility bill reconciliation");
+    await dialog.locator('input[type="file"]').setInputFiles({
+      name: "guided-readiness-evidence.pdf",
+      mimeType: "application/pdf",
+      buffer: Buffer.from("%PDF-1.4 guided readiness evidence"),
+    });
+
+    await dialog.getByRole("button", { name: "Check Readiness" }).click();
+    await expect(dialog.getByText("Gate checks passed. Field is ready to submit.")).toBeVisible({
+      timeout: 15_000,
+    });
+
+    expect(patchCalls).toBe(0);
+    expect(uploadCalls).toBe(0);
+    expect(linkCalls).toBe(0);
+  });
+
   test("legacy guided config falls back to table when a field resolves to multiple contexts", async ({
     page,
     request,

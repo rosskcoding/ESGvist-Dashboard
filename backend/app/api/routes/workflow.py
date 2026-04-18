@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError
@@ -21,11 +21,20 @@ class WorkflowAction(BaseModel):
     comment: str | None = None
 
 
+class GateCheckDraftPayload(BaseModel):
+    numeric_value: float | None = None
+    text_value: str | None = None
+    unit_code: str | None = None
+    methodology: str | None = None
+
+
 class GateCheckRequest(BaseModel):
     action: str
     data_point_id: int | None = None
     project_id: int | None = None
     comment: str | None = None
+    draft: GateCheckDraftPayload | None = None
+    pending_evidence_count: int = Field(default=0, ge=0)
 
 
 def _get_service(session: AsyncSession) -> WorkflowService:
@@ -111,6 +120,8 @@ async def gate_check(
             payload.data_point_id,
             ctx,
             payload.comment,
+            draft=payload.draft.model_dump(exclude_unset=True) if payload.draft else None,
+            pending_evidence_count=payload.pending_evidence_count,
         )
     if payload.project_id is not None and payload.action == "start_export":
         return await _get_export_service(session).gate_check_start_export(payload.project_id, ctx)

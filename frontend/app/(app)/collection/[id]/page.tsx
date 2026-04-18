@@ -56,6 +56,20 @@ interface GateCheckResult {
   warnings: { message: string; code: string }[];
 }
 
+interface GateCheckDraftPayload {
+  numeric_value?: number;
+  text_value?: string;
+  unit_code?: string;
+  methodology?: string;
+}
+
+interface GateCheckPayload {
+  action: "submit_data_point";
+  data_point_id: number;
+  draft?: GateCheckDraftPayload;
+  pending_evidence_count?: number;
+}
+
 interface FormData {
   value: string;
   unit: string;
@@ -183,7 +197,7 @@ export default function DataEntryWizardPage() {
   }>(["auth-me"], "/auth/me");
 
   /* Gate check mutation */
-  const gateCheck = useApiMutation<GateCheckResult>(
+  const gateCheck = useApiMutation<GateCheckResult, GateCheckPayload>(
     "/gate-check",
     "POST"
   );
@@ -216,6 +230,8 @@ export default function DataEntryWizardPage() {
     }));
   }, [dp]);
 
+  const linkedEvidenceCount = (dp?.evidence_count ?? 0) + uploadedEvidenceIds.length;
+
   /* Drag-drop handlers */
   const [dragOver, setDragOver] = useState(false);
 
@@ -245,17 +261,16 @@ export default function DataEntryWizardPage() {
 
   const removeFile = useCallback(
     (index: number) => {
-      if (uploadedEvidenceIds.length > 0) return;
       updateField(
         "files",
         form.files.filter((_, i) => i !== index)
       );
     },
-    [form.files, updateField, uploadedEvidenceIds.length]
+    [form.files, updateField]
   );
 
   const uploadSelectedEvidence = useCallback(async () => {
-    if (!dp || form.files.length === 0 || uploadedEvidenceIds.length > 0) {
+    if (!dp || form.files.length === 0) {
       return;
     }
     const createdIds: number[] = [];
@@ -270,13 +285,13 @@ export default function DataEntryWizardPage() {
       });
       createdIds.push(evidence.id);
     }
-    setUploadedEvidenceIds(createdIds);
-  }, [dp, form.files, id, uploadedEvidenceIds.length]);
+    setUploadedEvidenceIds((current) => [...current, ...createdIds]);
+    setForm((current) => ({ ...current, files: [] }));
+  }, [dp, form.files, id]);
 
-  const persistDraftFields = useCallback(async () => {
-    if (!dp) return;
-
-    const dimensions = [
+  const buildDimensions = useCallback(() => {
+    if (!dp) return [];
+    return [
       dp.dimensions.scope && form.scope
         ? { dimension_type: "scope", dimension_value: form.scope }
         : null,
@@ -287,15 +302,34 @@ export default function DataEntryWizardPage() {
         ? { dimension_type: "category", dimension_value: form.category }
         : null,
     ].filter(Boolean);
+  }, [dp, form.category, form.gas_type, form.scope]);
+
+  const persistDraftFields = useCallback(async () => {
+    if (!dp) return;
 
     await api.patch(`/data-points/${id}`, {
       numeric_value: dp.element_type === "numeric" ? Number(form.value) : undefined,
       text_value: dp.element_type === "numeric" ? undefined : form.value,
       unit_code: form.unit || undefined,
       methodology: form.methodology || undefined,
-      dimensions,
+      dimensions: buildDimensions(),
     });
-  }, [dp, form.category, form.gas_type, form.methodology, form.scope, form.unit, form.value, id]);
+  }, [buildDimensions, dp, form.methodology, form.unit, form.value, id]);
+
+  const buildGateCheckPayload = useCallback((): GateCheckPayload | null => {
+    if (!dp) return null;
+    return {
+      action: "submit_data_point",
+      data_point_id: Number(id),
+      draft: {
+        numeric_value: dp.element_type === "numeric" ? Number(form.value) : undefined,
+        text_value: dp.element_type === "numeric" ? undefined : form.value,
+        unit_code: form.unit || undefined,
+        methodology: form.methodology || undefined,
+      },
+      pending_evidence_count: form.files.length,
+    };
+  }, [dp, form.files.length, form.methodology, form.unit, form.value, id]);
 
   /* Validate step 2 */
   const validateDataEntry = (): boolean => {
@@ -313,7 +347,7 @@ export default function DataEntryWizardPage() {
     if (requiresMethodologySelection && !form.methodology) {
       errors.methodology = "Methodology is required";
     }
-    if (dp?.evidence_required && form.files.length === 0 && (dp.evidence_count ?? 0) === 0) {
+    if (dp?.evidence_required && form.files.length === 0 && linkedEvidenceCount === 0) {
       errors.files = "Evidence is required for this data point";
     }
 
@@ -333,12 +367,9 @@ export default function DataEntryWizardPage() {
       setSubmitError(null);
       setIsPreparingPreview(true);
       try {
-        await persistDraftFields();
-        await uploadSelectedEvidence();
-        const result = await gateCheck.mutateAsync({
-          action: "submit_data_point",
-          data_point_id: Number(id),
-        });
+        const payload = buildGateCheckPayload();
+        if (!payload) return;
+        const result = await gateCheck.mutateAsync(payload);
         setGateResult(result);
       } catch (error) {
         const message =
@@ -854,7 +885,7 @@ export default function DataEntryWizardPage() {
                 <div>
                   <dt className="text-slate-400">Evidence</dt>
                   <dd className="text-slate-700">
-                    {form.files.length} file(s) attached
+                    {linkedEvidenceCount + form.files.length} file(s) ready
                   </dd>
                 </div>
                 {form.narrative && (

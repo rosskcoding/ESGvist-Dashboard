@@ -1,3 +1,4 @@
+import os
 from collections.abc import AsyncGenerator
 
 import pytest
@@ -13,14 +14,15 @@ from app.events.registry import configure_event_session_factory, register_event_
 from app.main import app
 from app.policies.ai_gate import AIRateGate
 
-TEST_DATABASE_URL = "sqlite+aiosqlite://"
+TEST_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite://")
 
-engine = create_async_engine(
-    TEST_DATABASE_URL,
-    echo=False,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
+engine_kwargs: dict[str, object] = {"echo": False}
+if TEST_DATABASE_URL.startswith("sqlite+aiosqlite"):
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+    if TEST_DATABASE_URL == "sqlite+aiosqlite://":
+        engine_kwargs["poolclass"] = StaticPool
+
+engine = create_async_engine(TEST_DATABASE_URL, **engine_kwargs)
 TestSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 

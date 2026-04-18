@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Date, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Date, ForeignKey, Index, Integer, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.models.base import Base, TimestampMixin
@@ -32,5 +32,13 @@ class RequirementItemSharedElement(Base, TimestampMixin):
         UniqueConstraint(
             "requirement_item_id", "shared_element_id", "version",
             name="uq_item_shared_element_version",
+        ),
+        Index(
+            "uq_current_mapping_per_pair",
+            "requirement_item_id",
+            "shared_element_id",
+            unique=True,
+            sqlite_where=text("is_current = 1"),
+            postgresql_where=text("is_current"),
         ),
     )

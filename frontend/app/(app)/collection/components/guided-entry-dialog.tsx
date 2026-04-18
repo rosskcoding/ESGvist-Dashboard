@@ -100,6 +100,20 @@ interface GateCheckResult {
   warnings: { message: string; code: string }[];
 }
 
+interface GateCheckDraftPayload {
+  numeric_value?: number;
+  text_value?: string;
+  unit_code?: string;
+  methodology?: string;
+}
+
+interface GateCheckPayload {
+  action: "submit_data_point";
+  data_point_id: number;
+  draft?: GateCheckDraftPayload;
+  pending_evidence_count?: number;
+}
+
 interface GuidedEntryDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -455,6 +469,26 @@ export function GuidedEntryDialog({
     return updated;
   }
 
+  function buildGateCheckPayload(targetDetail: DataPointDetail): GateCheckPayload {
+    return {
+      action: "submit_data_point",
+      data_point_id: targetDetail.id,
+      draft: {
+        numeric_value:
+          targetDetail.element_type === "numeric" && form.value.trim()
+            ? Number(form.value)
+            : undefined,
+        text_value:
+          targetDetail.element_type !== "numeric" && form.value.trim()
+            ? form.value
+            : undefined,
+        unit_code: form.unit || undefined,
+        methodology: form.methodology || undefined,
+      },
+      pending_evidence_count: form.files.length,
+    };
+  }
+
   async function handleSaveDraft() {
     if (!detail || !isEditable) return;
     setIsSaving(true);
@@ -481,12 +515,7 @@ export function GuidedEntryDialog({
     setActionMessage(null);
     setActionTone("info");
     try {
-      const updated = await persistDraft();
-      if (!updated) return;
-      const result = await api.post<GateCheckResult>("/gate-check", {
-        action: "submit_data_point",
-        data_point_id: updated.id,
-      });
+      const result = await api.post<GateCheckResult>("/gate-check", buildGateCheckPayload(detail));
       setGateResult(result);
       if (result.allowed) {
         setActionMessage("Gate checks passed. Field is ready to submit.");
@@ -515,15 +544,6 @@ export function GuidedEntryDialog({
     try {
       const updated = await persistDraft();
       if (!updated) return;
-
-      const result = await api.post<GateCheckResult>("/gate-check", {
-        action: "submit_data_point",
-        data_point_id: updated.id,
-      });
-      setGateResult(result);
-      if (!result.allowed) {
-        return;
-      }
 
       const submitted = await api.post<{ id: number; status: string }>(`/data-points/${updated.id}/submit`);
       setDetail((current) => (current ? { ...current, status: submitted.status } : current));

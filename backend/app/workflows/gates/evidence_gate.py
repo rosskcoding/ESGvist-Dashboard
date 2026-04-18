@@ -14,6 +14,7 @@ class EvidenceRequiredGate(Gate):
         dp = context.get("data_point")
         requirement_items = context.get("requirement_items")
         requirement_item = context.get("requirement_item")
+        pending_evidence_count = max(int(context.get("pending_evidence_count", 0) or 0), 0)
 
         if requirement_items is None:
             requirement_items = [requirement_item] if requirement_item else []
@@ -26,7 +27,7 @@ class EvidenceRequiredGate(Gate):
         if not dp or not self.evidence_repo:
             return None
 
-        count = await self.evidence_repo.count_for_data_point(dp.id)
+        count = await self.evidence_repo.count_for_data_point(dp.id) + pending_evidence_count
         if count == 0:
             return GateFailure(
                 code="EVIDENCE_REQUIRED",

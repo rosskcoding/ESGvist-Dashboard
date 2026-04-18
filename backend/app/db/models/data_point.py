@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, ForeignKey, Integer, JSON, Numeric, String, Text
+from sqlalchemy import Boolean, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.models.base import Base, TimestampMixin
@@ -43,3 +43,7 @@ class DataPointDimension(Base, TimestampMixin):
     )
     dimension_type: Mapped[str] = mapped_column(String, nullable=False)
     dimension_value: Mapped[str] = mapped_column(String, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("data_point_id", "dimension_type", name="uq_data_point_dimension_type"),
+    )

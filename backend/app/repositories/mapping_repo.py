@@ -19,7 +19,11 @@ class MappingRepository:
         return m
 
     async def get_by_item_and_element(
-        self, item_id: int, element_id: int, current_only: bool = True,
+        self,
+        item_id: int,
+        element_id: int,
+        current_only: bool = True,
+        for_update: bool = False,
     ) -> RequirementItemSharedElement | None:
         q = select(RequirementItemSharedElement).where(
             RequirementItemSharedElement.requirement_item_id == item_id,
@@ -27,8 +31,14 @@ class MappingRepository:
         )
         if current_only:
             q = q.where(RequirementItemSharedElement.is_current == True)  # noqa: E712
+        q = q.order_by(RequirementItemSharedElement.version.desc(), RequirementItemSharedElement.id.desc())
+        if for_update:
+            q = q.with_for_update()
+        if current_only:
+            q = q.limit(2)
         result = await self.session.execute(q)
-        return result.scalar_one_or_none()
+        items = list(result.scalars().all())
+        return items[0] if items else None
 
     async def list_versions(
         self, item_id: int, element_id: int,
@@ -77,6 +87,7 @@ class MappingRepository:
                 SharedElement.id,
                 SharedElement.code,
                 SharedElement.name,
+                func.count(RequirementItemSharedElement.id).label("mapping_count"),
                 func.count(func.distinct(DisclosureRequirement.standard_id)).label("std_count"),
             )
             .join(
@@ -91,6 +102,11 @@ class MappingRepository:
                 DisclosureRequirement,
                 DisclosureRequirement.id == RequirementItem.disclosure_requirement_id,
             )
+            .where(
+                RequirementItemSharedElement.is_current == True,  # noqa: E712
+                RequirementItem.is_current == True,  # noqa: E712
+                SharedElement.is_current == True,  # noqa: E712
+            )
             .group_by(SharedElement.id, SharedElement.code, SharedElement.name)
             .having(func.count(func.distinct(DisclosureRequirement.standard_id)) > 1)
         )
@@ -104,7 +120,11 @@ class MappingRepository:
                 select(func.distinct(DisclosureRequirement.standard_id))
                 .join(RequirementItem)
                 .join(RequirementItemSharedElement)
-                .where(RequirementItemSharedElement.shared_element_id == row.id)
+                .where(
+                    RequirementItemSharedElement.shared_element_id == row.id,
+                    RequirementItemSharedElement.is_current == True,  # noqa: E712
+                    RequirementItem.is_current == True,  # noqa: E712
+                )
             )
             std_result = await self.session.execute(std_q)
             std_ids = [r[0] for r in std_result.all()]
@@ -120,7 +140,7 @@ class MappingRepository:
                 "shared_element_code": row.code,
                 "shared_element_name": row.name,
                 "standards": std_codes,
-                "mapping_count": row.std_count,
+                "mapping_count": row.mapping_count,
             })
 
         return elements

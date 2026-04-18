@@ -1,5 +1,7 @@
 from datetime import date
 
+from sqlalchemy.exc import IntegrityError
+
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError
 from app.policies.standard_policy import StandardPolicy
@@ -26,29 +28,38 @@ class MappingService:
         self.policy.require_admin(ctx)
 
         existing = await self.repo.get_by_item_and_element(
-            payload.requirement_item_id, payload.shared_element_id
+            payload.requirement_item_id,
+            payload.shared_element_id,
+            for_update=True,
         )
-        if existing:
-            # Versioning: retire old, create new version
-            existing.is_current = False
-            existing.valid_to = date.today()
-            await self.repo.session.flush()
+        try:
+            if existing:
+                # Retire the current mapping and create the next version under the same lock.
+                existing.is_current = False
+                existing.valid_to = date.today()
+                await self.repo.session.flush()
+
+                m = await self.repo.create(
+                    requirement_item_id=payload.requirement_item_id,
+                    shared_element_id=payload.shared_element_id,
+                    mapping_type=payload.mapping_type,
+                    version=existing.version + 1,
+                    is_current=True,
+                    valid_from=date.today(),
+                )
+                return MappingOut.model_validate(m)
 
             m = await self.repo.create(
-                requirement_item_id=payload.requirement_item_id,
-                shared_element_id=payload.shared_element_id,
-                mapping_type=payload.mapping_type,
-                version=existing.version + 1,
-                is_current=True,
+                **payload.model_dump(),
                 valid_from=date.today(),
             )
             return MappingOut.model_validate(m)
-
-        m = await self.repo.create(
-            **payload.model_dump(),
-            valid_from=date.today(),
-        )
-        return MappingOut.model_validate(m)
+        except IntegrityError as exc:
+            raise AppError(
+                "MAPPING_CONFLICT",
+                409,
+                "Another mapping update was saved for this item and shared element. Please retry.",
+            ) from exc
 
     async def list_mappings(
         self,
