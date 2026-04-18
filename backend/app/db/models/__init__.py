@@ -32,6 +32,7 @@ from app.db.models.support_session import SupportSession
 from app.db.models.sso import ExternalIdentity, SSOLoginState, SSOProvider
 from app.db.models.unit_reference import BoundaryApproach, Methodology, UnitReference
 from app.db.models.comment import Comment
+from app.db.models.custom_datasheet import CustomDatasheet, CustomDatasheetItem
 from app.db.models.webhook import WebhookDelivery, WebhookEndpoint
 from app.db.models.worker_lease import WorkerLease
 from app.db.models.platform_settings import PlatformSettings
@@ -52,6 +53,7 @@ __all__ = [
     "Notification", "RequirementDelta",
     "UserInvitation", "RequirementItemEvidence", "AIInteraction",
     "Comment", "UnitReference", "Methodology", "BoundaryApproach",
+    "CustomDatasheet", "CustomDatasheetItem",
     "WebhookEndpoint", "WebhookDelivery", "ExportJob", "IdempotencyRecord",
     "SSOProvider", "ExternalIdentity", "SSOLoginState", "WorkerLease",
 ]

@@ -2,9 +2,11 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import update
 
 from app.db.models.audit_log import AuditLog
 from app.db.models.data_point import DataPoint
+from app.db.models.role_binding import RoleBinding
 from tests.conftest import TestSessionLocal
 
 
@@ -153,6 +155,31 @@ async def test_dashboard_progress(client: AsyncClient, ctx: dict):
     assert data["boundary_summary"] is not None
     assert data["boundary_summary"]["snapshot_status"] == "missing"
     assert data["boundary_impact"]["entities_without_assigned_owners"] == 1
+
+
+@pytest.mark.asyncio
+async def test_dashboard_progress_allows_esg_manager_merge_analytics(client: AsyncClient, ctx: dict):
+    async with TestSessionLocal() as session:
+        await session.execute(
+            update(RoleBinding)
+            .where(
+                RoleBinding.user_id == ctx["user_id"],
+                RoleBinding.scope_type == "organization",
+                RoleBinding.scope_id == ctx["org_id"],
+            )
+            .values(role="esg_manager")
+        )
+        await session.commit()
+
+    resp = await client.get(
+        f"/api/dashboard/projects/{ctx['project_id']}/progress",
+        headers=ctx["headers"],
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["merge_summary"]["common"] == 0
+    assert data["merge_summary"]["orphans"] == 1
+    assert data["merge_coverage"]["DASH-GRI"]["completion_percent"] == 50.0
 
 
 @pytest.mark.asyncio

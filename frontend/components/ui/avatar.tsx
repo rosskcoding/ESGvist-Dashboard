@@ -43,6 +43,8 @@ const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(
         {...props}
       >
         {showImage ? (
+          // External avatar URLs are not guaranteed to be in the Next image allowlist.
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={src}
             alt={alt || ""}

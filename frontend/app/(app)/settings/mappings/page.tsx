@@ -223,12 +223,15 @@ export default function MappingHistoryPage() {
     }
   );
 
-  const standards = standardsData?.items ?? [];
-  const disclosures = disclosuresData?.items ?? [];
-  const items = itemsData?.items ?? [];
-  const sharedElements = sharedElementsData?.items ?? [];
-  const mappings = mappingsData?.items ?? [];
-  const history = historyData?.items ?? [];
+  const standards = useMemo(() => standardsData?.items ?? [], [standardsData]);
+  const disclosures = useMemo(() => disclosuresData?.items ?? [], [disclosuresData]);
+  const items = useMemo(() => itemsData?.items ?? [], [itemsData]);
+  const sharedElements = useMemo(
+    () => sharedElementsData?.items ?? [],
+    [sharedElementsData]
+  );
+  const mappings = useMemo(() => mappingsData?.items ?? [], [mappingsData]);
+  const history = useMemo(() => historyData?.items ?? [], [historyData]);
   const currentMappings = useMemo(
     () => mappings.filter((mapping) => mapping.is_current),
     [mappings]
@@ -261,61 +264,76 @@ export default function MappingHistoryPage() {
 
   useEffect(() => {
     if (!selectedStandardId && standards.length > 0) {
-      setSelectedStandardId(String(standards[0].id));
+      const selectFirstStandard = () => {
+        setSelectedStandardId(String(standards[0].id));
+      };
+      selectFirstStandard();
     }
   }, [selectedStandardId, standards]);
 
   useEffect(() => {
+    const syncDisclosureSelection = () => {
+      if (disclosures.length === 0) {
+        setSelectedDisclosureId("");
+        return;
+      }
+      const stillExists = disclosures.some(
+        (disclosure) => String(disclosure.id) === selectedDisclosureId
+      );
+      if (!selectedDisclosureId || !stillExists) {
+        setSelectedDisclosureId(String(disclosures[0].id));
+      }
+    };
     if (!selectedStandardId) return;
-    if (disclosures.length === 0) {
-      setSelectedDisclosureId("");
-      return;
-    }
-    const stillExists = disclosures.some(
-      (disclosure) => String(disclosure.id) === selectedDisclosureId
-    );
-    if (!selectedDisclosureId || !stillExists) {
-      setSelectedDisclosureId(String(disclosures[0].id));
-    }
+    syncDisclosureSelection();
   }, [disclosures, selectedDisclosureId, selectedStandardId]);
 
   useEffect(() => {
+    const syncItemSelection = () => {
+      if (items.length === 0) {
+        setSelectedItemId("");
+        return;
+      }
+      const stillExists = items.some((item) => String(item.id) === selectedItemId);
+      if (!selectedItemId || !stillExists) {
+        setSelectedItemId(String(items[0].id));
+      }
+    };
     if (!selectedDisclosureId) return;
-    if (items.length === 0) {
-      setSelectedItemId("");
-      return;
-    }
-    const stillExists = items.some((item) => String(item.id) === selectedItemId);
-    if (!selectedItemId || !stillExists) {
-      setSelectedItemId(String(items[0].id));
-    }
+    syncItemSelection();
   }, [items, selectedDisclosureId, selectedItemId]);
 
   useEffect(() => {
-    if (!selectedItemId) {
-      setSelectedElementId("");
-      return;
-    }
+    const syncElementSelection = () => {
+      if (!selectedItemId) {
+        setSelectedElementId("");
+        return;
+      }
 
-    if (selectedItemMappings.length === 0) return;
+      if (selectedItemMappings.length === 0) return;
 
-    const stillMapped = selectedItemMappings.some(
-      (mapping) => String(mapping.shared_element_id) === selectedElementId
-    );
-    if (!selectedElementId || !stillMapped) {
-      setSelectedElementId(String(selectedItemMappings[0].shared_element_id));
-    }
+      const stillMapped = selectedItemMappings.some(
+        (mapping) => String(mapping.shared_element_id) === selectedElementId
+      );
+      if (!selectedElementId || !stillMapped) {
+        setSelectedElementId(String(selectedItemMappings[0].shared_element_id));
+      }
+    };
+    syncElementSelection();
   }, [selectedElementId, selectedItemId, selectedItemMappings]);
 
   useEffect(() => {
-    if (history.length === 0) {
-      setCompareV1("");
-      setCompareV2("");
-      return;
-    }
+    const syncCompareVersions = () => {
+      if (history.length === 0) {
+        setCompareV1("");
+        setCompareV2("");
+        return;
+      }
 
-    setCompareV1(String(history[0].version));
-    setCompareV2(String(history[1]?.version ?? history[0].version));
+      setCompareV1(String(history[0].version));
+      setCompareV2(String(history[1]?.version ?? history[0].version));
+    };
+    syncCompareVersions();
   }, [history]);
 
   const selectedStandard = standards.find((standard) => String(standard.id) === selectedStandardId) ?? null;

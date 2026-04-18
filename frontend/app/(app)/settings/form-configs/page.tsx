@@ -212,8 +212,8 @@ export default function FormConfigsPage() {
     { enabled: canAccess }
   );
 
-  const configs = configsData?.items ?? [];
-  const projects = projectsData?.items ?? [];
+  const configs = useMemo(() => configsData?.items ?? [], [configsData]);
+  const projects = useMemo(() => projectsData?.items ?? [], [projectsData]);
   const projectsById = useMemo(
     () => new Map(projects.map((project) => [project.id, project])),
     [projects]
@@ -228,30 +228,39 @@ export default function FormConfigsPage() {
 
   useEffect(() => {
     if (selectedConfigId === null && configs.length > 0) {
-      setSelectedConfigId(configs[0].id);
+      const selectFirstConfig = () => {
+        setSelectedConfigId(configs[0].id);
+      };
+      selectFirstConfig();
     }
   }, [configs, selectedConfigId]);
 
   useEffect(() => {
     if (selectedConfigId === "new") {
-      setForm({
-        name: "",
-        description: "",
-        project_id: "",
-        is_active: true,
-        configText: prettyConfig(EMPTY_CONFIG_TEMPLATE),
-      });
+      const resetFormForNewConfig = () => {
+        setForm({
+          name: "",
+          description: "",
+          project_id: "",
+          is_active: true,
+          configText: prettyConfig(EMPTY_CONFIG_TEMPLATE),
+        });
+      };
+      resetFormForNewConfig();
       return;
     }
 
     if (!selectedConfig) return;
-    setForm({
-      name: selectedConfig.name,
-      description: selectedConfig.description ?? "",
-      project_id: selectedConfig.project_id ? String(selectedConfig.project_id) : "",
-      is_active: selectedConfig.is_active,
-      configText: prettyConfig(selectedConfig.config),
-    });
+    const syncConfigForm = () => {
+      setForm({
+        name: selectedConfig.name,
+        description: selectedConfig.description ?? "",
+        project_id: selectedConfig.project_id ? String(selectedConfig.project_id) : "",
+        is_active: selectedConfig.is_active,
+        configText: prettyConfig(selectedConfig.config),
+      });
+    };
+    syncConfigForm();
   }, [selectedConfig, selectedConfigId]);
 
   function upsertConfig(config: FormConfig) {

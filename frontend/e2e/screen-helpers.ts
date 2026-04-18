@@ -1,6 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
-import { expect, type APIRequestContext, type APIResponse, type Page } from "@playwright/test";
+import {
+  expect,
+  request as playwrightRequest,
+  type APIRequestContext,
+  type APIResponse,
+  type Page,
+} from "@playwright/test";
 
 type DemoState = {
   base_url?: string;
@@ -114,6 +120,17 @@ async function assertApiOk(response: APIResponse) {
   return text ? JSON.parse(text) : null;
 }
 
+async function runIsolatedApi<T>(
+  callback: (api: APIRequestContext) => Promise<T>,
+): Promise<T> {
+  const api = await playwrightRequest.newContext();
+  try {
+    return await callback(api);
+  } finally {
+    await api.dispose();
+  }
+}
+
 async function getRequiredBrowserCookie(page: Page, name: string) {
   const cookies = await page.context().cookies();
   const cookie = cookies.find((entry) => entry.name === name);
@@ -173,16 +190,19 @@ export async function listBrowserSessions(
 }
 
 export async function loginByApi(
-  request: APIRequestContext,
+  _request: APIRequestContext,
   email: string,
   password: string,
   organizationId = loadDemoState().organization.id,
 ) {
   const state = loadDemoState();
-  const response = await request.post(`${state.api_url!.replace("localhost", "127.0.0.1")}/auth/login`, {
-    data: { email, password },
-  });
-  const body = await assertApiOk(response);
+  const body = await runIsolatedApi(async (api) =>
+    assertApiOk(
+      await api.post(`${state.api_url!.replace("localhost", "127.0.0.1")}/auth/login`, {
+        data: { email, password },
+      }),
+    ),
+  );
   return {
     headers: {
       Authorization: `Bearer ${body.access_token}`,
@@ -192,20 +212,24 @@ export async function loginByApi(
 }
 
 export async function apiPost<T>(
-  request: APIRequestContext,
+  _request: APIRequestContext,
   url: string,
   headers: Record<string, string>,
   data?: unknown,
 ) {
-  return assertApiOk(await request.post(url, { headers, data })) as Promise<T>;
+  return runIsolatedApi(
+    async (api) => assertApiOk(await api.post(url, { headers, data })) as Promise<T>,
+  );
 }
 
 export async function apiGet<T>(
-  request: APIRequestContext,
+  _request: APIRequestContext,
   url: string,
   headers: Record<string, string>,
 ) {
-  return assertApiOk(await request.get(url, { headers })) as Promise<T>;
+  return runIsolatedApi(
+    async (api) => assertApiOk(await api.get(url, { headers })) as Promise<T>,
+  );
 }
 
 export async function revokeCurrentBrowserSession(
@@ -322,12 +346,14 @@ export async function createTenantAdminUser(
 }
 
 export async function apiPut<T>(
-  request: APIRequestContext,
+  _request: APIRequestContext,
   url: string,
   headers: Record<string, string>,
   data?: unknown,
 ) {
-  return assertApiOk(await request.put(url, { headers, data })) as Promise<T>;
+  return runIsolatedApi(
+    async (api) => assertApiOk(await api.put(url, { headers, data })) as Promise<T>,
+  );
 }
 
 type GuidedCollectionConfigField = {

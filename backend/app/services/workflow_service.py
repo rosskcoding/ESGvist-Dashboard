@@ -173,6 +173,20 @@ class WorkflowService:
         if ctx.role not in ("admin", "esg_manager", "platform_admin"):
             raise AppError("FORBIDDEN", 403, "Only admin or ESG manager can rollback approved data points")
 
+    async def _get_matching_reviewer_assignments(self, dp) -> list[MetricAssignment]:
+        assignment_result = await self.dp_repo.session.execute(
+            select(MetricAssignment).where(
+                MetricAssignment.reporting_project_id == dp.reporting_project_id,
+                MetricAssignment.shared_element_id == dp.shared_element_id,
+                MetricAssignment.reviewer_id.is_not(None),
+            )
+        )
+        return [
+            assignment
+            for assignment in assignment_result.scalars().all()
+            if assignment_matches_data_point(assignment, dp)
+        ]
+
     async def _build_gate_context(
         self,
         dp,
@@ -219,21 +233,14 @@ class WorkflowService:
             expected_value_type = getattr(requirement_items[0], "value_type", None)
 
         # ── Check if a reviewer is assigned to this DP's scope ────────
-        reviewer_assigned = False
-        assignment_result = await self.dp_repo.session.execute(
-            select(MetricAssignment).where(
-                MetricAssignment.reporting_project_id == dp.reporting_project_id,
-                MetricAssignment.shared_element_id == dp.shared_element_id,
-                MetricAssignment.reviewer_id.is_not(None),
-            )
-        )
-        if assignment_result.scalar_one_or_none():
-            reviewer_assigned = True
+        matching_reviewer_assignments = await self._get_matching_reviewer_assignments(dp)
+        reviewer_assigned = bool(matching_reviewer_assignments)
 
-        # ── Check boundary membership for entity-scoped data points ───
+        # ── Check boundary membership for scoped data points ───────────
         boundary_entity_included: bool | None = None
+        scope_entity_id = getattr(dp, "facility_id", None) or getattr(dp, "entity_id", None)
         if (
-            getattr(dp, "entity_id", None)
+            scope_entity_id is not None
             and getattr(project, "boundary_definition_id", None)
         ):
             from app.db.models.boundary import BoundaryMembership
@@ -241,7 +248,7 @@ class WorkflowService:
             membership_result = await self.dp_repo.session.execute(
                 select(BoundaryMembership).where(
                     BoundaryMembership.boundary_definition_id == project.boundary_definition_id,
-                    BoundaryMembership.entity_id == dp.entity_id,
+                    BoundaryMembership.entity_id == scope_entity_id,
                     BoundaryMembership.included == True,  # noqa: E712
                 )
             )
@@ -304,18 +311,7 @@ class WorkflowService:
 
         # Auto-transition to in_review if reviewer is assigned
         final_status = "submitted"
-        reviewer_assignment = await self.dp_repo.session.execute(
-            select(MetricAssignment).where(
-                MetricAssignment.reporting_project_id == dp.reporting_project_id,
-                MetricAssignment.shared_element_id == dp.shared_element_id,
-                MetricAssignment.reviewer_id.is_not(None),
-            )
-        )
-        matching_reviewers = [
-            assignment
-            for assignment in reviewer_assignment.scalars().all()
-            if assignment_matches_data_point(assignment, dp)
-        ]
+        matching_reviewers = await self._get_matching_reviewer_assignments(dp)
         if matching_reviewers:
             dp = await self.dp_repo.update(dp_id, status="in_review")
             await create_data_point_version(

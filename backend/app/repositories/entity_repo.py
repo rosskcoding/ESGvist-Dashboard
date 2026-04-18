@@ -13,6 +13,8 @@ ENTITY_EDITABLE_FIELDS = {
     "status",
     "valid_from",
     "valid_to",
+    "default_collector_user_id",
+    "default_reviewer_user_id",
 }
 
 

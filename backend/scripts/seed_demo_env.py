@@ -8,6 +8,7 @@ from pathlib import Path
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.domain.catalog import prepare_shared_element_defaults
 from app.core.schema_runtime import stamp_database_async
 from app.core.security import hash_password
 from app.db.models import Base
@@ -637,6 +638,7 @@ async def main() -> None:
             concept_domain="energy",
             default_value_type="number",
             default_unit_code="MWH",
+            **prepare_shared_element_defaults(code="ENERGY_TOTAL_MWH"),
         )
         scope1 = SharedElement(
             code="SCOPE1_TCO2E",
@@ -645,6 +647,7 @@ async def main() -> None:
             concept_domain="emissions",
             default_value_type="number",
             default_unit_code="TCO2E",
+            **prepare_shared_element_defaults(code="SCOPE1_TCO2E"),
         )
         scope2 = SharedElement(
             code="SCOPE2_TCO2E",
@@ -653,6 +656,7 @@ async def main() -> None:
             concept_domain="emissions",
             default_value_type="number",
             default_unit_code="TCO2E",
+            **prepare_shared_element_defaults(code="SCOPE2_TCO2E"),
         )
         governance = SharedElement(
             code="SUSTAINABILITY_GOVERNANCE_NARRATIVE",
@@ -660,6 +664,7 @@ async def main() -> None:
             description="Narrative on board and management oversight",
             concept_domain="governance",
             default_value_type="text",
+            **prepare_shared_element_defaults(code="SUSTAINABILITY_GOVERNANCE_NARRATIVE"),
         )
         session.add_all([energy_total, scope1, scope2, governance])
         await session.flush()

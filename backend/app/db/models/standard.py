@@ -56,6 +56,7 @@ class DisclosureRequirement(Base, TimestampMixin):
     mandatory_level: Mapped[str] = mapped_column(String, nullable=False)  # mandatory|conditional|optional
     applicability_rule: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    disclosure_key: Mapped[str | None] = mapped_column(String, nullable=True)
 
     standard = relationship("Standard", back_populates="disclosures")
 

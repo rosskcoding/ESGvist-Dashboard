@@ -1,6 +1,6 @@
 from datetime import date
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 
 from app.core.assignment_sla import (
     assignment_completed,
@@ -11,6 +11,7 @@ from app.core.access import get_project_for_ctx, get_user_assignments, user_has_
 from app.core.dashboard_cache import invalidate_dashboard_project
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError, GateBlockedError
+from app.domain.catalog import prepare_shared_element_defaults
 from app.db.models.boundary import BoundaryDefinition, BoundaryMembership
 from app.db.models.boundary_snapshot import BoundarySnapshot
 from app.db.models.company_entity import CompanyEntity
@@ -48,11 +49,16 @@ from app.schemas.projects import (
     AssignmentMatrixRowOut,
     AssignmentMatrixUserOut,
     AssignmentOut,
+    AutoAssignPreviewItem,
+    AutoAssignPreviewOut,
+    AutoAssignRequest,
+    AutoAssignResultOut,
     BoundaryDefCreate,
     BoundaryDefOut,
     ProjectCreate,
     ProjectListOut,
     ProjectOut,
+    ProjectSetupHealth,
     ProjectStandardLaunchOptionOut,
     ProjectStandardLaunchOptionsOut,
     ProjectStandardLaunchRequest,
@@ -62,6 +68,8 @@ from app.schemas.projects import (
     ProjectStandardSummaryListOut,
     ProjectStandardSummaryOut,
     ProjectStandardAdd,
+    ProjectWorkflowBlocker,
+    ProjectWorkflowStatusOut,
 )
 from app.services.standard_catalog import resolve_standard_catalog_meta
 from app.workflows.gates.base import GateEngine
@@ -130,8 +138,81 @@ class ProjectService:
         total = complete + partial + missing
         return round((complete / total) * 100, 1) if total else 0.0
 
+    async def _build_setup_health(
+        self, project: ReportingProject, standards_count: int
+    ) -> ProjectSetupHealth:
+        session = self.repo.session
+
+        boundary_configured = project.boundary_definition_id is not None
+        boundary_entities_count = 0
+        if boundary_configured:
+            membership_count = await session.execute(
+                select(func.count(BoundaryMembership.id)).where(
+                    BoundaryMembership.boundary_definition_id == project.boundary_definition_id,
+                    BoundaryMembership.included == True,
+                )
+            )
+            boundary_entities_count = int(membership_count.scalar() or 0)
+
+        assignments_total_result = await session.execute(
+            select(func.count(MetricAssignment.id)).where(
+                MetricAssignment.reporting_project_id == project.id
+            )
+        )
+        assignments_total = int(assignments_total_result.scalar() or 0)
+
+        assignments_assigned_result = await session.execute(
+            select(func.count(MetricAssignment.id)).where(
+                MetricAssignment.reporting_project_id == project.id,
+                MetricAssignment.collector_id.is_not(None),
+            )
+        )
+        assignments_assigned = int(assignments_assigned_result.scalar() or 0)
+
+        staffed_rows = await session.execute(
+            select(
+                MetricAssignment.collector_id,
+                MetricAssignment.reviewer_id,
+                MetricAssignment.backup_collector_id,
+            ).where(MetricAssignment.reporting_project_id == project.id)
+        )
+        team_size = len(
+            {
+                user_id
+                for collector_id, reviewer_id, backup_collector_id in staffed_rows.all()
+                for user_id in (collector_id, reviewer_id, backup_collector_id)
+                if user_id is not None
+            }
+        )
+
+        deadline_set = project.deadline is not None
+
+        steps_completed = sum(
+            [
+                standards_count > 0,
+                boundary_configured,
+                team_size > 0
+                and assignments_total > 0
+                and assignments_assigned == assignments_total,
+                deadline_set,
+            ]
+        )
+
+        return ProjectSetupHealth(
+            standards_count=standards_count,
+            boundary_configured=boundary_configured,
+            boundary_entities_count=boundary_entities_count,
+            team_size=team_size,
+            assignments_total=assignments_total,
+            assignments_assigned=assignments_assigned,
+            deadline_set=deadline_set,
+            steps_completed=steps_completed,
+            steps_total=4,
+        )
+
     async def _build_project_out(self, project: ReportingProject) -> ProjectOut:
         standards = await self.completeness_repo.list_project_standards(project.id)
+        standard_codes = [code for _standard_id, code, _standard_name in standards]
         return ProjectOut.model_validate(
             {
                 "id": project.id,
@@ -145,8 +226,9 @@ class ProjectService:
                 "updated_at": project.updated_at,
                 "reporting_period_start": None,
                 "reporting_period_end": None,
-                "standard_codes": [code for _standard_id, code, _standard_name in standards],
+                "standard_codes": standard_codes,
                 "completion_percentage": await self._project_completion_percentage(project.id),
+                "setup_health": await self._build_setup_health(project, len(standard_codes)),
             }
         )
 
@@ -197,7 +279,7 @@ class ProjectService:
             }
         )
 
-    async def _resolve_shared_element_id(self, payload: AssignmentCreate) -> int:
+    async def _resolve_shared_element_id(self, payload: AssignmentCreate, ctx: RequestContext) -> int:
         if payload.shared_element_id:
             element_result = await self.repo.session.execute(
                 select(SharedElement).where(SharedElement.id == payload.shared_element_id)
@@ -215,8 +297,23 @@ class ProjectService:
                 "Assignment requires shared_element_id or shared_element_code",
             )
 
+        if ctx.organization_id is not None:
+            element_result = await self.repo.session.execute(
+                select(SharedElement).where(
+                    SharedElement.code == code,
+                    SharedElement.owner_layer == "tenant_catalog",
+                    SharedElement.organization_id == ctx.organization_id,
+                )
+            )
+            element = element_result.scalar_one_or_none()
+            if element:
+                return element.id
+
         element_result = await self.repo.session.execute(
-            select(SharedElement).where(SharedElement.code == code)
+            select(SharedElement).where(
+                SharedElement.code == code,
+                SharedElement.owner_layer == "internal_catalog",
+            )
         )
         element = element_result.scalar_one_or_none()
         if element:
@@ -230,7 +327,19 @@ class ProjectService:
                 "shared_element_name is required when creating a new shared element by code",
             )
 
-        element = SharedElement(code=code, name=name)
+        if ctx.organization_id is None:
+            raise AppError("ORG_HEADER_REQUIRED", 400, "Organization context required")
+
+        element = SharedElement(
+            code=code,
+            name=name,
+            **prepare_shared_element_defaults(
+                code=code,
+                owner_layer="tenant_catalog",
+                organization_id=ctx.organization_id,
+                is_custom=True,
+            ),
+        )
         self.repo.session.add(element)
         await self.repo.session.flush()
         return element.id
@@ -1352,7 +1461,21 @@ class ProjectService:
             project.organization_id,
             "backup_collector_id",
         )
-        shared_element_id = await self._resolve_shared_element_id(payload)
+        shared_element_id = await self._resolve_shared_element_id(payload, ctx)
+        existing_assignment_result = await self.repo.session.execute(
+            select(MetricAssignment.id).where(
+                MetricAssignment.reporting_project_id == project_id,
+                MetricAssignment.shared_element_id == shared_element_id,
+                MetricAssignment.entity_id == payload.entity_id,
+                MetricAssignment.facility_id == payload.facility_id,
+            )
+        )
+        if existing_assignment_result.scalar_one_or_none() is not None:
+            raise AppError(
+                "ASSIGNMENT_ALREADY_EXISTS",
+                409,
+                "An assignment already exists for this metric and scope",
+            )
 
         assignment_payload = {
             "shared_element_id": shared_element_id,
@@ -1629,6 +1752,356 @@ class ProjectService:
         )
         await invalidate_dashboard_project(project_id)
         return {"project_id": project.id, "status": project.status, **gate_result}
+
+    async def _resolve_entity_owners(
+        self,
+        entity_id: int | None,
+        org_id: int,
+    ) -> tuple[int | None, int | None]:
+        """Walk up entity tree to find first default collector/reviewer."""
+        if entity_id is None:
+            return None, None
+        visited: set[int] = set()
+        collector_id: int | None = None
+        reviewer_id: int | None = None
+        current_id: int | None = entity_id
+        while current_id is not None and current_id not in visited:
+            visited.add(current_id)
+            entity_result = await self.repo.session.execute(
+                select(CompanyEntity).where(
+                    CompanyEntity.id == current_id,
+                    CompanyEntity.organization_id == org_id,
+                )
+            )
+            entity = entity_result.scalar_one_or_none()
+            if entity is None:
+                break
+            if collector_id is None and entity.default_collector_user_id:
+                collector_id = entity.default_collector_user_id
+            if reviewer_id is None and entity.default_reviewer_user_id:
+                reviewer_id = entity.default_reviewer_user_id
+            if collector_id and reviewer_id:
+                break
+            current_id = entity.parent_entity_id
+        return collector_id, reviewer_id
+
+    async def _organization_entity_count(self, org_id: int) -> int:
+        result = await self.repo.session.execute(
+            select(func.count(CompanyEntity.id)).where(
+                CompanyEntity.organization_id == org_id,
+                CompanyEntity.status == "active",
+            )
+        )
+        return int(result.scalar() or 0)
+
+    async def _user_name_map(
+        self, user_ids: set[int], org_id: int
+    ) -> dict[int, str]:
+        if not user_ids:
+            return {}
+        result = await self.repo.session.execute(
+            select(User.id, User.full_name, User.email).where(User.id.in_(user_ids))
+        )
+        return {uid: name or email or f"User #{uid}" for uid, name, email in result.all()}
+
+    async def _build_auto_assign_plan(
+        self,
+        project_id: int,
+        ctx: RequestContext,
+        default_collector_override: int | None,
+    ) -> tuple[str, int, int | None, list[dict]]:
+        project = await get_project_for_ctx(
+            self.repo.session,
+            project_id,
+            ctx,
+            allow_collectors=False,
+            allow_reviewers=False,
+        )
+        org_id = project.organization_id
+        entity_count = await self._organization_entity_count(org_id)
+        mode = "mono" if entity_count <= 1 else "multi"
+
+        mono_default_collector_id = default_collector_override
+        mono_default_reviewer_id: int | None = None
+        if mode == "mono":
+            single_entity_result = await self.repo.session.execute(
+                select(CompanyEntity).where(
+                    CompanyEntity.organization_id == org_id
+                ).limit(1)
+            )
+            single_entity = single_entity_result.scalar_one_or_none()
+            if single_entity:
+                collector, reviewer = await self._resolve_entity_owners(
+                    single_entity.id, org_id
+                )
+                if mono_default_collector_id is None:
+                    mono_default_collector_id = collector
+                mono_default_reviewer_id = reviewer
+
+        assignments_result = await self.repo.session.execute(
+            select(MetricAssignment).where(
+                MetricAssignment.reporting_project_id == project_id,
+                or_(
+                    MetricAssignment.collector_id.is_(None),
+                    MetricAssignment.reviewer_id.is_(None),
+                ),
+            )
+        )
+        assignments = list(assignments_result.scalars().all())
+
+        plan: list[dict] = []
+        for assignment in assignments:
+            proposed_collector: int | None = None
+            proposed_reviewer: int | None = None
+            reason = "no_owner"
+
+            if mode == "mono":
+                if assignment.collector_id is None:
+                    proposed_collector = mono_default_collector_id
+                if assignment.reviewer_id is None:
+                    proposed_reviewer = mono_default_reviewer_id
+                if proposed_collector or proposed_reviewer:
+                    reason = "mono_default"
+            else:
+                collector, reviewer = await self._resolve_entity_owners(
+                    assignment.entity_id, org_id
+                )
+                if assignment.collector_id is None:
+                    proposed_collector = collector
+                if assignment.reviewer_id is None:
+                    proposed_reviewer = reviewer
+                if proposed_collector or proposed_reviewer:
+                    reason = "entity_owner"
+
+            plan.append(
+                {
+                    "assignment": assignment,
+                    "proposed_collector": proposed_collector,
+                    "proposed_reviewer": proposed_reviewer,
+                    "reason": reason,
+                }
+            )
+
+        return mode, entity_count, mono_default_collector_id, plan
+
+    async def auto_assign_preview(
+        self,
+        project_id: int,
+        ctx: RequestContext,
+        default_collector_override: int | None = None,
+    ) -> AutoAssignPreviewOut:
+        self._require_manager(ctx)
+        mode, entity_count, mono_default, plan = await self._build_auto_assign_plan(
+            project_id, ctx, default_collector_override
+        )
+
+        user_ids: set[int] = set()
+        entity_ids: set[int] = set()
+        for step in plan:
+            if step["proposed_collector"]:
+                user_ids.add(step["proposed_collector"])
+            if step["proposed_reviewer"]:
+                user_ids.add(step["proposed_reviewer"])
+            if step["assignment"].entity_id:
+                entity_ids.add(step["assignment"].entity_id)
+        if mono_default:
+            user_ids.add(mono_default)
+
+        project = await get_project_for_ctx(
+            self.repo.session,
+            project_id,
+            ctx,
+            allow_collectors=False,
+            allow_reviewers=False,
+        )
+        user_names = await self._user_name_map(user_ids, project.organization_id)
+
+        entity_names: dict[int, str] = {}
+        if entity_ids:
+            entity_rows = await self.repo.session.execute(
+                select(CompanyEntity.id, CompanyEntity.name).where(
+                    CompanyEntity.id.in_(entity_ids)
+                )
+            )
+            entity_names = {eid: name for eid, name in entity_rows.all()}
+
+        # Preload shared element names (use SharedElement.code/name from assignment row)
+        element_ids = {
+            step["assignment"].shared_element_id for step in plan
+        }
+        element_info: dict[int, tuple[str, str]] = {}
+        if element_ids:
+            elements_result = await self.repo.session.execute(
+                select(SharedElement.id, SharedElement.code, SharedElement.name).where(
+                    SharedElement.id.in_(element_ids)
+                )
+            )
+            element_info = {
+                eid: (code, name) for eid, code, name in elements_result.all()
+            }
+
+        items: list[AutoAssignPreviewItem] = []
+        covered = 0
+        for step in plan:
+            assignment = step["assignment"]
+            pcoll = step["proposed_collector"]
+            prev = step["proposed_reviewer"]
+            if pcoll or prev:
+                covered += 1
+            code, name = element_info.get(
+                assignment.shared_element_id, ("", "")
+            )
+            items.append(
+                AutoAssignPreviewItem(
+                    assignment_id=assignment.id,
+                    shared_element_code=code,
+                    shared_element_name=name,
+                    entity_id=assignment.entity_id,
+                    entity_name=entity_names.get(assignment.entity_id)
+                    if assignment.entity_id
+                    else None,
+                    proposed_collector_id=pcoll,
+                    proposed_collector_name=user_names.get(pcoll) if pcoll else None,
+                    proposed_reviewer_id=prev,
+                    proposed_reviewer_name=user_names.get(prev) if prev else None,
+                    reason=step["reason"],
+                )
+            )
+
+        return AutoAssignPreviewOut(
+            mode=mode,
+            org_entity_count=entity_count,
+            default_collector_user_id=mono_default,
+            default_collector_name=user_names.get(mono_default) if mono_default else None,
+            covered_count=covered,
+            skipped_count=len(plan) - covered,
+            items=items,
+        )
+
+    async def auto_assign_apply(
+        self,
+        project_id: int,
+        payload: AutoAssignRequest,
+        ctx: RequestContext,
+    ) -> AutoAssignResultOut:
+        self._require_manager(ctx)
+        project = await get_project_for_ctx(
+            self.repo.session,
+            project_id,
+            ctx,
+            allow_collectors=False,
+            allow_reviewers=False,
+        )
+        org_id = project.organization_id
+        mode, _entity_count, _mono_default, plan = await self._build_auto_assign_plan(
+            project_id, ctx, payload.default_collector_user_id
+        )
+        updated = 0
+        skipped = 0
+        for step in plan:
+            assignment = step["assignment"]
+            pcoll = step["proposed_collector"]
+            prev = step["proposed_reviewer"]
+            if not pcoll and not prev:
+                skipped += 1
+                continue
+
+            if pcoll:
+                await self._apply_assignment_update(
+                    assignment=assignment,
+                    field="collector_id",
+                    value=str(pcoll),
+                    ctx=ctx,
+                    org_id=org_id,
+                )
+            if prev and assignment.reviewer_id is None:
+                refreshed = await self.repo.get_assignment_or_raise(assignment.id)
+                await self._apply_assignment_update(
+                    assignment=refreshed,
+                    field="reviewer_id",
+                    value=str(prev),
+                    ctx=ctx,
+                    org_id=org_id,
+                )
+            updated += 1
+
+        await invalidate_dashboard_project(project_id)
+        return AutoAssignResultOut(
+            updated_count=updated, skipped_count=skipped, mode=mode
+        )
+
+    _WORKFLOW_TRANSITIONS: dict[str, tuple[str, str, int]] = {
+        "draft": ("start_project", "active", 0),
+        "active": ("review_project", "review", 80),
+        "review": ("publish_project", "published", 100),
+    }
+
+    _GATE_CODE_TAB: dict[str, str] = {
+        "NO_REQUIREMENTS": "standards",
+        "NO_ASSIGNMENTS": "team",
+        "BOUNDARY_NOT_DEFINED": "boundary",
+        "BOUNDARY_NOT_LOCKED": "boundary",
+        "PROJECT_INCOMPLETE": "team",
+        "UNRESOLVED_REVIEW": "team",
+        "UNSUBMITTED_DATA": "team",
+        "REVIEW_NOT_COMPLETED": "team",
+    }
+
+    async def get_workflow_status(
+        self, project_id: int, ctx: RequestContext
+    ) -> ProjectWorkflowStatusOut:
+        project = await get_project_for_ctx(
+            self.repo.session,
+            project_id,
+            ctx,
+            allow_collectors=False,
+            allow_reviewers=False,
+        )
+
+        transition = self._WORKFLOW_TRANSITIONS.get(project.status)
+        if transition is None:
+            return ProjectWorkflowStatusOut(
+                current_status=project.status,
+                next_action=None,
+                next_status=None,
+                can_advance=False,
+                blockers=[],
+                warnings=[],
+            )
+
+        action, next_status, threshold = transition
+        context = await self._build_project_gate_context(
+            project_id, ctx, completion_threshold=threshold
+        )
+        result = await self.project_gate_engine.check(action, context)
+
+        blockers = [
+            ProjectWorkflowBlocker(
+                code=gate.code,
+                message=gate.message,
+                severity=gate.severity,
+                tab=self._GATE_CODE_TAB.get(gate.code),
+            )
+            for gate in result.failed_gates
+        ]
+        warnings = [
+            ProjectWorkflowBlocker(
+                code=gate.code,
+                message=gate.message,
+                severity=gate.severity,
+                tab=self._GATE_CODE_TAB.get(gate.code),
+            )
+            for gate in result.warnings
+        ]
+
+        return ProjectWorkflowStatusOut(
+            current_status=project.status,
+            next_action=action,
+            next_status=next_status,
+            can_advance=result.allowed,
+            blockers=blockers,
+            warnings=warnings,
+        )
 
     async def rollback_project(self, project_id: int, comment: str | None, ctx: RequestContext) -> dict:
         self._require_manager(ctx)

@@ -115,7 +115,7 @@ export default function NotificationsPage() {
     Partial<NotificationPreferences>
   >("/notifications/preferences", "PATCH");
 
-  const notifications = data?.items ?? [];
+  const notifications = useMemo(() => data?.items ?? [], [data]);
   const unreadCount = useMemo(
     () => notifications.filter((notification) => !notification.is_read).length,
     [notifications]

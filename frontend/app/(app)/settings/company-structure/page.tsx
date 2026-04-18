@@ -81,6 +81,20 @@ interface Entity {
   valid_to: string | null;
   parent_id: number | null;
   ownership_percentage: number | null;
+  default_collector_user_id: number | null;
+  default_reviewer_user_id: number | null;
+}
+
+interface OrgUser {
+  id: number;
+  email: string;
+  full_name: string;
+  role: string;
+  status: string;
+}
+
+interface OrgUsersResponse {
+  users: OrgUser[];
 }
 
 interface OwnershipLink {
@@ -195,6 +209,8 @@ function normalizeEntityRecord(
     valid_to: entity.valid_to ?? null,
     parent_id: entity.parent_id ?? entity.parent_entity_id ?? null,
     ownership_percentage: entity.ownership_percentage ?? null,
+    default_collector_user_id: entity.default_collector_user_id ?? null,
+    default_reviewer_user_id: entity.default_reviewer_user_id ?? null,
   };
 }
 
@@ -726,7 +742,10 @@ function AddOwnershipLinkDialog({
 
   useEffect(() => {
     if (selectedEntityId) {
-      setForm((f) => ({ ...f, child_entity_id: String(selectedEntityId) }));
+      const syncSelectedChildEntity = () => {
+        setForm((f) => ({ ...f, child_entity_id: String(selectedEntityId) }));
+      };
+      syncSelectedChildEntity();
     }
   }, [selectedEntityId]);
 
@@ -846,10 +865,13 @@ function AddControlLinkDialog({
 
   useEffect(() => {
     if (selectedEntityId) {
-      setForm((f) => ({
-        ...f,
-        controlled_entity_id: String(selectedEntityId),
-      }));
+      const syncSelectedControlledEntity = () => {
+        setForm((f) => ({
+          ...f,
+          controlled_entity_id: String(selectedEntityId),
+        }));
+      };
+      syncSelectedControlledEntity();
     }
   }, [selectedEntityId]);
 
@@ -957,6 +979,12 @@ function EntityDetailPanel({
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({ ...entity });
 
+  const { data: orgUsersData } = useApiQuery<OrgUsersResponse>(
+    ["org-users"],
+    "/auth/organization/users"
+  );
+  const orgUsers = orgUsersData?.users ?? [];
+
   const updateMutation = useApiMutation<Entity, Partial<Entity>>(
     `/entities/${entity.id}`,
     "PATCH",
@@ -973,8 +1001,11 @@ function EntityDetailPanel({
   );
 
   useEffect(() => {
-    setEditForm({ ...entity });
-    setEditing(false);
+    const resetEditorState = () => {
+      setEditForm({ ...entity });
+      setEditing(false);
+    };
+    resetEditorState();
   }, [entity]);
 
   const parentLinks = ownershipLinks.filter(
@@ -1057,6 +1088,10 @@ function EntityDetailPanel({
                       country: editForm.country,
                       jurisdiction: editForm.jurisdiction,
                       status: editForm.status,
+                      default_collector_user_id:
+                        editForm.default_collector_user_id ?? null,
+                      default_reviewer_user_id:
+                        editForm.default_reviewer_user_id ?? null,
                     })
                   }
                   disabled={updateMutation.isPending}
@@ -1115,6 +1150,56 @@ function EntityDetailPanel({
                   setEditForm({ ...editForm, status: v as EntityStatus })
                 }
               />
+              <div className="space-y-1.5 pt-2">
+                <Label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  Default owners
+                </Label>
+                <p className="text-[11px] text-slate-500">
+                  Auto-assign will use these when staffing new work for this entity.
+                </p>
+              </div>
+              <Select
+                label="Default collector"
+                options={[
+                  { value: "", label: "No default" },
+                  ...orgUsers.map((u) => ({
+                    value: String(u.id),
+                    label: u.full_name || u.email,
+                  })),
+                ]}
+                value={
+                  editForm.default_collector_user_id
+                    ? String(editForm.default_collector_user_id)
+                    : ""
+                }
+                onChange={(v) =>
+                  setEditForm({
+                    ...editForm,
+                    default_collector_user_id: v ? Number(v) : null,
+                  })
+                }
+              />
+              <Select
+                label="Default reviewer"
+                options={[
+                  { value: "", label: "No default" },
+                  ...orgUsers.map((u) => ({
+                    value: String(u.id),
+                    label: u.full_name || u.email,
+                  })),
+                ]}
+                value={
+                  editForm.default_reviewer_user_id
+                    ? String(editForm.default_reviewer_user_id)
+                    : ""
+                }
+                onChange={(v) =>
+                  setEditForm({
+                    ...editForm,
+                    default_reviewer_user_id: v ? Number(v) : null,
+                  })
+                }
+              />
             </div>
           ) : (
             <div className="space-y-2 text-sm">
@@ -1158,6 +1243,31 @@ function EntityDetailPanel({
                 <span className="font-semibold text-cyan-700">
                   {effectiveOwnership}%
                 </span>
+              </div>
+              <div className="mt-3 border-t border-slate-100 pt-3 space-y-2">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  Default owners
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Default collector</span>
+                  <span>
+                    {entity.default_collector_user_id
+                      ? orgUsers.find(
+                          (u) => u.id === entity.default_collector_user_id
+                        )?.full_name ?? `User #${entity.default_collector_user_id}`
+                      : <span className="text-slate-400">—</span>}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Default reviewer</span>
+                  <span>
+                    {entity.default_reviewer_user_id
+                      ? orgUsers.find(
+                          (u) => u.id === entity.default_reviewer_user_id
+                        )?.full_name ?? `User #${entity.default_reviewer_user_id}`
+                      : <span className="text-slate-400">—</span>}
+                  </span>
+                </div>
               </div>
             </div>
           )}
@@ -1383,11 +1493,29 @@ export default function CompanyStructurePage() {
   const { data: treeData, isLoading: treeLoading } =
     useApiQuery<EntityTreeResponse>(["entities", "tree"], "/entities/tree");
 
-  const entities = entitiesData?.entities ?? entitiesData?.items ?? [];
-  const ownershipLinks = entitiesData?.ownership_links ?? [];
-  const controlLinks = entitiesData?.control_links ?? [];
-  const boundaryMemberships = entitiesData?.boundary_memberships ?? {};
-  const tree = Array.isArray(treeData) ? treeData : (treeData as { tree?: EntityTreeNode[] })?.tree ?? [];
+  const entities = useMemo(
+    () => entitiesData?.entities ?? entitiesData?.items ?? [],
+    [entitiesData]
+  );
+  const ownershipLinks = useMemo(
+    () => entitiesData?.ownership_links ?? [],
+    [entitiesData]
+  );
+  const controlLinks = useMemo(
+    () => entitiesData?.control_links ?? [],
+    [entitiesData]
+  );
+  const boundaryMemberships = useMemo(
+    () => entitiesData?.boundary_memberships ?? {},
+    [entitiesData]
+  );
+  const tree = useMemo(
+    () =>
+      Array.isArray(treeData)
+        ? treeData
+        : (treeData as { tree?: EntityTreeNode[] })?.tree ?? [],
+    [treeData]
+  );
 
   // Extract ownership links from tree data (each entity has .ownership array)
   const treeOwnershipLinks = useMemo(() => {

@@ -7,7 +7,6 @@ const demoState = loadDemoState();
 const admin = demoState.users.admin;
 const manager = demoState.users.esg_manager;
 const collector = demoState.users.collector_energy;
-const reviewer = demoState.users.reviewer;
 const auditor = demoState.users.auditor;
 
 test.describe("Screen 24-26 and 30-31 - Notifications and Platform Admin", () => {

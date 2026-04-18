@@ -227,7 +227,7 @@ test.describe("Framework catalog role journeys", () => {
       page,
       demoState.users.admin.email,
       demoState.password,
-      /\/(dashboard|platform\/tenants)(\/.*)?$/,
+      /\/(dashboard|platform\/tenants)(\/.*)?(\?.*)?$/,
     );
 
     await page.goto("/platform/framework");

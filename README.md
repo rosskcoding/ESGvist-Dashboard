@@ -109,6 +109,8 @@ Role and module specs:
 - `docs/TZ-CompanyStructure.md`
 - `docs/TZ-BoundaryIntegration.md`
 - `docs/TZ-Evidence.md`
+- `docs/TZ-CustomDatasheet.md`
+- `docs/TZ-CustomDatasheet-Implementation.md`
 - `docs/TZ-Notifications.md`
 - `docs/TZ-AIAssistance.md`
 
@@ -139,11 +141,20 @@ Frontend:
 ```bash
 cd frontend
 pnpm lint
+pnpm test:e2e:smoke-regression
 pnpm test:e2e:guided-collection
+pnpm test:e2e:framework-catalog
+pnpm test:e2e:custom-datasheet
 pnpm test:e2e:platform-flows
 pnpm test:e2e:form-config-resync
 pnpm test:e2e:notifications-support-mode
 ```
+
+`pnpm test:e2e:smoke-regression` runs the current smoke pack:
+
+- `guided-collection`
+- `framework-catalog`
+- `custom-datasheet`
 
 Additional Playwright configs are available in `frontend/playwright*.config.ts`.
 

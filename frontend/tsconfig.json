@@ -33,7 +33,15 @@
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts"
+    ".next/dev/types/**/*.ts",
+    ".next-playwright-3013/types/**/*.ts",
+    ".next-playwright-3013/dev/types/**/*.ts",
+    ".next-playwright-3015/types/**/*.ts",
+    ".next-playwright-3015/dev/types/**/*.ts",
+    ".next-playwright-3016/types/**/*.ts",
+    ".next-playwright-3016/dev/types/**/*.ts",
+    ".next-playwright-3003/types/**/*.ts",
+    ".next-playwright-3003/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

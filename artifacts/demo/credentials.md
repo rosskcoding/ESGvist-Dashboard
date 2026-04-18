@@ -1,7 +1,7 @@
 # Demo Credentials
 
-- Web URL: `http://127.0.0.1:3001`
-- API URL: `http://127.0.0.1:8003/api`
+- Web URL: `http://localhost:3003`
+- API URL: `http://localhost:8003/api`
 - Shared password for all seeded accounts: `Test1234`
 
 | Role | Full Name | Email | Notes |
@@ -16,6 +16,6 @@
 
 Manual verification:
 
-1. Open `http://127.0.0.1:3001/login`.
+1. Open `http://localhost:3003/login`.
 2. Sign in with any account above.
-3. For the consolidated verification view, open `http://127.0.0.1:3001/demo` after login.
+3. For the consolidated verification view, open `http://localhost:3003/demo` after login.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -41,7 +41,6 @@ import {
   Building2,
   UserCog,
   BookOpen,
-  Share2,
   Users,
   Map,
   Webhook,
@@ -291,7 +290,10 @@ function AppShell({ children }: { children: React.ReactNode }) {
     enabled: mounted,
   });
 
-  const userRoles = user?.roles?.map((role) => role.role) ?? [];
+  const userRoles = useMemo(
+    () => user?.roles?.map((role) => role.role) ?? [],
+    [user]
+  );
   const userRole = userRoles[0] ?? "";
   const isPlatformAdmin = user?.roles?.some((r) => r.role === "platform_admin") ?? false;
   const isFrameworkAdmin = user?.roles?.some((r) => r.role === "framework_admin") ?? false;

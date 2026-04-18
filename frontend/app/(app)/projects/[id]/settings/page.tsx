@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Card,
@@ -23,35 +23,23 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { useApiQuery, useApiMutation } from "@/lib/hooks/use-api";
 import {
   Loader2,
   AlertTriangle,
-  Play,
-  Eye,
-  Send,
   Plus,
   Shield,
   Globe,
   Users,
-  Settings,
   Lock,
   FileText,
-  CheckCircle2,
-  XCircle,
   Camera,
   ShieldAlert,
 } from "lucide-react";
-import { api } from "@/lib/api";
 import { StandardLaunchDialog } from "@/components/projects/standard-launch-dialog";
+import { WorkflowStrip } from "@/components/projects/workflow-strip";
+import { TeamMatrix } from "@/components/projects/team-matrix";
+import { CustomDatasheetBuilder } from "@/components/projects/custom-datasheet-builder";
 
 interface ProjectDetail {
   id: number;
@@ -112,15 +100,6 @@ interface ProjectBoundary {
   snapshot_date?: string | null;
 }
 
-interface AssignmentSummary {
-  id: number;
-  user_name: string;
-  email: string;
-  role: string;
-  assigned_disclosures: number;
-  completed: number;
-}
-
 interface AssignmentOptionUser {
   id: number;
   name: string;
@@ -136,11 +115,6 @@ interface AssignmentOptionEntity {
 interface AssignmentOptionsData {
   users: AssignmentOptionUser[];
   entities: AssignmentOptionEntity[];
-}
-
-interface GateCheckResult {
-  passed: boolean;
-  blockers: string[];
 }
 
 const statusConfig: Record<
@@ -258,27 +232,43 @@ function isForbidden(error: Error | null) {
   return code === "FORBIDDEN" || /not allowed|access denied|forbidden/i.test(error?.message || "");
 }
 
+const TAB_VALUES = ["standards", "custom-datasheet", "boundary", "team"] as const;
+type TabValue = (typeof TAB_VALUES)[number];
+const DEFAULT_TAB: TabValue = "team";
+
+function isTabValue(value: string | null): value is TabValue {
+  return !!value && (TAB_VALUES as readonly string[]).includes(value);
+}
+
 export default function ProjectSettingsPage() {
   const params = useParams();
   const projectId = params.id as string;
   const numericProjectId = Number(projectId);
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialTab = searchParams?.get("tab");
+  const activeTab: TabValue = isTabValue(initialTab) ? initialTab : DEFAULT_TAB;
+  const handleTabChange = (next: string) => {
+    const params = new URLSearchParams(searchParams?.toString() ?? "");
+    if (next === DEFAULT_TAB) {
+      params.delete("tab");
+    } else {
+      params.set("tab", next);
+    }
+    const query = params.toString();
+    router.replace(
+      `/projects/${projectId}/settings${query ? `?${query}` : ""}`
+    );
+  };
 
   const [addStandardDialogOpen, setAddStandardDialogOpen] = useState(false);
   const [selectedStandardId, setSelectedStandardId] = useState("");
   const [selectedFamilyCode, setSelectedFamilyCode] = useState("");
   const [selectedGroupCode, setSelectedGroupCode] = useState("");
   const [standardSearch, setStandardSearch] = useState("");
-  const [gateBlockers, setGateBlockers] = useState<string[]>([]);
-  const [gateDialogOpen, setGateDialogOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [launchStandard, setLaunchStandard] = useState<ProjectStandard | null>(null);
-
-  const syncProjectDetail = (updates: Partial<ProjectDetail>) => {
-    queryClient.setQueryData<ProjectDetail>(["project", projectId], (current) =>
-      current ? { ...current, ...updates } : current
-    );
-  };
 
   const syncProjectsList = (updates: Partial<ProjectDetail> & { id?: number; standard_code?: string }) => {
     queryClient.setQueryData<{
@@ -363,71 +353,12 @@ export default function ProjectSettingsPage() {
       }
     );
 
-  const { data: teamData } = useApiQuery<{ items: AssignmentSummary[] }>(
-    ["project-team", projectId],
-    `/projects/${projectId}/assignments/summary`
-  );
-
   const { data: assignmentOptionsData } = useApiQuery<AssignmentOptionsData>(
     ["project-assignment-options", projectId],
     `/projects/${projectId}/assignments`
   );
 
   // Mutations
-  const activateMutation = useApiMutation<ProjectDetail, void>(
-    `/projects/${projectId}/activate`,
-    "POST",
-    {
-      onMutate: () => {
-        setActionError(null);
-      },
-      onSuccess: async (result) => {
-        syncProjectDetail({ status: result.status });
-        syncProjectsList({ id: result.id, status: result.status });
-        await invalidateDerivedProjectViews();
-      },
-      onError: (error) => {
-        setActionError(error.message || "Unable to activate project.");
-      },
-    }
-  );
-
-  const reviewMutation = useApiMutation<ProjectDetail, void>(
-    `/projects/${projectId}/start-review`,
-    "POST",
-    {
-      onMutate: () => {
-        setActionError(null);
-      },
-      onSuccess: async (result) => {
-        syncProjectDetail({ status: result.status });
-        syncProjectsList({ id: result.id, status: result.status });
-        await invalidateDerivedProjectViews();
-      },
-      onError: (error) => {
-        setActionError(error.message || "Unable to move project into review.");
-      },
-    }
-  );
-
-  const publishMutation = useApiMutation<ProjectDetail, void>(
-    `/projects/${projectId}/publish`,
-    "POST",
-    {
-      onMutate: () => {
-        setActionError(null);
-      },
-      onSuccess: async (result) => {
-        syncProjectDetail({ status: result.status });
-        syncProjectsList({ id: result.id, status: result.status });
-        await invalidateDerivedProjectViews();
-      },
-      onError: (error) => {
-        setActionError(error.message || "Unable to publish project.");
-      },
-    }
-  );
-
   const addStandardMutation = useApiMutation<
     ProjectStandard,
     { standard_id: number }
@@ -510,48 +441,6 @@ export default function ProjectSettingsPage() {
       },
     }
   );
-
-  const handleWorkflowAction = async (
-    action: "activate" | "start-review" | "publish"
-  ) => {
-    try {
-      const workflowAction =
-        action === "activate"
-          ? "start_project"
-          : action === "start-review"
-            ? "review_project"
-            : "publish_project";
-      const result = await api.post<GateCheckResult & { failed_gates?: Array<{ message?: string }> }>(
-        "/gate-check",
-        { project_id: Number(projectId), action: workflowAction }
-      );
-      if (result && !result.passed) {
-        const blockers =
-          result.blockers?.length
-            ? result.blockers
-            : (result.failed_gates || [])
-                .map((gate) => gate.message)
-                .filter((message): message is string => !!message);
-        setGateBlockers(blockers);
-        setGateDialogOpen(true);
-        return;
-      }
-    } catch {
-      // Preserve workflow action even if the pre-flight check is temporarily unavailable.
-    }
-
-    switch (action) {
-      case "activate":
-        activateMutation.mutate(undefined);
-        break;
-      case "start-review":
-        reviewMutation.mutate(undefined);
-        break;
-      case "publish":
-        publishMutation.mutate(undefined);
-        break;
-    }
-  };
 
   const standards = standardsData?.items ?? [];
   const allStandards = availableStandards?.items ?? [];
@@ -640,7 +529,10 @@ export default function ProjectSettingsPage() {
 
   useEffect(() => {
     if (selectedStandardId && !selectableStandards.some((standard) => String(standard.id) === selectedStandardId)) {
-      setSelectedStandardId("");
+      const clearInvalidStandardSelection = () => {
+        setSelectedStandardId("");
+      };
+      clearInvalidStandardSelection();
     }
   }, [selectedStandardId, selectableStandards]);
 
@@ -694,7 +586,6 @@ export default function ProjectSettingsPage() {
     snapshot_status: "not_created" as const,
     snapshot_created_at: null,
   };
-  const team = teamData?.items ?? [];
   const assignmentUsers = assignmentOptionsData?.users ?? [];
   const assignmentEntities = assignmentOptionsData?.entities ?? [];
   const boundaries = Array.isArray(boundaryOptionsData)
@@ -704,27 +595,45 @@ export default function ProjectSettingsPage() {
     (standard) => formatStandardLabel({ code: standard.code, name: standard.standard_name })
   );
 
-  const isWorkflowBusy =
-    activateMutation.isPending ||
-    reviewMutation.isPending ||
-    publishMutation.isPending;
+  const boundaryConfigured = boundary.boundary_id !== null;
+  const boundaryWarn =
+    !boundaryConfigured || boundary.snapshot_status !== "locked";
+  const totalDisclosures = totalDisclosureCount;
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <h2 className="text-2xl font-bold text-slate-900">
-              {project.name}
-            </h2>
-            <Badge variant={status.variant}>{status.label}</Badge>
-          </div>
-          <p className="mt-1 text-sm text-slate-500">
-            Project Settings &middot; ID #{project.id}
-          </p>
+      <div className="space-y-3">
+        <div className="text-sm text-slate-500">
+          <button
+            type="button"
+            onClick={() => router.push("/projects")}
+            className="hover:text-slate-800"
+          >
+            Projects
+          </button>
+          <span className="mx-1.5 text-slate-300">&rsaquo;</span>
+          <span className="text-slate-700">{project.name}</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-2xl font-bold text-slate-900">{project.name}</h2>
+          <Badge variant={status.variant}>{status.label}</Badge>
+          {project.reporting_period_start && project.reporting_period_end && (
+            <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+              {new Date(project.reporting_period_start).toLocaleDateString()}
+              {" – "}
+              {new Date(project.reporting_period_end).toLocaleDateString()}
+            </span>
+          )}
         </div>
       </div>
+
+      {/* Workflow strip */}
+      <WorkflowStrip
+        projectId={projectId}
+        onBlockerClick={(tab) => tab && handleTabChange(tab)}
+        onError={setActionError}
+      />
 
       {actionError && (
         <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
@@ -734,149 +643,44 @@ export default function ProjectSettingsPage() {
       )}
 
       {/* Tabs */}
-      <Tabs defaultValue="general">
+      <Tabs
+        defaultValue={DEFAULT_TAB}
+        value={activeTab}
+        onValueChange={handleTabChange}
+      >
         <TabsList>
-          <TabsTrigger value="general">
-            <Settings className="mr-1.5 h-3.5 w-3.5" />
-            General
-          </TabsTrigger>
           <TabsTrigger value="standards">
             <FileText className="mr-1.5 h-3.5 w-3.5" />
             Standards
+            {standards.length > 0 && (
+              <span className="ml-1.5 rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700">
+                {standards.length}
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="custom-datasheet">
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            Custom Datasheet
           </TabsTrigger>
           <TabsTrigger value="boundary">
             <Globe className="mr-1.5 h-3.5 w-3.5" />
             Boundary
+            {boundaryWarn && (
+              <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+                !
+              </span>
+            )}
           </TabsTrigger>
           <TabsTrigger value="team">
             <Users className="mr-1.5 h-3.5 w-3.5" />
             Team
+            {totalDisclosures > 0 && (
+              <span className="ml-1.5 rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700">
+                {totalDisclosures}
+              </span>
+            )}
           </TabsTrigger>
         </TabsList>
-
-        {/* General Tab */}
-        <TabsContent value="general">
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Project Information</CardTitle>
-                <CardDescription>
-                  Basic project details and metadata
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <p className="text-sm font-medium text-slate-700">Name</p>
-                  <p className="mt-1 text-sm">{project.name}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-slate-700">
-                    Reporting Period
-                  </p>
-                  <p className="mt-1 text-sm">
-                    {project.reporting_period_start && project.reporting_period_end
-                      ? `${new Date(project.reporting_period_start).toLocaleDateString()} - ${new Date(project.reporting_period_end).toLocaleDateString()}`
-                      : "Not set"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-slate-700">Status</p>
-                  <Badge className="mt-1" variant={status.variant}>
-                    {status.label}
-                  </Badge>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-slate-700">Created</p>
-                  <p className="mt-1 text-sm">
-                    {project.created_at
-                      ? new Date(project.created_at).toLocaleString()
-                      : "Not available"}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Workflow</CardTitle>
-                <CardDescription>
-                  Advance the project through its lifecycle
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-bold">
-                    1
-                  </div>
-                  <span className="text-sm">Draft</span>
-                  <div className="h-px flex-1 bg-slate-200" />
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-bold">
-                    2
-                  </div>
-                  <span className="text-sm">Active</span>
-                  <div className="h-px flex-1 bg-slate-200" />
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-bold">
-                    3
-                  </div>
-                  <span className="text-sm">Review</span>
-                  <div className="h-px flex-1 bg-slate-200" />
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-bold">
-                    4
-                  </div>
-                  <span className="text-sm">Published</span>
-                </div>
-
-                <div className="flex flex-wrap gap-2 pt-2">
-                  {project.status === "draft" && (
-                    <Button
-                      onClick={() => handleWorkflowAction("activate")}
-                      disabled={isWorkflowBusy}
-                    >
-                      {activateMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Play className="h-4 w-4" />
-                      )}
-                      Activate
-                    </Button>
-                  )}
-                  {project.status === "active" && (
-                    <Button
-                      onClick={() => handleWorkflowAction("start-review")}
-                      disabled={isWorkflowBusy}
-                    >
-                      {reviewMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
-                      Start Review
-                    </Button>
-                  )}
-                  {project.status === "review" && (
-                    <Button
-                      onClick={() => handleWorkflowAction("publish")}
-                      disabled={isWorkflowBusy}
-                    >
-                      {publishMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Send className="h-4 w-4" />
-                      )}
-                      Publish
-                    </Button>
-                  )}
-                  {project.status === "published" && (
-                    <div className="flex items-center gap-2 text-sm text-green-600">
-                      <CheckCircle2 className="h-4 w-4" />
-                      Project has been published
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
 
         {/* Standards Tab */}
         <TabsContent value="standards">
@@ -1032,6 +836,10 @@ export default function ProjectSettingsPage() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="custom-datasheet">
+          <CustomDatasheetBuilder projectId={projectId} />
+        </TabsContent>
+
         {/* Boundary Tab */}
         <TabsContent value="boundary">
           <div className="grid gap-6 lg:grid-cols-2">
@@ -1153,76 +961,7 @@ export default function ProjectSettingsPage() {
 
         {/* Team Tab */}
         <TabsContent value="team">
-          <Card>
-            <CardHeader>
-              <CardTitle>Team Assignments</CardTitle>
-              <CardDescription>
-                Summary of team member assignments and progress
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {team.length === 0 ? (
-                <p className="py-8 text-center text-sm text-slate-400">
-                  No team members assigned yet.
-                </p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Assigned</TableHead>
-                      <TableHead>Completed</TableHead>
-                      <TableHead>Progress</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {team.map((member) => {
-                      const pct =
-                        member.assigned_disclosures > 0
-                          ? (member.completed / member.assigned_disclosures) *
-                            100
-                          : 0;
-                      return (
-                        <TableRow key={member.id}>
-                          <TableCell className="font-medium">
-                            {member.user_name}
-                          </TableCell>
-                          <TableCell className="text-slate-500">
-                            {member.email}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline">{member.role}</Badge>
-                          </TableCell>
-                          <TableCell>{member.assigned_disclosures}</TableCell>
-                          <TableCell>{member.completed}</TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <Progress
-                                value={pct}
-                                className="w-20"
-                                indicatorClassName={
-                                  pct >= 80
-                                    ? "bg-green-500"
-                                    : pct >= 50
-                                      ? "bg-amber-500"
-                                      : "bg-cyan-600"
-                                }
-                              />
-                              <span className="text-xs text-slate-500">
-                                {Math.round(pct)}%
-                              </span>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
+          <TeamMatrix projectId={projectId} onError={setActionError} />
         </TabsContent>
       </Tabs>
 
@@ -1397,41 +1136,6 @@ export default function ProjectSettingsPage() {
         onError={setActionError}
       />
 
-      {/* Gate Check Blockers Dialog */}
-      <Dialog open={gateDialogOpen} onOpenChange={setGateDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-600">
-              <XCircle className="h-5 w-5" />
-              Cannot Proceed
-            </DialogTitle>
-          </DialogHeader>
-          <div className="mt-4 space-y-3">
-            <p className="text-sm text-slate-600">
-              The following issues must be resolved before advancing:
-            </p>
-            <ul className="space-y-2">
-              {gateBlockers.map((blocker, idx) => (
-                <li
-                  key={idx}
-                  className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
-                >
-                  <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                  {blocker}
-                </li>
-              ))}
-            </ul>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setGateDialogOpen(false)}
-            >
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

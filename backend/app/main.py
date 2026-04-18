@@ -12,6 +12,7 @@ from app.api.routes import (
     calculations,
     comments,
     completeness,
+    custom_datasheets,
     dashboard,
     data_points,
     deltas,
@@ -122,6 +123,7 @@ def create_app() -> FastAPI:
     app.include_router(data_points.router)
     app.include_router(workflow.router)
     app.include_router(completeness.router)
+    app.include_router(custom_datasheets.router)
     app.include_router(reuse.router)
     app.include_router(notifications.router)
     app.include_router(review.router)

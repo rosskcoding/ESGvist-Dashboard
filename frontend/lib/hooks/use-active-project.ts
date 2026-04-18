@@ -25,7 +25,7 @@ export function useActiveProject(queryScope: string, enabled = true) {
     error,
   } = useApiQuery<ProjectsResponse>(["projects", queryScope], "/projects?page_size=100", { enabled });
 
-  const projects = projectsData?.items ?? [];
+  const projects = useMemo(() => projectsData?.items ?? [], [projectsData]);
   const activeProject = useMemo(
     () => resolveActiveProject(projects, requestedProjectId),
     [projects, requestedProjectId]

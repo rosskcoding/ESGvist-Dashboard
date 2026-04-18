@@ -388,8 +388,11 @@ function AddDimensionDialog({
 
   useEffect(() => {
     if (!open) {
-      setDimensionType("scope");
-      setIsRequired(false);
+      const resetDimensionDialog = () => {
+        setDimensionType("scope");
+        setIsRequired(false);
+      };
+      resetDimensionDialog();
     }
   }, [open]);
 

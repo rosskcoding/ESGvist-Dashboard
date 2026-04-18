@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext } from "@playwright/test";
 
 import { loadDemoState, loginByApi, loginThroughUi } from "./screen-helpers";
 
@@ -29,10 +29,6 @@ async function getMergeDataset(request: APIRequestContext) {
   });
   expect(response.ok(), await response.text()).toBeTruthy();
   return (await response.json()) as MergeResponse;
-}
-
-function elementRow(page: Page, code: string) {
-  return page.locator("tr", { has: page.getByText(code, { exact: true }) }).first();
 }
 
 test.describe("Screen 18 - Coverage Matrix", () => {

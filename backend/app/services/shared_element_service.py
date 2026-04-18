@@ -47,7 +47,7 @@ class SharedElementService:
     ) -> SharedElementOut:
         self.policy.require_admin(ctx)
 
-        existing = await self.repo.get_by_code(payload.code)
+        existing = await self.repo.get_by_code(payload.code, owner_layer="internal_catalog")
         if existing:
             raise AppError("CONFLICT", 409, f"Shared element '{payload.code}' already exists")
 

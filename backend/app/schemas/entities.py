@@ -13,6 +13,8 @@ class EntityCreate(BaseModel):
     status: str = "active"
     valid_from: date | None = None
     valid_to: date | None = None
+    default_collector_user_id: int | None = None
+    default_reviewer_user_id: int | None = None
 
 
 class EntityUpdate(BaseModel):
@@ -23,6 +25,8 @@ class EntityUpdate(BaseModel):
     status: str | None = None
     valid_from: date | None = None
     valid_to: date | None = None
+    default_collector_user_id: int | None = None
+    default_reviewer_user_id: int | None = None
 
 
 class EntityOut(BaseModel):
@@ -37,6 +41,8 @@ class EntityOut(BaseModel):
     status: str
     valid_from: date | None
     valid_to: date | None
+    default_collector_user_id: int | None = None
+    default_reviewer_user_id: int | None = None
 
     model_config = {"from_attributes": True}
 

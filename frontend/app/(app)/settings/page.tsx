@@ -99,23 +99,29 @@ export default function OrganizationSettingsPage() {
 
   useEffect(() => {
     if (!data) return;
-    setForm({
-      name: data.name,
-      country: data.country ?? "",
-      industry: data.industry ?? "",
-      currency: data.currency,
-      reporting_year: String(data.reporting_year ?? currentYear),
-      default_boundary_id: data.default_boundary_id ? String(data.default_boundary_id) : "",
-    });
+    const syncOrganizationForm = () => {
+      setForm({
+        name: data.name,
+        country: data.country ?? "",
+        industry: data.industry ?? "",
+        currency: data.currency,
+        reporting_year: String(data.reporting_year ?? currentYear),
+        default_boundary_id: data.default_boundary_id ? String(data.default_boundary_id) : "",
+      });
+    };
+    syncOrganizationForm();
   }, [data]);
 
   useEffect(() => {
     if (!authSettings) return;
-    setAuthForm({
-      allow_password_login: authSettings.allow_password_login,
-      allow_sso_login: authSettings.allow_sso_login,
-      enforce_sso: authSettings.enforce_sso,
-    });
+    const syncAuthForm = () => {
+      setAuthForm({
+        allow_password_login: authSettings.allow_password_login,
+        allow_sso_login: authSettings.allow_sso_login,
+        enforce_sso: authSettings.enforce_sso,
+      });
+    };
+    syncAuthForm();
   }, [authSettings]);
 
   async function saveOrganizationSettings() {

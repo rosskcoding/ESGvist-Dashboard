@@ -86,8 +86,11 @@ export default function DashboardPage() {
     if (typeof window === "undefined") return;
     const raw = sessionStorage.getItem("onboarding-summary");
     if (!raw) return;
+    const applyOnboardingSummary = (summary: OnboardingSummary) => {
+      setOnboardingSummary(summary);
+    };
     try {
-      setOnboardingSummary(JSON.parse(raw) as OnboardingSummary);
+      applyOnboardingSummary(JSON.parse(raw) as OnboardingSummary);
     } catch {
       // Ignore broken session data.
     }

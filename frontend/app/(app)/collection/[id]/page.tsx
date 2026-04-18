@@ -46,6 +46,11 @@ interface DataPointDetail {
   evidence_required: boolean;
   evidence_count: number;
   dimensions: { scope?: boolean; gas_type?: boolean; category?: boolean };
+  dimension_values?: {
+    scope?: string | null;
+    gas_type?: string | null;
+    category?: string | null;
+  };
   unit_options: string[];
   methodology_options: string[];
 }
@@ -141,6 +146,11 @@ function getMethodologyOptions(
   return options;
 }
 
+function sanitizeInternalReturnTo(value: string | null) {
+  if (!value) return null;
+  return value.startsWith("/") ? value : null;
+}
+
 /* ---------- Component ---------- */
 
 export default function DataEntryWizardPage() {
@@ -190,7 +200,9 @@ export default function DataEntryWizardPage() {
   const requiresMethodologySelection = methodologySelectionRequired(dp);
 
   const projectId = searchParams.get("projectId") || (dp ? String(dp.reporting_project_id) : "");
-  const collectionListUrl = projectId ? `/collection?projectId=${projectId}` : "/collection";
+  const customReturnTo = sanitizeInternalReturnTo(searchParams.get("returnTo"));
+  const collectionListUrl = customReturnTo || (projectId ? `/collection?projectId=${projectId}` : "/collection");
+  const backToCollectionLabel = searchParams.get("returnLabel") || "Back to Collection";
 
   const { data: me } = useApiQuery<{
     roles: Array<{ role: string }>;
@@ -227,6 +239,9 @@ export default function DataEntryWizardPage() {
           : (dp.text_value ?? ""),
       unit: dp.unit_code ?? prev.unit ?? "",
       methodology: dp.methodology ?? prev.methodology ?? "",
+      scope: dp.dimension_values?.scope ?? "",
+      gas_type: dp.dimension_values?.gas_type ?? "",
+      category: dp.dimension_values?.category ?? "",
     }));
   }, [dp]);
 
@@ -483,7 +498,7 @@ export default function DataEntryWizardPage() {
           className="mt-4"
           onClick={() => router.push(collectionListUrl)}
         >
-          Back to Collection
+          {backToCollectionLabel}
         </Button>
       </div>
     );
@@ -499,7 +514,7 @@ export default function DataEntryWizardPage() {
         className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-900"
       >
         <ArrowLeft className="h-4 w-4" />
-        Back to Collection
+        {backToCollectionLabel}
       </button>
 
       {/* Step indicator */}
@@ -883,11 +898,11 @@ export default function DataEntryWizardPage() {
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-slate-400">Evidence</dt>
-                  <dd className="text-slate-700">
-                    {linkedEvidenceCount + form.files.length} file(s) ready
-                  </dd>
-                </div>
+                    <dt className="text-slate-400">Evidence</dt>
+                    <dd className="text-slate-700">
+                      {linkedEvidenceCount + form.files.length} file(s) ready
+                    </dd>
+                  </div>
                 {form.narrative && (
                   <div className="col-span-2">
                     <dt className="text-slate-400">Narrative</dt>
@@ -1005,7 +1020,7 @@ export default function DataEntryWizardPage() {
                   Your data has been submitted for review.
                 </p>
                 <Button onClick={() => router.push(collectionListUrl)}>
-                  Back to Collection
+                  {backToCollectionLabel}
                 </Button>
               </div>
             ) : (

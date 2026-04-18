@@ -156,6 +156,44 @@ async def _setup_standard_launch_fixture(client: AsyncClient, headers: dict) -> 
     }
 
 
+async def _invite_and_accept(
+    client: AsyncClient,
+    admin_headers: dict,
+    *,
+    email: str,
+    role: str,
+    full_name: str,
+) -> dict:
+    invitation = await client.post(
+        "/api/auth/invitations",
+        json={"email": email, "role": role},
+        headers=admin_headers,
+    )
+    assert invitation.status_code == 201
+
+    await client.post(
+        "/api/auth/register",
+        json={"email": email, "password": "password123", "full_name": full_name},
+    )
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": email, "password": "password123"},
+    )
+    headers = {
+        "Authorization": f"Bearer {login.json()['access_token']}",
+        "X-Organization-Id": admin_headers["X-Organization-Id"],
+    }
+    accept = await client.post(
+        f"/api/invitations/accept/{invitation.json()['token']}",
+        headers=headers,
+    )
+    assert accept.status_code == 200
+
+    me = await client.get("/api/auth/me", headers=headers)
+    assert me.status_code == 200
+    return {"id": me.json()["id"], "headers": headers}
+
+
 # --- Projects ---
 @pytest.mark.asyncio
 async def test_create_project(client: AsyncClient, org_ctx: dict):
@@ -495,6 +533,191 @@ async def test_create_assignment(client: AsyncClient, org_ctx: dict):
 
 
 @pytest.mark.asyncio
+async def test_create_assignment_rejects_duplicate_metric_scope(client: AsyncClient, org_ctx: dict):
+    el = await client.post(
+        "/api/shared-elements",
+        json={"code": "S1-DUP", "name": "Scope 1 duplicate"},
+        headers=org_ctx["headers"],
+    )
+    assert el.status_code == 201
+
+    proj = await client.post(
+        "/api/projects",
+        json={"name": "Duplicate Assignment Report"},
+        headers=org_ctx["headers"],
+    )
+    assert proj.status_code == 201
+
+    first = await client.post(
+        f"/api/projects/{proj.json()['id']}/assignments",
+        json={"shared_element_id": el.json()["id"]},
+        headers=org_ctx["headers"],
+    )
+    assert first.status_code == 201
+
+    duplicate = await client.post(
+        f"/api/projects/{proj.json()['id']}/assignments",
+        json={"shared_element_id": el.json()["id"]},
+        headers=org_ctx["headers"],
+    )
+    assert duplicate.status_code == 409
+    assert duplicate.json()["error"]["code"] == "ASSIGNMENT_ALREADY_EXISTS"
+
+
+@pytest.mark.asyncio
+async def test_create_assignment_creates_custom_shared_element_by_code(client: AsyncClient, org_ctx: dict):
+    proj = await client.post(
+        "/api/projects",
+        json={"name": "Custom Metric Project"},
+        headers=org_ctx["headers"],
+    )
+    assert proj.status_code == 201
+
+    resp = await client.post(
+        f"/api/projects/{proj.json()['id']}/assignments",
+        json={
+            "shared_element_code": "CUST-BP-BOARD-DIVERSITY",
+            "shared_element_name": "BP board diversity narrative",
+            "entity_id": org_ctx["root_entity_id"],
+        },
+        headers=org_ctx["headers"],
+    )
+    assert resp.status_code == 201
+
+    assignments = await client.get(
+        f"/api/projects/{proj.json()['id']}/assignments",
+        headers=org_ctx["headers"],
+    )
+    assert assignments.status_code == 200
+    created = assignments.json()["assignments"][0]
+    assert created["shared_element_code"] == "CUST-BP-BOARD-DIVERSITY"
+    assert created["shared_element_name"] == "BP board diversity narrative"
+
+
+@pytest.mark.asyncio
+async def test_evidence_detail_includes_framework_context_for_linked_data_point(
+    client: AsyncClient,
+    org_ctx: dict,
+):
+    fixture = await _setup_standard_launch_fixture(client, org_ctx["headers"])
+    launch = await client.post(
+        f"/api/projects/{fixture['project_id']}/standards/{fixture['standard_id']}/launch",
+        json={
+            "shared_element_ids": [fixture["energy_element_id"]],
+            "entity_id": org_ctx["root_entity_id"],
+        },
+        headers=org_ctx["headers"],
+    )
+    assert launch.status_code == 201
+
+    data_point = await client.post(
+        f"/api/projects/{fixture['project_id']}/data-points",
+        json={
+            "shared_element_id": fixture["energy_element_id"],
+            "entity_id": org_ctx["root_entity_id"],
+            "numeric_value": 125.5,
+            "unit_code": "MWh",
+        },
+        headers=org_ctx["headers"],
+    )
+    assert data_point.status_code == 201
+
+    evidence = await client.post(
+        "/api/evidences",
+        json={
+            "type": "link",
+            "title": "Framework evidence",
+            "description": "Support document for launched framework metric",
+            "url": "https://example.com/framework-evidence",
+        },
+        headers=org_ctx["headers"],
+    )
+    assert evidence.status_code == 201
+
+    link = await client.post(
+        f"/api/data-points/{data_point.json()['id']}/evidences",
+        json={"evidence_id": evidence.json()["id"]},
+        headers=org_ctx["headers"],
+    )
+    assert link.status_code == 200
+
+    detail = await client.get(
+        f"/api/evidences/{evidence.json()['id']}",
+        headers=org_ctx["headers"],
+    )
+    assert detail.status_code == 200
+    linked = detail.json()["linked_data_points"][0]
+    assert linked["project_id"] == fixture["project_id"]
+    assert linked["project_name"] == "Launch Project"
+    assert linked["owner_layer"] == "internal_catalog"
+    assert linked["is_custom"] is False
+    assert linked["requirement_contexts"][0]["standard_code"] == "GRI-LAUNCH"
+    assert linked["requirement_contexts"][0]["disclosure_code"] == "GRI 302-1"
+
+
+@pytest.mark.asyncio
+async def test_evidence_detail_marks_custom_metric_links(client: AsyncClient, org_ctx: dict):
+    project = await client.post(
+        "/api/projects",
+        json={"name": "Custom Evidence Project"},
+        headers=org_ctx["headers"],
+    )
+    assert project.status_code == 201
+
+    assignment = await client.post(
+        f"/api/projects/{project.json()['id']}/assignments",
+        json={
+            "shared_element_code": "CUST-EVIDENCE-NARRATIVE",
+            "shared_element_name": "Custom evidence narrative",
+            "entity_id": org_ctx["root_entity_id"],
+        },
+        headers=org_ctx["headers"],
+    )
+    assert assignment.status_code == 201
+
+    data_point = await client.post(
+        f"/api/projects/{project.json()['id']}/data-points",
+        json={
+            "shared_element_id": assignment.json()["shared_element_id"],
+            "entity_id": org_ctx["root_entity_id"],
+            "text_value": "Narrative value",
+        },
+        headers=org_ctx["headers"],
+    )
+    assert data_point.status_code == 201
+
+    evidence = await client.post(
+        "/api/evidences",
+        json={
+            "type": "link",
+            "title": "Custom metric evidence",
+            "description": "Support document for a tenant custom metric",
+            "url": "https://example.com/custom-evidence",
+        },
+        headers=org_ctx["headers"],
+    )
+    assert evidence.status_code == 201
+
+    link = await client.post(
+        f"/api/data-points/{data_point.json()['id']}/evidences",
+        json={"evidence_id": evidence.json()["id"]},
+        headers=org_ctx["headers"],
+    )
+    assert link.status_code == 200
+
+    detail = await client.get(
+        f"/api/evidences/{evidence.json()['id']}",
+        headers=org_ctx["headers"],
+    )
+    assert detail.status_code == 200
+    linked = detail.json()["linked_data_points"][0]
+    assert linked["owner_layer"] == "tenant_catalog"
+    assert linked["is_custom"] is True
+    assert linked["project_name"] == "Custom Evidence Project"
+    assert linked["requirement_contexts"] == []
+
+
+@pytest.mark.asyncio
 async def test_assignment_collector_reviewer_conflict(client: AsyncClient, org_ctx: dict):
     el = await client.post(
         "/api/shared-elements",
@@ -515,6 +738,132 @@ async def test_assignment_collector_reviewer_conflict(client: AsyncClient, org_c
     )
     assert resp.status_code == 409
     assert resp.json()["error"]["code"] == "ASSIGNMENT_ROLE_CONFLICT"
+
+
+@pytest.mark.asyncio
+async def test_auto_assign_handles_reviewer_only_gaps(client: AsyncClient, org_ctx: dict):
+    collector = await _invite_and_accept(
+        client,
+        org_ctx["headers"],
+        email="collector+auto-projects@test.com",
+        role="collector",
+        full_name="Collector Auto",
+    )
+    reviewer = await _invite_and_accept(
+        client,
+        org_ctx["headers"],
+        email="reviewer+auto-projects@test.com",
+        role="reviewer",
+        full_name="Reviewer Auto",
+    )
+
+    updated_entity = await client.patch(
+        f"/api/entities/{org_ctx['root_entity_id']}",
+        json={
+            "default_collector_user_id": collector["id"],
+            "default_reviewer_user_id": reviewer["id"],
+        },
+        headers=org_ctx["headers"],
+    )
+    assert updated_entity.status_code == 200
+    assert updated_entity.json()["default_collector_user_id"] == collector["id"]
+    assert updated_entity.json()["default_reviewer_user_id"] == reviewer["id"]
+
+    project = await client.post(
+        "/api/projects",
+        json={"name": "Auto Assign Reviewer Gap"},
+        headers=org_ctx["headers"],
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    assignment = await client.post(
+        f"/api/projects/{project_id}/assignments",
+        json={
+            "shared_element_code": "AUTO-REVIEW-GAP",
+            "shared_element_name": "Auto review gap metric",
+            "entity_id": org_ctx["root_entity_id"],
+            "collector_id": collector["id"],
+        },
+        headers=org_ctx["headers"],
+    )
+    assert assignment.status_code == 201
+
+    preview = await client.get(
+        f"/api/projects/{project_id}/auto-assign/preview",
+        headers=org_ctx["headers"],
+    )
+    assert preview.status_code == 200
+    preview_payload = preview.json()
+    assert preview_payload["covered_count"] == 1
+    assert preview_payload["skipped_count"] == 0
+    assert len(preview_payload["items"]) == 1
+    assert preview_payload["items"][0]["proposed_collector_id"] is None
+    assert preview_payload["items"][0]["proposed_reviewer_id"] == reviewer["id"]
+
+    applied = await client.post(
+        f"/api/projects/{project_id}/auto-assign",
+        json={"dry_run": False},
+        headers=org_ctx["headers"],
+    )
+    assert applied.status_code == 200
+    assert applied.json()["updated_count"] == 1
+    assert applied.json()["skipped_count"] == 0
+
+    assignments = await client.get(
+        f"/api/projects/{project_id}/assignments",
+        headers=org_ctx["headers"],
+    )
+    assert assignments.status_code == 200
+    row = assignments.json()["assignments"][0]
+    assert row["collector_id"] == collector["id"]
+    assert row["reviewer_id"] == reviewer["id"]
+    assert row["reviewer_name"] == "Reviewer Auto"
+
+
+@pytest.mark.asyncio
+async def test_project_setup_health_counts_collector_and_reviewer(client: AsyncClient, org_ctx: dict):
+    collector = await _invite_and_accept(
+        client,
+        org_ctx["headers"],
+        email="collector+team-size@test.com",
+        role="collector",
+        full_name="Collector Team Size",
+    )
+    reviewer = await _invite_and_accept(
+        client,
+        org_ctx["headers"],
+        email="reviewer+team-size@test.com",
+        role="reviewer",
+        full_name="Reviewer Team Size",
+    )
+
+    project = await client.post(
+        "/api/projects",
+        json={"name": "Setup Health Team Size"},
+        headers=org_ctx["headers"],
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    assignment = await client.post(
+        f"/api/projects/{project_id}/assignments",
+        json={
+            "shared_element_code": "SETUP-HEALTH-TEAM",
+            "shared_element_name": "Setup health team metric",
+            "collector_id": collector["id"],
+            "reviewer_id": reviewer["id"],
+        },
+        headers=org_ctx["headers"],
+    )
+    assert assignment.status_code == 201
+
+    detail = await client.get(
+        f"/api/projects/{project_id}",
+        headers=org_ctx["headers"],
+    )
+    assert detail.status_code == 200
+    assert detail.json()["setup_health"]["team_size"] == 2
 
 
 # --- Boundaries ---

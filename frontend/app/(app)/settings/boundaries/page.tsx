@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { AIBoundaryWhy } from "@/components/ai-inline-explain";
 import { useApiQuery, useApiMutation } from "@/lib/hooks/use-api";
 import { useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,7 +36,6 @@ import {
   MapPin,
   Building2,
   Calendar,
-  ChevronRight,
   RefreshCw,
   History,
   Pencil,
@@ -177,13 +176,16 @@ function BoundaryDialog({
   });
 
   useEffect(() => {
-    setForm({
-      name: boundary?.name ?? "",
-      boundary_type:
-        (boundary?.boundary_type ?? boundary?.type ?? "financial_reporting_default") as BoundaryType,
-      description: boundary?.description ?? "",
-      is_default: boundary?.is_default ?? false,
-    });
+    const syncBoundaryForm = () => {
+      setForm({
+        name: boundary?.name ?? "",
+        boundary_type:
+          (boundary?.boundary_type ?? boundary?.type ?? "financial_reporting_default") as BoundaryType,
+        description: boundary?.description ?? "",
+        is_default: boundary?.is_default ?? false,
+      });
+    };
+    syncBoundaryForm();
   }, [boundary, open]);
 
   const createMutation = useApiMutation<Boundary, typeof form>(
@@ -468,7 +470,7 @@ function BoundaryDetail({ boundary }: { boundary: Boundary }) {
             <Building2 className="mb-2 h-8 w-8" />
             <p className="text-sm">No entity memberships defined.</p>
             <p className="text-xs">
-              Use "Calculate Membership" to auto-populate from rules.
+              Use &quot;Calculate Membership&quot; to auto-populate from rules.
             </p>
           </div>
         ) : (

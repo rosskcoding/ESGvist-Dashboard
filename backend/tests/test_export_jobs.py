@@ -8,6 +8,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 
 from app.core.metrics import NON_BLOCKING_FAILURES
+from app.domain.catalog import prepare_shared_element_defaults
 from app.db.models.audit_log import AuditLog
 from app.db.models.boundary import BoundaryDefinition
 from app.db.models.boundary_snapshot import BoundarySnapshot
@@ -89,6 +90,7 @@ async def _make_project_export_ready(*, organization_id: int, project_id: int, u
         shared_element = SharedElement(
             code=f"EXPORT-SE-{project_id}",
             name=f"Export Shared Element {project_id}",
+            **prepare_shared_element_defaults(code=f"EXPORT-SE-{project_id}"),
         )
         session.add(shared_element)
         await session.flush()

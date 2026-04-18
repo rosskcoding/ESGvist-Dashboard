@@ -12,6 +12,12 @@ class DimensionFlagsOut(BaseModel):
     category: bool = False
 
 
+class DimensionValuesOut(BaseModel):
+    scope: str | None = None
+    gas_type: str | None = None
+    category: str | None = None
+
+
 class RelatedStandardOut(BaseModel):
     code: str
     name: str
@@ -61,6 +67,7 @@ class DataPointOut(BaseModel):
     evidence_required: bool = False
     evidence_count: int = 0
     dimensions: DimensionFlagsOut = Field(default_factory=DimensionFlagsOut)
+    dimension_values: DimensionValuesOut = Field(default_factory=DimensionValuesOut)
     unit_options: list[str] = Field(default_factory=list)
     methodology_options: list[str] = Field(default_factory=list)
 

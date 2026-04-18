@@ -9,7 +9,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
@@ -152,8 +151,8 @@ export default function MergePage() {
     { enabled: canAccess }
   );
 
-  const standards = data?.standards ?? [];
-  const allElements = data?.elements ?? [];
+  const standards = useMemo(() => data?.standards ?? [], [data]);
+  const allElements = useMemo(() => data?.elements ?? [], [data]);
   const summary = data?.summary ?? {
     common_elements: 0,
     unique_elements: 0,

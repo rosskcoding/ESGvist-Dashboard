@@ -1,6 +1,6 @@
 {
-  "base_url": "http://127.0.0.1:3001",
-  "api_url": "http://127.0.0.1:8003/api",
+  "base_url": "http://localhost:3003",
+  "api_url": "http://localhost:8003/api",
   "password": "Test1234",
   "organization": {
     "id": 1,
@@ -68,7 +68,7 @@
   "pending_invitation": {
     "email": "pending.facility@greentech.com",
     "role": "collector",
-    "token": "a722392a-3e4b-472c-a8eb-ee0ad8e84b8f"
+    "token": "366cc9e4-a45d-4ed7-abb1-b0d3581cafab"
   },
   "entities": {
     "root": {

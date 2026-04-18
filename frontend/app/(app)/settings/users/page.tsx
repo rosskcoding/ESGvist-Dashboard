@@ -31,7 +31,6 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { useApiQuery, useApiMutation } from "@/lib/hooks/use-api";
 import {
@@ -334,7 +333,7 @@ export default function UsersPage() {
     },
   });
 
-  const users = data?.users ?? [];
+  const users = useMemo(() => data?.users ?? [], [data]);
   const pendingInvitations = data?.pending_invitations ?? [];
   const accessDenied = (Boolean(currentUser) && !canManageUsers) || (Boolean(error) && isForbidden(error));
 

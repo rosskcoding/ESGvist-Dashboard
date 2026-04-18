@@ -320,6 +320,7 @@ class FormConfigService:
             .order_by(RequirementItem.id)
         )
         rows = items_result.all()
+        shared_element_occurrences = Counter(row.shared_element_id for row in rows)
 
         assignment_result = await self.session.execute(
             select(
@@ -351,7 +352,15 @@ class FormConfigService:
         for item_id, item_code, name_value, item_type, se_id, se_code, se_name in rows:
             assignment_contexts = assignments_by_element.get(se_id)
             if not assignment_contexts:
-                continue
+                if shared_element_occurrences[se_id] < 2:
+                    continue
+                assignment_contexts = [
+                    {
+                        "assignment_id": None,
+                        "entity_id": None,
+                        "facility_id": None,
+                    }
+                ]
 
             step_name = item_type or "general"
             if step_name not in steps_map:

@@ -150,12 +150,15 @@ export default function TenantDetailPage() {
 
   useEffect(() => {
     if (!tenant) return;
-    setForm({
-      name: tenant.name,
-      country: tenant.country ?? "",
-      industry: tenant.industry ?? "",
-      status: tenant.status,
-    });
+    const syncTenantForm = () => {
+      setForm({
+        name: tenant.name,
+        country: tenant.country ?? "",
+        industry: tenant.industry ?? "",
+        status: tenant.status,
+      });
+    };
+    syncTenantForm();
   }, [tenant]);
 
   const selectableUsers = useMemo(() => {

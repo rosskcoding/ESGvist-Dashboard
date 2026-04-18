@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { HelpCircle, Loader2, ChevronDown, ChevronUp } from "lucide-react";
+import { HelpCircle, Loader2, ChevronUp } from "lucide-react";
 import { api } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

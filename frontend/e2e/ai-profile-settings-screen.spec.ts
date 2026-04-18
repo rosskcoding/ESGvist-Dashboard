@@ -179,7 +179,6 @@ test.describe("Screen 32-37 - AI, Profile, Organization Settings, and Webhooks",
     await expect(page.getByRole("heading", { name: /Evidence/i })).toBeVisible();
 
     // If evidence detail dialog shows linked requirement items, guidance button should appear
-    const evidenceGuidanceButtons = page.getByRole("button").filter({ hasText: "Evidence guidance" });
     // The button is visible only inside the detail dialog, so we need to open one first
     const evidenceRows = page.getByRole("row");
     if (await evidenceRows.count() > 1) {

@@ -190,7 +190,10 @@ function EditStandardDialog({
 
   useEffect(() => {
     if (!open) return;
-    setForm({ name: standard.name, version: standard.version ?? "" });
+    const syncEditForm = () => {
+      setForm({ name: standard.name, version: standard.version ?? "" });
+    };
+    syncEditForm();
   }, [open, standard]);
 
   const mutation = useApiMutation<Standard, typeof form>(`/standards/${standard.id}`, "PATCH", {
@@ -514,7 +517,10 @@ export default function StandardsPage() {
 
   useEffect(() => {
     if (!selectedId && standards.length > 0) {
-      setSelectedId(standards[0].id);
+      const selectFirstStandard = () => {
+        setSelectedId(standards[0].id);
+      };
+      selectFirstStandard();
     }
   }, [selectedId, standards]);
 

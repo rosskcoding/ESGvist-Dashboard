@@ -4,8 +4,7 @@ const frontendPort = process.env.PLAYWRIGHT_FRONTEND_PORT || "3015";
 const apiPort = process.env.PLAYWRIGHT_API_PORT || "8015";
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || `http://localhost:${frontendPort}`;
 const databaseUrl =
-  process.env.DATABASE_URL ||
-  "postgresql+asyncpg://postgres:postgres@localhost:5432/esgdashboard_demo_20260323";
+  process.env.DATABASE_URL || "sqlite+aiosqlite:///./playwright_framework_catalog.db";
 
 export default defineConfig({
   testDir: "./e2e",

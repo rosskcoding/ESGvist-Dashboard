@@ -12,7 +12,8 @@ export interface SwitchProps
 
 const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
   ({ className, checked = false, onCheckedChange, label, id, ...props }, ref) => {
-    const switchId = id || React.useId();
+    const generatedId = React.useId();
+    const switchId = id ?? generatedId;
 
     return (
       <div className="flex items-center gap-2">

@@ -245,11 +245,14 @@ export default function RequirementItemsPage() {
     `/standards/${standardId}/disclosures?page_size=100`,
     { enabled: canAccess && Boolean(standardId) }
   );
-  const disclosures = disclosuresData?.items ?? [];
+  const disclosures = useMemo(() => disclosuresData?.items ?? [], [disclosuresData]);
 
   useEffect(() => {
     if (!selectedDisclosureId && disclosures.length > 0) {
-      setSelectedDisclosureId(disclosures[0].id);
+      const selectFirstDisclosure = () => {
+        setSelectedDisclosureId(disclosures[0].id);
+      };
+      selectFirstDisclosure();
     }
   }, [selectedDisclosureId, disclosures]);
 

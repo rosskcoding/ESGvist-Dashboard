@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 interface DialogContextValue {
   open: boolean;
   setOpen: (open: boolean) => void;
-  dialogRef: React.RefObject<HTMLDialogElement | null>;
+  dialogRef: React.MutableRefObject<HTMLDialogElement | null>;
 }
 
 const DialogContext = React.createContext<DialogContextValue | null>(null);
@@ -62,9 +62,8 @@ function Dialog({ children, open: controlledOpen, onOpenChange }: DialogProps) {
 function DialogTrigger({
   children,
   className,
-  asChild,
   ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { asChild?: boolean }) {
+}: React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const { setOpen } = useDialogContext();
 
   return (
@@ -93,7 +92,7 @@ const DialogContent = React.forwardRef<
 
   const mergedRef = React.useCallback(
     (node: HTMLDialogElement | null) => {
-      (dialogRef as React.MutableRefObject<HTMLDialogElement | null>).current = node;
+      dialogRef.current = node;
       if (typeof ref === "function") ref(node);
       else if (ref) (ref as React.MutableRefObject<HTMLDialogElement | null>).current = node;
     },

@@ -1,8 +1,8 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
-  useEffectEvent,
   useId,
   useMemo,
   useRef,
@@ -90,6 +90,11 @@ interface DataPointDetail {
   evidence_required: boolean;
   evidence_count: number;
   dimensions: { scope?: boolean; gas_type?: boolean; category?: boolean };
+  dimension_values?: {
+    scope?: string | null;
+    gas_type?: string | null;
+    category?: string | null;
+  };
   unit_options: string[];
   methodology_options: string[];
 }
@@ -153,6 +158,11 @@ function isEditableStatus(status: string | undefined) {
 
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
+}
+
+function isNotFoundMessage(error: unknown) {
+  const message = errorMessage(error, "");
+  return /not found/i.test(message);
 }
 
 type ReadinessTone = "done" | "pending" | "warning";
@@ -263,15 +273,43 @@ export function GuidedEntryDialog({
   const [isChecking, setIsChecking] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
-  const notifyDataPointResolved = useEffectEvent((currentRowKey: string, dataPointId: number) => {
-    onDataPointResolved(currentRowKey, dataPointId);
-  });
+  const notifyDataPointResolved = useCallback(
+    (currentRowKey: string, dataPointId: number) => {
+      onDataPointResolved(currentRowKey, dataPointId);
+    },
+    [onDataPointResolved]
+  );
 
   const isEditable = isEditableStatus(detail?.status);
   const fullWizardUrl = useMemo(() => {
     if (!detail?.id) return null;
     return `/collection/${detail.id}?projectId=${projectId}`;
   }, [detail?.id, projectId]);
+
+  const resolveCurrentDataPoint = useCallback(
+    async (preferredDataPointId?: number | null): Promise<DataPointDetail> => {
+      if (!row?.shared_element_id) {
+        throw new Error("This guided field is missing its shared element binding.");
+      }
+
+      if (preferredDataPointId) {
+        try {
+          return await api.get<DataPointDetail>(`/data-points/${preferredDataPointId}`);
+        } catch (error) {
+          if (!isNotFoundMessage(error)) {
+            throw error;
+          }
+        }
+      }
+
+      return api.post<DataPointDetail>(`/projects/${projectId}/data-points`, {
+        shared_element_id: row.shared_element_id,
+        entity_id: row.entity_id ?? undefined,
+        facility_id: row.facility_id ?? undefined,
+      });
+    },
+    [projectId, row]
+  );
 
   useEffect(() => {
     if (!open || !row || !rowKey || !row.shared_element_id) {
@@ -304,13 +342,7 @@ export function GuidedEntryDialog({
       setValidationErrors({});
 
       try {
-        const payload = currentRow.data_point_id
-          ? await api.get<DataPointDetail>(`/data-points/${currentRow.data_point_id}`)
-          : await api.post<DataPointDetail>(`/projects/${projectId}/data-points`, {
-              shared_element_id: currentRow.shared_element_id,
-              entity_id: currentRow.entity_id ?? undefined,
-              facility_id: currentRow.facility_id ?? undefined,
-            });
+        const payload = await resolveCurrentDataPoint(currentRow.data_point_id);
 
         if (cancelled) return;
         setDetail(payload);
@@ -321,9 +353,9 @@ export function GuidedEntryDialog({
               : payload.text_value ?? "",
           unit: payload.unit_code ?? "",
           methodology: payload.methodology ?? "",
-          scope: "",
-          gas_type: "",
-          category: "",
+          scope: payload.dimension_values?.scope ?? "",
+          gas_type: payload.dimension_values?.gas_type ?? "",
+          category: payload.dimension_values?.category ?? "",
           files: [],
         });
         notifyDataPointResolved(currentRowKey, payload.id);
@@ -342,7 +374,7 @@ export function GuidedEntryDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, projectId, rowKey]);
+  }, [notifyDataPointResolved, open, resolveCurrentDataPoint, row, rowKey]);
 
   function updateField<K extends keyof GuidedEntryForm>(key: K, value: GuidedEntryForm[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -442,31 +474,48 @@ export function GuidedEntryDialog({
         : null,
     ].filter(Boolean);
 
-    const updated = await api.patch<DataPointDetail>(`/data-points/${detail.id}`, {
-      numeric_value:
-        detail.element_type === "numeric" && form.value.trim()
-          ? Number(form.value)
-          : undefined,
-      text_value:
-        detail.element_type !== "numeric" && form.value.trim()
-          ? form.value
-          : undefined,
-      unit_code: form.unit || undefined,
-      methodology: form.methodology || undefined,
-      dimensions,
-    });
+    const applyDraft = async (targetDetail: DataPointDetail) => {
+      const updated = await api.patch<DataPointDetail>(`/data-points/${targetDetail.id}`, {
+        numeric_value:
+          targetDetail.element_type === "numeric" && form.value.trim()
+            ? Number(form.value)
+            : undefined,
+        text_value:
+          targetDetail.element_type !== "numeric" && form.value.trim()
+            ? form.value
+            : undefined,
+        unit_code: form.unit || undefined,
+        methodology: form.methodology || undefined,
+        dimensions,
+      });
 
-    setDetail(updated);
-    await uploadSelectedEvidence(updated.id);
-    await queryClient.invalidateQueries({ queryKey: ["data-points", projectId] });
-    await queryClient.invalidateQueries({ queryKey: ["collection-assignments", projectId] });
-    await queryClient.invalidateQueries({
-      queryKey: ["collection-selected-detail", updated.id],
-    });
-    await queryClient.invalidateQueries({
-      queryKey: ["collection-selected-evidence", updated.id],
-    });
-    return updated;
+      setDetail(updated);
+      await uploadSelectedEvidence(updated.id);
+      await queryClient.invalidateQueries({ queryKey: ["data-points", projectId] });
+      await queryClient.invalidateQueries({ queryKey: ["collection-assignments", projectId] });
+      await queryClient.invalidateQueries({
+        queryKey: ["collection-selected-detail", updated.id],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["collection-selected-evidence", updated.id],
+      });
+      return updated;
+    };
+
+    try {
+      return await applyDraft(detail);
+    } catch (error) {
+      if (!isNotFoundMessage(error)) {
+        throw error;
+      }
+
+      const refreshedDetail = await resolveCurrentDataPoint(detail.id);
+      setDetail(refreshedDetail);
+      if (rowKey) {
+        notifyDataPointResolved(rowKey, refreshedDetail.id);
+      }
+      return applyDraft(refreshedDetail);
+    }
   }
 
   function buildGateCheckPayload(targetDetail: DataPointDetail): GateCheckPayload {
@@ -582,6 +631,12 @@ export function GuidedEntryDialog({
         contentClassName="flex h-full flex-col p-0"
         showCloseButton={false}
       >
+        <DialogHeader className="sr-only">
+          <DialogTitle>Guided Quick Entry</DialogTitle>
+          <DialogDescription>
+            Capture a draft, evidence, and submission readiness from the guided collection panel.
+          </DialogDescription>
+        </DialogHeader>
         {isLoading ? (
           <div className="flex min-h-[240px] flex-1 items-center justify-center text-slate-500">
             <Loader2 className="mr-2 h-5 w-5 animate-spin" />
@@ -1033,17 +1088,6 @@ export function GuidedEntryDialog({
             <div className="border-t border-slate-200 bg-white px-6 py-4">
               <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                 <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      if (!fullWizardUrl) return;
-                      onOpenChange(false);
-                      router.push(fullWizardUrl);
-                    }}
-                    disabled={!fullWizardUrl}
-                  >
-                    Open Full Wizard
-                  </Button>
                   <Button variant="outline" onClick={() => onOpenChange(false)}>
                     Close
                   </Button>

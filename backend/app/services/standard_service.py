@@ -1,5 +1,6 @@
 from app.core.dependencies import RequestContext
 from app.core.exceptions import AppError
+from app.domain.catalog import build_disclosure_key
 from app.policies.standard_policy import StandardPolicy
 from app.repositories.standard_repo import StandardRepository
 from app.schemas.standards import (
@@ -101,7 +102,7 @@ class StandardService:
         self, standard_id: int, payload: DisclosureCreate, ctx: RequestContext
     ) -> DisclosureOut:
         self.policy.require_admin(ctx)
-        await self.repo.get_or_raise(standard_id)
+        standard = await self.repo.get_or_raise(standard_id)
 
         existing = await self.repo.get_disclosure_by_code(standard_id, payload.code)
         if existing:
@@ -110,5 +111,9 @@ class StandardService:
                 f"Disclosure with code '{payload.code}' already exists in this standard"
             )
 
-        d = await self.repo.create_disclosure(standard_id, **payload.model_dump())
+        d = await self.repo.create_disclosure(
+            standard_id,
+            disclosure_key=build_disclosure_key(standard.code, payload.code),
+            **payload.model_dump(),
+        )
         return DisclosureOut.model_validate(d)

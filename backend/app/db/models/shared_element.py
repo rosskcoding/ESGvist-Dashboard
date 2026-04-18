@@ -20,6 +20,16 @@ class SharedElement(Base, TimestampMixin):
     is_current: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
     valid_from: Mapped[str | None] = mapped_column(Date, nullable=True)
     valid_to: Mapped[str | None] = mapped_column(Date, nullable=True)
+    element_key: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    owner_layer: Mapped[str] = mapped_column(String, default="internal_catalog", nullable=False)
+    organization_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    source_element_key: Mapped[str | None] = mapped_column(String, nullable=True)
+    lifecycle_status: Mapped[str] = mapped_column(String, default="active", nullable=False)
+    is_custom: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     dimensions = relationship("SharedElementDimension", back_populates="shared_element", lazy="noload")
 

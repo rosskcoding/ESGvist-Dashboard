@@ -37,7 +37,11 @@ function DropdownMenu({
   const open = controlledOpen ?? uncontrolledOpen;
   const setOpen = React.useCallback(
     (value: boolean) => {
-      onOpenChange ? onOpenChange(value) : setUncontrolledOpen(value);
+      if (onOpenChange) {
+        onOpenChange(value);
+        return;
+      }
+      setUncontrolledOpen(value);
     },
     [onOpenChange]
   );
@@ -89,6 +93,17 @@ const DropdownMenuContent = React.forwardRef<
 >(({ className, align = "end", children, ...props }, ref) => {
   const { open, setOpen } = useDropdownMenuContext();
   const contentRef = React.useRef<HTMLDivElement>(null);
+  const mergedRef = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      contentRef.current = node;
+      if (typeof ref === "function") {
+        ref(node);
+      } else if (ref) {
+        ref.current = node;
+      }
+    },
+    [ref]
+  );
 
   React.useEffect(() => {
     if (!open) return;
@@ -118,7 +133,7 @@ const DropdownMenuContent = React.forwardRef<
 
   return (
     <div
-      ref={contentRef}
+      ref={mergedRef}
       role="menu"
       className={cn(
         "absolute z-50 mt-1 min-w-[8rem] overflow-hidden rounded-md border border-slate-200 bg-white p-1 text-slate-950 shadow-md dark:border-slate-800 dark:bg-slate-950 dark:text-slate-50",

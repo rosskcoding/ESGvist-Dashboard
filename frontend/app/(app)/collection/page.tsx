@@ -1,11 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
-  ArrowRight,
   ArrowUpDown,
   Download,
   Eye,
@@ -179,6 +178,18 @@ interface ActiveFormConfig {
   };
 }
 
+interface GuidedFieldDescriptor {
+  stepId: string;
+  stepTitle: string;
+  field: FormConfigField;
+}
+
+interface GuidedFieldCard {
+  descriptor: GuidedFieldDescriptor;
+  matches: DataPoint[];
+  primaryRow: DataPoint | null;
+}
+
 interface DataPointDetail {
   id: number;
   status: string;
@@ -271,6 +282,17 @@ function buildContextKey(
   facilityId?: number | null
 ) {
   return [sharedElementId ?? 0, entityId ?? 0, facilityId ?? 0].join(":");
+}
+
+function parseOptionalPositiveInt(value: string | null) {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function sanitizeInternalReturnTo(value: string | null) {
+  if (!value) return null;
+  return value.startsWith("/") ? value : null;
 }
 
 async function fetchAllProjectDataPoints(projectId: number): Promise<DataPointsResponse> {
@@ -470,6 +492,26 @@ function formatContext(row: Pick<DataPoint, "entity_name" | "facility_name">) {
   return row.facility_name ? `${row.entity_name} / ${row.facility_name}` : row.entity_name;
 }
 
+function fieldMatchesRow(field: FormConfigField, row: DataPoint) {
+  if (field.assignment_id != null && row.assignment_id === field.assignment_id) {
+    return true;
+  }
+
+  if (row.shared_element_id !== field.shared_element_id) {
+    return false;
+  }
+
+  if (field.facility_id != null) {
+    return row.facility_id === field.facility_id;
+  }
+
+  if (field.entity_id != null) {
+    return row.entity_id === field.entity_id && row.facility_id == null;
+  }
+
+  return true;
+}
+
 function getBlockingReason(row: DataPoint) {
   if (row.boundary_status === "excluded") return "Excluded from reporting boundary";
   if (row.boundary_status === "partial") return "Boundary needs review";
@@ -650,6 +692,7 @@ function formatEvidenceDate(date?: string | null): string {
 export default function CollectionPage() {
   const queryClient = useQueryClient();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const {
     activeProject,
     projectId,
@@ -659,6 +702,11 @@ export default function CollectionPage() {
 
   const [openingRowId, setOpeningRowId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [guidedConfigMessage, setGuidedConfigMessage] = useState<string | null>(null);
+  const [guidedConfigMessageTone, setGuidedConfigMessageTone] = useState<
+    "success" | "error" | "info"
+  >("info");
+  const [resyncingGuidedConfig, setResyncingGuidedConfig] = useState(false);
   const [guidedField, setGuidedField] = useState<FormConfigField | null>(null);
   const [guidedRowKey, setGuidedRowKey] = useState<string | null>(null);
   const [resolvedDataPointIds, setResolvedDataPointIds] = useState<Record<string, number>>({});
@@ -670,6 +718,7 @@ export default function CollectionPage() {
   const [onlyMine, setOnlyMine] = useState(false);
   const [evidencePreviewTarget, setEvidencePreviewTarget] =
     useState<EvidencePreviewTarget | null>(null);
+  const deepLinkHandledRef = useRef<string | null>(null);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | DataPointStatus>("all");
@@ -680,6 +729,15 @@ export default function CollectionPage() {
     "element_code" | "element_name" | "collection_status"
   >("element_code");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const deepLinkSharedElementId = parseOptionalPositiveInt(searchParams.get("sharedElementId"));
+  const deepLinkEntityId = parseOptionalPositiveInt(searchParams.get("entityId"));
+  const deepLinkFacilityId = parseOptionalPositiveInt(searchParams.get("facilityId"));
+  const deepLinkOpenContext = searchParams.get("openContext") === "1";
+  const deepLinkReturnTo = sanitizeInternalReturnTo(searchParams.get("returnTo"));
+  const deepLinkReturnLabel = searchParams.get("returnLabel") || undefined;
+  const deepLinkRowKey = deepLinkSharedElementId
+    ? buildContextKey(deepLinkSharedElementId, deepLinkEntityId, deepLinkFacilityId)
+    : null;
 
   const { data: me, isLoading: meLoading } = useApiQuery<AuthMe>(["auth-me"], "/auth/me");
 
@@ -731,6 +789,15 @@ export default function CollectionPage() {
     ["reference-methodologies"],
     "/references/methodologies",
     { enabled: canAccess }
+  );
+  const {
+    data: activeFormConfig,
+    isLoading: activeFormConfigLoading,
+    error: activeFormConfigError,
+  } = useApiQuery<ActiveFormConfig | null>(
+    ["active-form-config", projectId],
+    `/form-configs/projects/${projectId}/active`,
+    { enabled: canAccess && projectId !== null }
   );
 
   const hasMethodologyCatalog = (methodologies?.length ?? 0) > 0;
@@ -822,7 +889,8 @@ export default function CollectionPage() {
     (Boolean(me) && !canAccess) ||
     (!!projectsError && isForbidden(projectsError)) ||
     (!!assignmentsError && isForbidden(assignmentsError)) ||
-    (!!error && isForbidden(error));
+    (!!error && isForbidden(error)) ||
+    (!!activeFormConfigError && isForbidden(activeFormConfigError));
 
   const entities = useMemo(
     () => Array.from(new Set(items.map((item) => item.entity_name))).sort(),
@@ -878,6 +946,14 @@ export default function CollectionPage() {
     standardFilter,
     search,
   ]);
+
+  const guidedScopeItems = useMemo(() => {
+    let result = items;
+    if (onlyMine && me?.id != null) {
+      result = result.filter((item) => item.collector_id === me.id);
+    }
+    return result;
+  }, [items, me?.id, onlyMine]);
 
   const filtered = useMemo(() => {
     return [...filteredItems].sort((left, right) => {
@@ -961,6 +1037,31 @@ export default function CollectionPage() {
     () => new Set(filteredItems.map((item) => buildRowKey(item))),
     [filteredItems]
   );
+  const guidedDescriptors = useMemo<GuidedFieldDescriptor[]>(() => {
+    const steps = activeFormConfig?.config?.steps ?? [];
+    return steps.flatMap((step) =>
+      (step.fields ?? []).map((field) => ({
+        stepId: step.id,
+        stepTitle: step.title,
+        field,
+      }))
+    );
+  }, [activeFormConfig?.config?.steps]);
+  const guidedCards = useMemo<GuidedFieldCard[]>(() => {
+    return guidedDescriptors
+      .map((descriptor) => {
+        const matches = guidedScopeItems.filter((row) =>
+          fieldMatchesRow(descriptor.field, row)
+        );
+        return {
+          descriptor,
+          matches,
+          primaryRow: matches[0] ?? null,
+        } satisfies GuidedFieldCard;
+      })
+      .filter((card) => card.matches.length > 0);
+  }, [guidedDescriptors, guidedScopeItems]);
+  const hasGuidedCollection = guidedCards.length > 0;
   const checkedRowKeySet = useMemo(() => new Set(checkedRowKeys), [checkedRowKeys]);
   const checkedRows = useMemo(
     () => checkedRowKeys.map((rowKey) => rowsByKey.get(rowKey)).filter(Boolean) as DataPoint[],
@@ -975,10 +1076,11 @@ export default function CollectionPage() {
 
   useEffect(() => {
     if (!selectedRowKey) return;
+    if (selectedRowKey === deepLinkRowKey) return;
     if (!filteredRowKeys.has(selectedRowKey)) {
       setSelectedRowKey(null);
     }
-  }, [filteredRowKeys, selectedRowKey]);
+  }, [deepLinkRowKey, filteredRowKeys, selectedRowKey]);
 
   useEffect(() => {
     setCheckedRowKeys((current) => current.filter((rowKey) => filteredRowKeys.has(rowKey)));
@@ -996,10 +1098,11 @@ export default function CollectionPage() {
 
   useEffect(() => {
     if (viewMode !== "feed" || !selectedRowKey) return;
+    if (selectedRowKey === deepLinkRowKey) return;
     if (!visibleFeedRowKeys.has(selectedRowKey)) {
       setSelectedRowKey(null);
     }
-  }, [selectedRowKey, viewMode, visibleFeedRowKeys]);
+  }, [deepLinkRowKey, selectedRowKey, viewMode, visibleFeedRowKeys]);
 
   const selectedRow = selectedRowKey ? rowsByKey.get(selectedRowKey) ?? null : null;
   const selectedDataPointId = selectedRow ? getResolvedDataPointId(selectedRow) : null;
@@ -1080,17 +1183,38 @@ export default function CollectionPage() {
     [projectId, router]
   );
 
-  const openDataEntry = async (row: DataPoint) => {
+  const buildCollectionDetailUrl = useCallback(
+    (
+      dataPointId: number,
+      options?: { returnTo?: string | null; returnLabel?: string | undefined }
+    ) => {
+      const params = new URLSearchParams();
+      params.set("projectId", String(projectId));
+      if (options?.returnTo) {
+        params.set("returnTo", options.returnTo);
+      }
+      if (options?.returnLabel) {
+        params.set("returnLabel", options.returnLabel);
+      }
+      return `/collection/${dataPointId}?${params.toString()}`;
+    },
+    [projectId]
+  );
+
+  const openDataEntry = useCallback(async (
+    row: DataPoint,
+    options?: { returnTo?: string | null; returnLabel?: string | undefined }
+  ) => {
     setActionError(null);
 
     if (row.data_point_id) {
-      router.push(`/collection/${row.data_point_id}?projectId=${projectId}`);
+      router.push(buildCollectionDetailUrl(row.data_point_id, options));
       return;
     }
 
     const resolvedDataPointId = getResolvedDataPointId(row);
     if (resolvedDataPointId) {
-      router.push(`/collection/${resolvedDataPointId}?projectId=${projectId}`);
+      router.push(buildCollectionDetailUrl(resolvedDataPointId, options));
       return;
     }
     if (!row.shared_element_id) {
@@ -1105,7 +1229,7 @@ export default function CollectionPage() {
         entity_id: row.entity_id ?? undefined,
         facility_id: row.facility_id ?? undefined,
       });
-      router.push(`/collection/${created.id}?projectId=${projectId}`);
+      router.push(buildCollectionDetailUrl(created.id, options));
     } catch (openError) {
       setActionError(
         openError instanceof Error
@@ -1115,7 +1239,7 @@ export default function CollectionPage() {
     } finally {
       setOpeningRowId(null);
     }
-  };
+  }, [buildCollectionDetailUrl, projectId, router]);
 
   const submitRow = useCallback(
     async (row: DataPoint) => {
@@ -1148,6 +1272,54 @@ export default function CollectionPage() {
     },
     [projectId, queryClient]
   );
+
+  useEffect(() => {
+    if (!deepLinkRowKey) return;
+    const row = rowsByKey.get(deepLinkRowKey);
+    if (row) {
+      const targetFeedSection = getFeedSection(row, undefined, hasMethodologyCatalog);
+      if (viewMode === "feed" && feedSection !== targetFeedSection) {
+        setFeedSection(targetFeedSection);
+      }
+      if (!deepLinkOpenContext && selectedRowKey !== deepLinkRowKey) {
+        setSelectedRowKey(deepLinkRowKey);
+      }
+      if (deepLinkOpenContext && deepLinkHandledRef.current !== deepLinkRowKey) {
+        deepLinkHandledRef.current = deepLinkRowKey;
+        void openDataEntry(row, {
+          returnTo: deepLinkReturnTo,
+          returnLabel: deepLinkReturnLabel,
+        });
+      }
+      return;
+    }
+
+    if (projectsLoading || meLoading || assignmentsLoading || isLoading) {
+      return;
+    }
+
+    const missingKey = `${deepLinkRowKey}:missing`;
+    if (deepLinkHandledRef.current === missingKey) {
+      return;
+    }
+    deepLinkHandledRef.current = missingKey;
+    setActionError("Unable to find this datasheet metric context in collection.");
+  }, [
+    assignmentsLoading,
+    deepLinkOpenContext,
+    deepLinkReturnLabel,
+    deepLinkReturnTo,
+    deepLinkRowKey,
+    feedSection,
+    hasMethodologyCatalog,
+    isLoading,
+    meLoading,
+    openDataEntry,
+    projectsLoading,
+    rowsByKey,
+    selectedRowKey,
+    viewMode,
+  ]);
 
   const resetFilters = () => {
     setSearch("");
@@ -1236,8 +1408,31 @@ export default function CollectionPage() {
       }
       openQuickEntry(row);
     },
-    [openQuickEntry, submitRow]
+    [openDataEntry, openQuickEntry, submitRow]
   );
+  const handleGuidedResync = useCallback(async () => {
+    setGuidedConfigMessage(null);
+    setResyncingGuidedConfig(true);
+    try {
+      await api.post(`/form-configs/projects/${projectId}/resync`);
+      setGuidedConfigMessageTone("success");
+      setGuidedConfigMessage("Guided collection config re-synced from live assignments.");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["active-form-config", projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["collection-assignments", projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["data-points", projectId, "all"] }),
+      ]);
+    } catch (resyncError) {
+      setGuidedConfigMessageTone("error");
+      setGuidedConfigMessage(
+        resyncError instanceof Error
+          ? resyncError.message
+          : "Unable to re-sync the guided collection config."
+      );
+    } finally {
+      setResyncingGuidedConfig(false);
+    }
+  }, [projectId, queryClient]);
 
   const emptyTableMessage = hasActiveFilters
     ? "No data points match the current filters."
@@ -1284,6 +1479,13 @@ export default function CollectionPage() {
         <div>
           <h2 className="text-[20px] font-bold tracking-tight text-slate-950">Data Collection</h2>
           <p className="mt-1 text-[12px] text-slate-500">{headerSubtitle}</p>
+          <p className="mt-3 max-w-3xl text-sm text-slate-600">
+            Track assigned metrics, open data entry, and submit values for the current
+            reporting period.
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            This is not a Jira-style task board. Each row is one assigned metric context.
+          </p>
         </div>
 
         <Button
@@ -1304,7 +1506,22 @@ export default function CollectionPage() {
         </div>
       )}
 
-      {meLoading || assignmentsLoading || isLoading ? (
+      {guidedConfigMessage && (
+        <div
+          className={cn(
+            "flex items-center gap-2 rounded-lg border px-4 py-3 text-sm",
+            guidedConfigMessageTone === "success" &&
+              "border-green-200 bg-green-50 text-green-800",
+            guidedConfigMessageTone === "error" && "border-red-200 bg-red-50 text-red-800",
+            guidedConfigMessageTone === "info" && "border-slate-200 bg-slate-50 text-slate-700"
+          )}
+        >
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          {guidedConfigMessage}
+        </div>
+      )}
+
+      {meLoading || assignmentsLoading || isLoading || activeFormConfigLoading ? (
         <Card className="flex min-h-[320px] items-center justify-center border-slate-200 p-12 text-slate-500">
           <Loader2 className="mr-2 h-5 w-5 animate-spin" />
           Loading collection data...
@@ -1326,6 +1543,169 @@ export default function CollectionPage() {
         </Card>
       ) : viewMode === "feed" ? (
           <div className="space-y-4">
+            {activeFormConfig && (
+              <Card className="border-slate-200 p-5">
+                <div className="space-y-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-950">Guided Collection</h3>
+                      <p className="mt-1 text-sm text-slate-600">
+                        {activeFormConfig.name}
+                        {activeFormConfig.resolution_scope === "organization_default"
+                          ? " (organization default)"
+                          : ""}
+                      </p>
+                      {activeFormConfig.description ? (
+                        <p className="mt-1 text-xs text-slate-500">{activeFormConfig.description}</p>
+                      ) : null}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {guidedCards.length} guided {guidedCards.length === 1 ? "field" : "fields"}
+                    </div>
+                  </div>
+
+                  {activeFormConfig.health?.is_stale ? (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 text-sm font-semibold text-amber-900">
+                            <TriangleAlert className="h-4 w-4" />
+                            Stale config
+                          </div>
+                          <p className="text-sm text-amber-900">
+                            This guided config is out of sync with the current assignments or
+                            boundary.
+                          </p>
+                          <div className="space-y-1">
+                            {activeFormConfig.health.issues.map((issue) => (
+                              <p
+                                key={`${issue.code}-${issue.message}`}
+                                className="text-xs text-amber-800"
+                              >
+                                {issue.message}
+                              </p>
+                            ))}
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={resyncingGuidedConfig}
+                          className="border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+                          onClick={() => void handleGuidedResync()}
+                        >
+                          {resyncingGuidedConfig ? (
+                            <>
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              Re-syncing...
+                            </>
+                          ) : (
+                            "Re-sync Config"
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {hasGuidedCollection ? (
+                    <div className="grid gap-3 lg:grid-cols-2">
+                      {guidedCards.map((card) => {
+                        const row = card.primaryRow;
+                        const rowKey = row ? buildRowKey(row) : null;
+                        const hasMultipleContexts = card.matches.length > 1;
+                        const canContinueEntry = row ? hasCreatedEntry(row) : false;
+                        const quickActionLabel = canContinueEntry ? "Continue entry" : "Quick entry";
+
+                        return (
+                          <div
+                            key={`${card.descriptor.stepId}-${card.descriptor.field.order}-${card.descriptor.field.shared_element_id}-${card.descriptor.field.assignment_id ?? "na"}`}
+                            className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                          >
+                            <div className="space-y-3">
+                              <div className="space-y-1">
+                                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                                  {card.descriptor.stepTitle}
+                                </div>
+                                <div className="text-base font-semibold text-slate-950">
+                                  {row?.element_name ?? row?.element_code ?? "Guided metric"}
+                                </div>
+                                {row?.element_code ? (
+                                  <div className="font-mono text-xs text-slate-500">
+                                    {row.element_code}
+                                  </div>
+                                ) : null}
+                              </div>
+
+                              {row ? (
+                                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                                  <span>{formatContext(row)}</span>
+                                  <span className="text-slate-300">•</span>
+                                  <span>
+                                    {card.matches.length === 1
+                                      ? "1 context"
+                                      : `${card.matches.length} matched rows`}
+                                  </span>
+                                </div>
+                              ) : null}
+
+                              {card.descriptor.field.help_text ? (
+                                <p className="text-sm text-slate-600">{card.descriptor.field.help_text}</p>
+                              ) : null}
+
+                              {hasMultipleContexts ? (
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="text-sm font-medium text-slate-700">
+                                    {card.matches.length} contexts
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setSearch(row?.element_code ?? "");
+                                      setViewMode("table");
+                                      setSelectedRowKey(rowKey);
+                                      requestAnimationFrame(() => {
+                                        document
+                                          .getElementById("collection-table")
+                                          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                                      });
+                                    }}
+                                  >
+                                    Show rows
+                                  </Button>
+                                </div>
+                              ) : row ? (
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                  <span className="text-xs text-slate-500">
+                                    {canContinueEntry
+                                      ? "Draft already exists for this metric context."
+                                      : "Open quick entry to capture the value, methodology, and evidence."}
+                                  </span>
+                                  <Button
+                                    size="sm"
+                                    onClick={() =>
+                                      openQuickEntry(row, card.descriptor.field.help_text ?? null)
+                                    }
+                                  >
+                                    {quickActionLabel}
+                                  </Button>
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
+                      No guided fields in this config currently resolve to visible assignment
+                      contexts.
+                    </div>
+                  )}
+                </div>
+              </Card>
+            )}
+
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
                 <div className="relative w-full max-w-[260px]">
@@ -1997,6 +2377,22 @@ export default function CollectionPage() {
           </div>
       ) : (
         <Card id="collection-table" className="border-slate-200">
+          <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative w-full max-w-md">
+              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search by metric code or name..."
+                className="h-9 rounded-lg border-slate-200 pl-8 text-sm"
+              />
+            </div>
+            {hasActiveFilters ? (
+              <Button variant="ghost" size="sm" onClick={resetFilters}>
+                Reset filters
+              </Button>
+            ) : null}
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>

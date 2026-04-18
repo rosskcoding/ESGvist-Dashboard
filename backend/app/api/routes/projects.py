@@ -14,6 +14,9 @@ from app.schemas.projects import (
     AssignmentMatrixOut,
     AssignmentMatrixRowOut,
     AssignmentOut,
+    AutoAssignPreviewOut,
+    AutoAssignRequest,
+    AutoAssignResultOut,
     BoundaryDefUpdate,
     BoundaryMembershipListOut,
     BoundaryMembershipReplaceRequest,
@@ -30,6 +33,7 @@ from app.schemas.projects import (
     ProjectStandardAttachPreviewOut,
     ProjectStandardSummaryListOut,
     ProjectStandardAdd,
+    ProjectWorkflowStatusOut,
 )
 from app.repositories.audit_repo import AuditRepository
 from app.services.boundary_service import BoundaryService
@@ -324,6 +328,45 @@ async def activate_project(
 ):
     AuthPolicy.auditor_read_only(ctx)
     return await _get_service(session).start_project(project_id, ctx)
+
+
+@router.get(
+    "/api/projects/{project_id}/workflow-status", response_model=ProjectWorkflowStatusOut
+)
+async def get_project_workflow_status(
+    project_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _get_service(session).get_workflow_status(project_id, ctx)
+
+
+@router.get(
+    "/api/projects/{project_id}/auto-assign/preview",
+    response_model=AutoAssignPreviewOut,
+)
+async def auto_assign_preview(
+    project_id: int,
+    default_collector_user_id: int | None = Query(default=None),
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _get_service(session).auto_assign_preview(
+        project_id, ctx, default_collector_user_id
+    )
+
+
+@router.post(
+    "/api/projects/{project_id}/auto-assign", response_model=AutoAssignResultOut
+)
+async def auto_assign_apply(
+    project_id: int,
+    payload: AutoAssignRequest,
+    ctx: RequestContext = Depends(get_current_context),
+    session: AsyncSession = Depends(get_session),
+):
+    AuthPolicy.auditor_read_only(ctx)
+    return await _get_service(session).auto_assign_apply(project_id, payload, ctx)
 
 
 @router.post("/api/projects/{project_id}/review")

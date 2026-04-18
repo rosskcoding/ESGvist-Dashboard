@@ -10,6 +10,17 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 
+const DIALOG_MAP: Record<string, { title: string; description: string }> = {
+  "/evidence/upload": {
+    title: "Upload Evidence",
+    description: "Navigate to the evidence page to attach supporting documents to your data points.",
+  },
+  "/requirements": {
+    title: "Requirement Details",
+    description: "View the full requirement definition including field type, standard reference, and evidence rules.",
+  },
+};
+
 /**
  * Global listener for AI-suggested action events.
  *
@@ -25,17 +36,6 @@ export function AIActionHandlers() {
   const [dialogInfo, setDialogInfo] = useState<{ title: string; description: string; target: string } | null>(null);
 
   // ── Dialog mapping ─────────────────────────────────────────────────
-  const DIALOG_MAP: Record<string, { title: string; description: string }> = {
-    "/evidence/upload": {
-      title: "Upload Evidence",
-      description: "Navigate to the evidence page to attach supporting documents to your data points.",
-    },
-    "/requirements": {
-      title: "Requirement Details",
-      description: "View the full requirement definition including field type, standard reference, and evidence rules.",
-    },
-  };
-
   const handleOpenDialog = useCallback(
     (event: Event) => {
       const target = (event as CustomEvent<{ target: string }>).detail?.target;

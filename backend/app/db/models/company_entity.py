@@ -1,4 +1,5 @@
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     Date,
@@ -31,6 +32,12 @@ class CompanyEntity(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(String, default="active", nullable=False)
     valid_from: Mapped[str | None] = mapped_column(Date, nullable=True)
     valid_to: Mapped[str | None] = mapped_column(Date, nullable=True)
+    default_collector_user_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    default_reviewer_user_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
     children = relationship("CompanyEntity", lazy="noload", overlaps="parent")
     parent = relationship(

@@ -20,6 +20,7 @@ REPO_DIR = BACKEND_DIR.parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+from app.domain.catalog import prepare_shared_element_defaults
 from app.core.schema_runtime import stamp_database_async
 from app.core.security import hash_password
 from app.db.models import Base
@@ -951,6 +952,7 @@ async def upsert_shared_element(
             concept_domain=section_domain,
             default_value_type=metric.value_mode,
             default_unit_code=metric.unit,
+            **prepare_shared_element_defaults(code=metric.shared_element_code),
         )
         session.add(element)
         await session.flush()

@@ -1,6 +1,9 @@
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import update
 
+from app.db.models.role_binding import RoleBinding
+from tests.conftest import TestSessionLocal
 
 async def _setup_two_standards(client, headers):
     """Create GRI + IFRS standards with items and shared element mapped to both."""
@@ -71,6 +74,7 @@ async def ctx(client: AsyncClient) -> dict:
     )
     login = await client.post("/api/auth/login", json={"email": "a@t.com", "password": "password123"})
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    me = await client.get("/api/auth/me", headers=headers)
 
     org = await client.post("/api/organizations/setup", json={"name": "Co"}, headers=headers)
     headers["X-Organization-Id"] = str(org.json()["organization_id"])
@@ -92,7 +96,13 @@ async def ctx(client: AsyncClient) -> dict:
         headers=headers,
     )
 
-    return {"headers": headers, "project_id": proj_id, **stds}
+    return {
+        "headers": headers,
+        "project_id": proj_id,
+        "org_id": org.json()["organization_id"],
+        "user_id": me.json()["id"],
+        **stds,
+    }
 
 
 @pytest.mark.asyncio
@@ -125,6 +135,31 @@ async def test_merged_view_summary(client: AsyncClient, ctx: dict):
     assert summary["common"] == 1
     assert summary["orphans"] == 1
     assert set(summary["standards"]) == {"GRI", "IFRS_S2"}
+
+
+@pytest.mark.asyncio
+async def test_esg_manager_can_read_merge_views(client: AsyncClient, ctx: dict):
+    async with TestSessionLocal() as session:
+        await session.execute(
+            update(RoleBinding)
+            .where(
+                RoleBinding.user_id == ctx["user_id"],
+                RoleBinding.scope_type == "organization",
+                RoleBinding.scope_id == ctx["org_id"],
+            )
+            .values(role="esg_manager")
+        )
+        await session.commit()
+
+    merged = await client.get(f"/api/projects/{ctx['project_id']}/merge", headers=ctx["headers"])
+    assert merged.status_code == 200
+    merged_payload = merged.json()
+    assert "summary" in merged_payload
+    assert "elements" in merged_payload
+
+    coverage = await client.get(f"/api/projects/{ctx['project_id']}/merge/coverage", headers=ctx["headers"])
+    assert coverage.status_code == 200
+    assert "coverage" in coverage.json()
 
 
 @pytest.mark.asyncio

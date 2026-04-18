@@ -9,6 +9,68 @@ class ProjectCreate(BaseModel):
     deadline: date | None = None
 
 
+class ProjectSetupHealth(BaseModel):
+    standards_count: int = 0
+    boundary_configured: bool = False
+    boundary_entities_count: int = 0
+    team_size: int = 0
+    assignments_total: int = 0
+    assignments_assigned: int = 0
+    deadline_set: bool = False
+    steps_completed: int = 0
+    steps_total: int = 4
+
+
+class ProjectWorkflowBlocker(BaseModel):
+    code: str
+    message: str
+    severity: str = "blocker"
+    tab: str | None = None
+
+
+class ProjectWorkflowStatusOut(BaseModel):
+    current_status: str
+    next_action: str | None = None
+    next_status: str | None = None
+    can_advance: bool = False
+    blockers: list[ProjectWorkflowBlocker] = Field(default_factory=list)
+    warnings: list[ProjectWorkflowBlocker] = Field(default_factory=list)
+
+
+class AutoAssignPreviewItem(BaseModel):
+    assignment_id: int
+    shared_element_code: str
+    shared_element_name: str
+    entity_id: int | None = None
+    entity_name: str | None = None
+    proposed_collector_id: int | None = None
+    proposed_collector_name: str | None = None
+    proposed_reviewer_id: int | None = None
+    proposed_reviewer_name: str | None = None
+    reason: str  # "entity_owner" | "mono_default" | "ancestor_fallback" | "no_owner"
+
+
+class AutoAssignPreviewOut(BaseModel):
+    mode: str  # "mono" | "multi"
+    org_entity_count: int
+    default_collector_user_id: int | None = None
+    default_collector_name: str | None = None
+    covered_count: int = 0
+    skipped_count: int = 0
+    items: list[AutoAssignPreviewItem] = Field(default_factory=list)
+
+
+class AutoAssignRequest(BaseModel):
+    dry_run: bool = False
+    default_collector_user_id: int | None = None  # used in mono mode when entity has none
+
+
+class AutoAssignResultOut(BaseModel):
+    updated_count: int = 0
+    skipped_count: int = 0
+    mode: str
+
+
 class ProjectOut(BaseModel):
     id: int
     organization_id: int
@@ -23,6 +85,7 @@ class ProjectOut(BaseModel):
     reporting_period_end: date | None = None
     standard_codes: list[str] = Field(default_factory=list)
     completion_percentage: float = 0.0
+    setup_health: ProjectSetupHealth = Field(default_factory=ProjectSetupHealth)
 
     model_config = {"from_attributes": True}
 

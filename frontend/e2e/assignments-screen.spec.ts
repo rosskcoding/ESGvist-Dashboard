@@ -49,8 +49,18 @@ test.describe("Screen 19 - Assignments Matrix", () => {
     const assignmentRow = page.getByRole("row", { name: new RegExp(`${code}.*${demoState.entities.root.name}`) });
     await expect(assignmentRow).toBeVisible();
     await expect(assignmentRow.getByText(demoState.entities.root.name, { exact: true })).toBeVisible();
-    await expect(assignmentRow.getByText(demoState.users.collector_energy.full_name, { exact: true })).toBeVisible();
-    await expect(assignmentRow.getByText(demoState.users.reviewer.full_name, { exact: true })).toBeVisible();
+    await expect(
+      assignmentRow.getByText(
+        demoState.users.collector_energy.full_name ?? demoState.users.collector_energy.email,
+        { exact: true }
+      )
+    ).toBeVisible();
+    await expect(
+      assignmentRow.getByText(
+        demoState.users.reviewer.full_name ?? demoState.users.reviewer.email,
+        { exact: true }
+      )
+    ).toBeVisible();
   });
 
   for (const user of deniedAssignmentsUsers) {

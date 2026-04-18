@@ -2,6 +2,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError
+from app.domain.catalog import prepare_shared_element_defaults
 from app.db.models.shared_element import SharedElement, SharedElementDimension
 
 
@@ -15,10 +16,19 @@ class SharedElementRepository:
         )
         return result.scalar_one_or_none()
 
-    async def get_by_code(self, code: str) -> SharedElement | None:
-        result = await self.session.execute(
-            select(SharedElement).where(SharedElement.code == code)
-        )
+    async def get_by_code(
+        self,
+        code: str,
+        *,
+        owner_layer: str | None = None,
+        organization_id: int | None = None,
+    ) -> SharedElement | None:
+        query = select(SharedElement).where(SharedElement.code == code)
+        if owner_layer is not None:
+            query = query.where(SharedElement.owner_layer == owner_layer)
+        if organization_id is not None:
+            query = query.where(SharedElement.organization_id == organization_id)
+        result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
     async def get_or_raise(self, element_id: int) -> SharedElement:
@@ -43,6 +53,17 @@ class SharedElementRepository:
         return list(result.scalars().unique().all()), total
 
     async def create(self, **kwargs) -> SharedElement:
+        if "element_key" not in kwargs:
+            kwargs.update(
+                prepare_shared_element_defaults(
+                    code=kwargs["code"],
+                    owner_layer=kwargs.get("owner_layer", "internal_catalog"),
+                    organization_id=kwargs.get("organization_id"),
+                    is_custom=kwargs.get("is_custom"),
+                    lifecycle_status=kwargs.get("lifecycle_status", "active"),
+                    source_element_key=kwargs.get("source_element_key"),
+                )
+            )
         el = SharedElement(**kwargs)
         self.session.add(el)
         await self.session.flush()

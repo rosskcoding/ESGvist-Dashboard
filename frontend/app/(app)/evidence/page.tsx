@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { triggerFileDownload } from "@/lib/download";
@@ -47,9 +47,10 @@ import {
   Download,
   Plus,
   FileUp,
-  Search,
   ExternalLink,
   ShieldAlert,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 const EVIDENCE_FILE_ACCEPT =
@@ -61,6 +62,24 @@ interface LinkedDataPoint {
   data_point_id: number;
   code: string;
   label: string;
+  project_id?: number | null;
+  project_name?: string | null;
+  entity_name?: string | null;
+  facility_name?: string | null;
+  element_key?: string | null;
+  owner_layer?: string | null;
+  is_custom?: boolean;
+  requirement_contexts?: LinkedDataPointRequirementContext[];
+}
+
+interface LinkedDataPointRequirementContext {
+  requirement_item_id: number;
+  item_code?: string | null;
+  item_name: string;
+  disclosure_code?: string | null;
+  disclosure_title: string;
+  standard_code: string;
+  standard_name: string;
 }
 
 interface LinkedRequirement {
@@ -160,6 +179,67 @@ function getBindingLabel(status: EvidenceItem["binding_status"]): string {
   return status === "bound" ? "Linked" : "Not linked";
 }
 
+function getEvidenceLinkTargets(item: EvidenceItem) {
+  return [
+    ...item.linked_data_points.map((linkedPoint) => ({
+      kind: "Metric",
+      label: linkedPoint.label,
+      code: linkedPoint.code,
+    })),
+    ...item.linked_requirement_items.map((linkedRequirement) => ({
+      kind: "Requirement",
+      label: linkedRequirement.description,
+      code: linkedRequirement.code,
+    })),
+  ];
+}
+
+function getEvidenceLinkTargetLabel(target: ReturnType<typeof getEvidenceLinkTargets>[number]) {
+  return `${target.kind}: ${target.label}`;
+}
+
+function getEvidenceKindLabel(item: EvidenceItem): string {
+  if (item.type === "link") {
+    return "External link";
+  }
+
+  const fileName = item.file_name ?? item.title;
+  const extension = fileName.includes(".") ? fileName.split(".").pop()?.toLowerCase() : "";
+
+  switch (extension) {
+    case "xlsx":
+    case "xls":
+      return "Excel file";
+    case "csv":
+      return "CSV file";
+    case "docx":
+    case "doc":
+      return "Word file";
+    case "pdf":
+      return "PDF file";
+    case "json":
+      return "JSON file";
+    case "png":
+    case "jpg":
+    case "jpeg":
+      return "Image file";
+    default:
+      return extension ? `${extension.toUpperCase()} file` : "File";
+  }
+}
+
+function getLinkedMetricScopeLabel(point: LinkedDataPoint): string {
+  return point.is_custom || point.owner_layer === "tenant_catalog"
+    ? "Custom metric"
+    : "Framework metric";
+}
+
+function getRequirementContextTag(context: LinkedDataPointRequirementContext): string {
+  return [context.standard_code, context.disclosure_code, context.item_code]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 function buildAssignmentContextKey(
   sharedElementId: number,
   entityId: number | null,
@@ -209,8 +289,10 @@ export default function EvidencePage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [linkProjectId, setLinkProjectId] = useState("");
   const [linkSearch, setLinkSearch] = useState("");
+  const [linkSectionOpen, setLinkSectionOpen] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
   const [unlinkingDataPointId, setUnlinkingDataPointId] = useState<number | null>(null);
+  const detailScrollRef = useRef<HTMLDivElement | null>(null);
 
   const { data: me, isLoading: meLoading } = useApiQuery<{
     roles: Array<{ role: string }>;
@@ -250,6 +332,7 @@ export default function EvidencePage() {
           !isReviewer &&
           canManageEvidence &&
           Boolean(detailTarget) &&
+          linkSectionOpen &&
           Boolean(selectedProjectId),
       }
     );
@@ -263,6 +346,7 @@ export default function EvidencePage() {
       !isReviewer &&
       canManageEvidence &&
       Boolean(detailTarget) &&
+      linkSectionOpen &&
       Boolean(selectedProjectId),
   });
 
@@ -353,7 +437,7 @@ export default function EvidencePage() {
     },
   });
 
-  const items = data?.items ?? [];
+  const items = useMemo(() => data?.items ?? [], [data]);
   const accessDenied =
     isReviewer ||
     ((error as Error & { code?: string } | null)?.code === "FORBIDDEN") ||
@@ -383,7 +467,7 @@ export default function EvidencePage() {
     return result;
   }, [items, typeFilter, bindingFilter, searchQuery]);
 
-  const projects = projectsData?.items ?? [];
+  const projects = useMemo(() => projectsData?.items ?? [], [projectsData]);
 
   const clearEvidenceIdParam = useCallback(() => {
     const params = new URLSearchParams(searchParams.toString());
@@ -435,6 +519,7 @@ export default function EvidencePage() {
     }
 
     const query = linkSearch.trim().toLowerCase();
+    if (!query) return [];
     const candidates: LinkCandidate[] = assignments.map((assignment) => {
       const contextKey = buildAssignmentContextKey(
         assignment.shared_element_id,
@@ -457,9 +542,8 @@ export default function EvidencePage() {
 
     return candidates
       .filter((candidate) => !linkedDataPointIdSet.has(candidate.data_point_id ?? -1))
-      .filter((candidate) => {
-        if (!query) return true;
-        return [
+      .filter((candidate) =>
+        [
           candidate.metric_code,
           candidate.metric_name,
           candidate.entity_name ?? "",
@@ -467,8 +551,8 @@ export default function EvidencePage() {
         ]
           .join(" ")
           .toLowerCase()
-          .includes(query);
-      })
+          .includes(query)
+      )
       .slice(0, 8);
   }, [assignmentsData?.assignments, linkSearch, linkedDataPointIdSet, projectDataPoints]);
 
@@ -491,6 +575,10 @@ export default function EvidencePage() {
 
   useEffect(() => {
     setLinkSearch("");
+  }, [detailTarget?.id]);
+
+  useEffect(() => {
+    setLinkSectionOpen(false);
   }, [detailTarget?.id]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -557,6 +645,14 @@ export default function EvidencePage() {
     [upsertEvidenceCache]
   );
 
+  const restoreDetailScrollPosition = useCallback((scrollTop: number) => {
+    requestAnimationFrame(() => {
+      if (detailScrollRef.current) {
+        detailScrollRef.current.scrollTop = scrollTop;
+      }
+    });
+  }, []);
+
   const handleLinkToMetric = useCallback(
     async (candidate: LinkCandidate) => {
       if (!detailTarget || !selectedProjectId) return;
@@ -565,6 +661,7 @@ export default function EvidencePage() {
         setIsLinking(true);
         setActionError(null);
         let dataPointId = candidate.data_point_id;
+        const previousScrollTop = detailScrollRef.current?.scrollTop ?? 0;
 
         if (!dataPointId) {
           const created = await api.post<{ id: number }>(`/projects/${selectedProjectId}/data-points`, {
@@ -573,6 +670,24 @@ export default function EvidencePage() {
             facility_id: candidate.facility_id ?? undefined,
           });
           dataPointId = created.id;
+          queryClient.setQueryData<ProjectDataPoint[]>(
+            ["evidence-link-data-points", selectedProjectId],
+            (current) => {
+              const existing = current ?? [];
+              if (existing.some((item) => item.id === created.id)) {
+                return existing;
+              }
+              return [
+                ...existing,
+                {
+                  id: created.id,
+                  shared_element_id: candidate.shared_element_id,
+                  entity_id: candidate.entity_id,
+                  facility_id: candidate.facility_id,
+                },
+              ];
+            }
+          );
         }
 
         await api.post(`/data-points/${dataPointId}/evidences`, {
@@ -580,10 +695,9 @@ export default function EvidencePage() {
         });
 
         await refreshEvidenceDetail(detailTarget.id);
-        await queryClient.invalidateQueries({ queryKey: ["evidence"] });
-        await queryClient.invalidateQueries({ queryKey: ["evidence-link-data-points", selectedProjectId] });
-        await queryClient.invalidateQueries({ queryKey: ["data-points", selectedProjectId] });
-        await queryClient.invalidateQueries({ queryKey: ["collection-assignments", selectedProjectId] });
+        restoreDetailScrollPosition(previousScrollTop);
+        void queryClient.invalidateQueries({ queryKey: ["data-points", selectedProjectId] });
+        void queryClient.invalidateQueries({ queryKey: ["collection-assignments", selectedProjectId] });
       } catch (error) {
         setActionError(
           error instanceof Error ? error.message : "Unable to link this evidence to the selected metric."
@@ -592,7 +706,7 @@ export default function EvidencePage() {
         setIsLinking(false);
       }
     },
-    [detailTarget, queryClient, refreshEvidenceDetail, selectedProjectId]
+    [detailTarget, queryClient, refreshEvidenceDetail, restoreDetailScrollPosition, selectedProjectId]
   );
 
   const handleUnlinkFromMetric = useCallback(
@@ -602,13 +716,14 @@ export default function EvidencePage() {
       try {
         setUnlinkingDataPointId(dataPointId);
         setActionError(null);
+        const previousScrollTop = detailScrollRef.current?.scrollTop ?? 0;
         await api.delete(`/data-points/${dataPointId}/evidences/${detailTarget.id}`);
         await refreshEvidenceDetail(detailTarget.id);
+        restoreDetailScrollPosition(previousScrollTop);
         if (selectedProjectId) {
-          await queryClient.invalidateQueries({ queryKey: ["data-points", selectedProjectId] });
-          await queryClient.invalidateQueries({ queryKey: ["collection-assignments", selectedProjectId] });
+          void queryClient.invalidateQueries({ queryKey: ["data-points", selectedProjectId] });
+          void queryClient.invalidateQueries({ queryKey: ["collection-assignments", selectedProjectId] });
         }
-        await queryClient.invalidateQueries({ queryKey: ["evidence"] });
       } catch (error) {
         setActionError(
           error instanceof Error ? error.message : "Unable to unlink this evidence from the selected metric."
@@ -617,7 +732,7 @@ export default function EvidencePage() {
         setUnlinkingDataPointId(null);
       }
     },
-    [detailTarget, queryClient, refreshEvidenceDetail, selectedProjectId]
+    [detailTarget, queryClient, refreshEvidenceDetail, restoreDetailScrollPosition, selectedProjectId]
   );
 
   // ---------- Render ----------
@@ -811,16 +926,16 @@ export default function EvidencePage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-10">Type</TableHead>
                 <TableHead>Title</TableHead>
-                <TableHead className="hidden md:table-cell">
+                <TableHead className="min-w-[380px]">Linked to</TableHead>
+                <TableHead className="hidden lg:table-cell">
                   Description
                 </TableHead>
+                <TableHead>Evidence Type</TableHead>
                 <TableHead>Upload Date</TableHead>
-                <TableHead className="hidden lg:table-cell">
+                <TableHead className="hidden xl:table-cell">
                   Created By
                 </TableHead>
-                <TableHead className="text-center">Link status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -835,90 +950,138 @@ export default function EvidencePage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredItems.map((item) => (
-                  <TableRow
-                    key={item.id}
-                    className="cursor-pointer"
-                    onClick={() => setDetailTarget(item)}
-                  >
-                    <TableCell>
-                      {item.type === "file" ? (
-                        <FileText className="h-4 w-4 text-cyan-500" />
-                      ) : (
-                        <Link2 className="h-4 w-4 text-emerald-500" />
-                      )}
-                    </TableCell>
-                    <TableCell className="font-medium">{item.title}</TableCell>
-                    <TableCell className="hidden max-w-[200px] truncate text-sm text-slate-500 md:table-cell">
-                      {item.description}
-                    </TableCell>
-                    <TableCell className="text-sm text-slate-500">
-                      {formatDate(item.upload_date)}
-                    </TableCell>
-                    <TableCell className="hidden text-sm text-slate-500 lg:table-cell">
-                      {item.created_by_name ?? "System"}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Badge
-                        variant={
-                          item.binding_status === "bound"
-                            ? "success"
-                            : "secondary"
-                        }
-                      >
-                        {getBindingLabel(item.binding_status)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div
-                        className="flex items-center justify-end gap-1"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setDetailTarget(item)}
-                          title="View"
+                filteredItems.map((item) => {
+                  const linkedTargets = getEvidenceLinkTargets(item);
+                  const visibleLinkedTargets = linkedTargets.slice(0, 3);
+                  const additionalLinkedTargetCount = Math.max(0, linkedTargets.length - visibleLinkedTargets.length);
+                  const evidenceKindLabel = getEvidenceKindLabel(item);
+
+                  return (
+                    <TableRow
+                      key={item.id}
+                      className="cursor-pointer"
+                      onClick={() => setDetailTarget(item)}
+                    >
+                      <TableCell className="min-w-[280px]">
+                        <div className="flex items-start gap-3">
+                          <div className="mt-0.5 shrink-0">
+                            {item.type === "file" ? (
+                              <FileText className="h-4 w-4 text-cyan-500" />
+                            ) : (
+                              <Link2 className="h-4 w-4 text-emerald-500" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="truncate font-medium text-slate-900">{item.title}</div>
+                            {item.file_name && item.file_name !== item.title ? (
+                              <div className="truncate text-xs text-slate-500">{item.file_name}</div>
+                            ) : null}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="min-w-[380px]">
+                        <div className="space-y-2 text-left">
+                          <Badge
+                            variant={
+                              item.binding_status === "bound"
+                                ? "success"
+                                : "secondary"
+                            }
+                          >
+                            {getBindingLabel(item.binding_status)}
+                          </Badge>
+                          {item.binding_status === "bound" && visibleLinkedTargets.length > 0 ? (
+                            <div
+                              className="flex flex-wrap gap-1.5"
+                              title={linkedTargets
+                                .map((target) => `${getEvidenceLinkTargetLabel(target)} (${target.code})`)
+                                .join("\n")}
+                            >
+                              {visibleLinkedTargets.map((target) => (
+                                <Badge
+                                  key={`${target.kind}-${target.code}`}
+                                  variant="secondary"
+                                  className="max-w-full gap-1 truncate px-2 py-1 text-left font-medium"
+                                >
+                                  <span className="truncate">{getEvidenceLinkTargetLabel(target)}</span>
+                                </Badge>
+                              ))}
+                              {additionalLinkedTargetCount > 0 ? (
+                                <Badge variant="outline" className="px-2 py-1 text-slate-500">
+                                  +{additionalLinkedTargetCount} more
+                                </Badge>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <Badge variant="outline" className="px-2 py-1 text-slate-400">
+                              No linked metric or requirement yet
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden max-w-[220px] truncate text-sm text-slate-500 lg:table-cell">
+                        {item.description}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">{evidenceKindLabel}</Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-slate-500">
+                        {formatDate(item.upload_date)}
+                      </TableCell>
+                      <TableCell className="hidden text-sm text-slate-500 xl:table-cell">
+                        {item.created_by_name ?? "System"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div
+                          className="flex items-center justify-end gap-1"
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        {item.type === "file" && (
                           <Button
                             variant="ghost"
                             size="icon"
-                            title="Download"
-                            onClick={() => {
-                              void triggerFileDownload(`/api/evidences/${item.id}/download`);
-                            }}
+                            onClick={() => setDetailTarget(item)}
+                            title="View"
                           >
-                            <Download className="h-4 w-4" />
+                            <Eye className="h-4 w-4" />
                           </Button>
-                        )}
-                        {item.type === "link" && (
+                          {item.type === "file" && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Download"
+                              onClick={() => {
+                                void triggerFileDownload(`/api/evidences/${item.id}/download`);
+                              }}
+                            >
+                              <Download className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {item.type === "link" && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Open link"
+                              onClick={() => {
+                                if (item.url) window.open(item.url, "_blank");
+                              }}
+                            >
+                              <ExternalLink className="h-4 w-4" />
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="icon"
-                            title="Open link"
-                            onClick={() => {
-                              if (item.url) window.open(item.url, "_blank");
-                            }}
+                            onClick={() => setDeleteTarget(item)}
+                            title="Delete"
+                            disabled={!canManageEvidence || isDeleting}
                           >
-                            <ExternalLink className="h-4 w-4" />
+                            <Trash2 className="h-4 w-4 text-red-500" />
                           </Button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setDeleteTarget(item)}
-                          title="Delete"
-                          disabled={!canManageEvidence || isDeleting}
-                        >
-                          <Trash2 className="h-4 w-4 text-red-500" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
@@ -1005,7 +1168,7 @@ export default function EvidencePage() {
               </div>
 
               <div className="grid min-h-0 flex-1 xl:grid-cols-[minmax(0,1fr)_320px]">
-                <div className="min-h-0 overflow-y-auto px-6 py-5">
+                <div ref={detailScrollRef} className="min-h-0 overflow-y-auto px-6 py-5">
                   <div className="space-y-6">
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -1053,7 +1216,7 @@ export default function EvidencePage() {
 
                     {detailTarget.binding_status === "unbound" && (
                       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                        This evidence is uploaded, but it is not linked to any metric yet.
+                        This evidence is uploaded, but it is not linked to any metric or data point yet.
                       </div>
                     )}
 
@@ -1094,17 +1257,17 @@ export default function EvidencePage() {
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">
-                            Linked Metrics
+                            Linked Metrics (Data Points)
                           </h3>
                           <p className="mt-1 text-sm text-slate-500">
-                            {(detailTarget.linked_data_points ?? []).length} linked metric contexts
+                            {(detailTarget.linked_data_points ?? []).length} linked data point contexts
                           </p>
                         </div>
                       </div>
 
                       {(detailTarget.linked_data_points ?? []).length === 0 ? (
                         <div className="rounded-xl border border-dashed border-slate-200 px-4 py-5 text-sm text-slate-400">
-                          No linked metrics yet.
+                          No linked metrics or data points yet.
                         </div>
                       ) : (
                         <div className="space-y-3">
@@ -1115,11 +1278,104 @@ export default function EvidencePage() {
                             >
                               <div className="min-w-0">
                                 <div className="text-base font-medium text-slate-900">{dp.label}</div>
-                                <div className="mt-1 break-all font-mono text-xs text-slate-500">
-                                  {dp.code}
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  <Badge
+                                    variant={dp.is_custom ? "secondary" : "outline"}
+                                    className={cn(
+                                      !dp.is_custom &&
+                                        "border-cyan-200 bg-cyan-50 text-cyan-800 hover:bg-cyan-50"
+                                    )}
+                                  >
+                                    {getLinkedMetricScopeLabel(dp)}
+                                  </Badge>
+                                  {dp.project_name ? (
+                                    <Badge variant="secondary" className="bg-slate-100 text-slate-700 hover:bg-slate-100">
+                                      {dp.project_name}
+                                    </Badge>
+                                  ) : null}
+                                  {[dp.entity_name, dp.facility_name].filter(Boolean).join(" / ") ? (
+                                    <Badge variant="outline" className="border-slate-200 text-slate-600">
+                                      {[dp.entity_name, dp.facility_name].filter(Boolean).join(" / ")}
+                                    </Badge>
+                                  ) : null}
                                 </div>
+                                <div className="mt-3">
+                                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                                    Metric code
+                                  </div>
+                                  <div className="mt-1 break-all font-mono text-xs text-slate-500">
+                                    {dp.code}
+                                  </div>
+                                  {dp.code.startsWith("SE-") ? (
+                                    <div className="mt-1 text-xs text-slate-400">
+                                      `SE` means this metric comes from the shared framework catalog.
+                                    </div>
+                                  ) : null}
+                                </div>
+
+                                {(dp.requirement_contexts ?? []).length > 0 ? (
+                                  <div className="mt-3 space-y-2">
+                                    <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                                      Framework context
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                      {(dp.requirement_contexts ?? []).slice(0, 2).map((context) => (
+                                        <Badge
+                                          key={`${dp.data_point_id}-${context.requirement_item_id}`}
+                                          variant="outline"
+                                          className="border-slate-200 text-slate-700"
+                                        >
+                                          {getRequirementContextTag(context)}
+                                        </Badge>
+                                      ))}
+                                      {(dp.requirement_contexts ?? []).length > 2 ? (
+                                        <Badge variant="secondary" className="bg-slate-100 text-slate-700 hover:bg-slate-100">
+                                          +{(dp.requirement_contexts ?? []).length - 2} more
+                                        </Badge>
+                                      ) : null}
+                                    </div>
+                                    <div className="space-y-2">
+                                      {(dp.requirement_contexts ?? []).slice(0, 2).map((context) => (
+                                        <div
+                                          key={`detail-${dp.data_point_id}-${context.requirement_item_id}`}
+                                          className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2"
+                                        >
+                                          <div className="text-sm font-medium text-slate-700">
+                                            {context.disclosure_code
+                                              ? `${context.disclosure_code} — ${context.disclosure_title}`
+                                              : context.disclosure_title}
+                                          </div>
+                                          <div className="mt-1 text-sm text-slate-500">
+                                            {context.item_code
+                                              ? `${context.item_code} — ${context.item_name}`
+                                              : context.item_name}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="mt-3 rounded-lg border border-dashed border-slate-200 px-3 py-2 text-sm text-slate-500">
+                                    {dp.is_custom
+                                      ? "This is a tenant custom metric. It is not mapped to a framework requirement."
+                                      : "No framework requirement context is available for this linked data point yet."}
+                                  </div>
+                                )}
                               </div>
                               <div className="flex items-start justify-end">
+                                <div className="flex flex-col items-end gap-2">
+                                  {dp.project_id ? (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-9 px-3 text-sm"
+                                      onClick={() =>
+                                        router.push(`/collection/${dp.data_point_id}?projectId=${dp.project_id}`)
+                                      }
+                                    >
+                                      Open data point
+                                    </Button>
+                                  ) : null}
                                 <Button
                                   variant="ghost"
                                   size="sm"
@@ -1136,6 +1392,7 @@ export default function EvidencePage() {
                                     "Unlink"
                                   )}
                                 </Button>
+                                </div>
                               </div>
                             </div>
                           ))}
@@ -1144,101 +1401,140 @@ export default function EvidencePage() {
                     </section>
 
                     <section className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                      <div>
-                        <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">
-                          Link To Metric
-                        </h3>
-                        <p className="mt-1 text-sm text-slate-500">
-                          Attach this evidence to an existing project indicator. If the draft data point
-                          does not exist yet, it will be created automatically for the selected context.
-                        </p>
-                      </div>
-
-                      <div className="grid gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
-                        <Select
-                          label="Project"
-                          placeholder="Select project"
-                          value={linkProjectId}
-                          onChange={setLinkProjectId}
-                          options={projects.map((project) => ({
-                            value: String(project.id),
-                            label: project.name,
-                          }))}
-                        />
-                        <Input
-                          label="Search metric"
-                          placeholder="Search by code, metric name, entity, facility..."
-                          value={linkSearch}
-                          onChange={(event) => setLinkSearch(event.target.value)}
-                        />
-                      </div>
-
-                      {selectedProjectId == null ? (
-                        <div className="text-sm text-slate-400">Choose a project to start linking.</div>
-                      ) : assignmentsLoading || dataPointsLoading ? (
-                        <div className="flex items-center gap-2 text-sm text-slate-500">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Loading metric contexts...
+                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div>
+                          <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">
+                            Link To Metric (Data Point)
+                          </h3>
+                          <p className="mt-1 text-sm text-slate-500">
+                            Use this only when you need to backfill or re-link evidence from the
+                            repository. The primary flow should happen while working inside the metric.
+                          </p>
                         </div>
-                      ) : linkCandidates.length === 0 ? (
-                        <div className="text-sm text-slate-400">
-                          No matching unlinked metrics found in this project.
+                        <Button
+                          type="button"
+                          variant={linkSectionOpen ? "secondary" : "outline"}
+                          onClick={() => setLinkSectionOpen((current) => !current)}
+                          disabled={!canManageEvidence}
+                          className="shrink-0"
+                        >
+                          <Link2 className="h-4 w-4" />
+                          {(detailTarget.linked_data_points ?? []).length === 0
+                            ? "Link this evidence"
+                            : "Link another metric"}
+                          {linkSectionOpen ? (
+                            <ChevronUp className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+
+                      {!linkSectionOpen ? (
+                        <div className="rounded-xl border border-dashed border-slate-200 bg-white px-4 py-4 text-sm text-slate-500">
+                          Open this panel only if you need to manually attach this evidence to another metric.
                         </div>
                       ) : (
-                        <div className="space-y-3">
-                          {linkCandidates.map((candidate) => (
-                            <div
-                              key={candidate.key}
-                              className="grid gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto]"
-                            >
-                              <div className="min-w-0">
-                                <div className="truncate text-base font-medium text-slate-900">
-                                  {candidate.metric_name}
-                                </div>
-                                <div className="mt-1 break-all font-mono text-xs text-slate-500">
-                                  {candidate.metric_code}
-                                </div>
-                                <div className="mt-1 truncate text-sm text-slate-500">
-                                  {[candidate.entity_name, candidate.facility_name].filter(Boolean).join(" / ")}
-                                </div>
-                              </div>
-                              <div className="flex items-start justify-end">
-                                <Button
-                                  size="sm"
-                                  className="h-9 px-4 text-sm"
-                                  onClick={() => void handleLinkToMetric(candidate)}
-                                  disabled={!canManageEvidence || isLinking}
-                                >
-                                  {isLinking ? (
-                                    <>
-                                      <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                                      Linking...
-                                    </>
-                                  ) : (
-                                    "Link"
-                                  )}
-                                </Button>
-                              </div>
+                        <div className="space-y-4">
+                          <div className="grid gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
+                            <Select
+                              label="Project"
+                              placeholder="Select project"
+                              value={linkProjectId}
+                              onChange={setLinkProjectId}
+                              options={projects.map((project) => ({
+                                value: String(project.id),
+                                label: project.name,
+                              }))}
+                            />
+                            <Input
+                              label="Search metric or data point"
+                              placeholder="Search by code, metric name, entity, facility..."
+                              value={linkSearch}
+                              onChange={(event) => setLinkSearch(event.target.value)}
+                            />
+                          </div>
+
+                          {selectedProjectId == null ? (
+                            <div className="text-sm text-slate-400">Choose a project to start linking.</div>
+                          ) : !linkSearch.trim() ? (
+                            <div className="rounded-xl border border-dashed border-slate-200 bg-white px-4 py-4 text-sm text-slate-500">
+                              Search for a metric or data point to see matching link targets in this project.
                             </div>
-                          ))}
+                          ) : assignmentsLoading || dataPointsLoading ? (
+                            <div className="flex items-center gap-2 text-sm text-slate-500">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Loading metric contexts...
+                            </div>
+                          ) : linkCandidates.length === 0 ? (
+                            <div className="text-sm text-slate-400">
+                              No matching unlinked metrics found in this project.
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              {linkCandidates.map((candidate) => (
+                                <div
+                                  key={candidate.key}
+                                  className="relative z-10 grid cursor-pointer gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 transition hover:border-cyan-300 hover:bg-cyan-50/40 md:grid-cols-[minmax(0,1fr)_auto]"
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={() => void handleLinkToMetric(candidate)}
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter" || event.key === " ") {
+                                      event.preventDefault();
+                                      void handleLinkToMetric(candidate);
+                                    }
+                                  }}
+                                >
+                                  <div className="min-w-0">
+                                    <div className="truncate text-base font-medium text-slate-900">
+                                      {candidate.metric_name}
+                                    </div>
+                                    <div className="mt-1 break-all font-mono text-xs text-slate-500">
+                                      {candidate.metric_code}
+                                    </div>
+                                    <div className="mt-1 truncate text-sm text-slate-500">
+                                      {[candidate.entity_name, candidate.facility_name].filter(Boolean).join(" / ")}
+                                    </div>
+                                  </div>
+                                  <div className="relative z-10 flex shrink-0 items-start justify-end">
+                                    <Button
+                                      size="sm"
+                                      className="relative z-10 h-9 px-4 text-sm"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        void handleLinkToMetric(candidate);
+                                      }}
+                                      disabled={!canManageEvidence || isLinking}
+                                    >
+                                      {isLinking ? (
+                                        <>
+                                          <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                                          Linking...
+                                        </>
+                                      ) : (
+                                        "Link"
+                                      )}
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </section>
 
-                    <section className="space-y-3">
-                      <div>
-                        <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">
-                          Linked Requirement Items
-                        </h3>
-                        <p className="mt-1 text-sm text-slate-500">
-                          {(detailTarget.linked_requirement_items ?? []).length} linked requirement items
-                        </p>
-                      </div>
-                      {(detailTarget.linked_requirement_items ?? []).length === 0 ? (
-                        <div className="rounded-xl border border-dashed border-slate-200 px-4 py-5 text-sm text-slate-400">
-                          No linked requirement items.
+                    {(detailTarget.linked_requirement_items ?? []).length > 0 ? (
+                      <section className="space-y-3">
+                        <div>
+                          <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">
+                            Direct Requirement Links
+                          </h3>
+                          <p className="mt-1 text-sm text-slate-500">
+                            {(detailTarget.linked_requirement_items ?? []).length} directly linked requirement items
+                          </p>
                         </div>
-                      ) : (
                         <div className="space-y-2">
                           {(detailTarget.linked_requirement_items ?? []).map((ri) => (
                             <div
@@ -1255,8 +1551,8 @@ export default function EvidencePage() {
                             </div>
                           ))}
                         </div>
-                      )}
-                    </section>
+                      </section>
+                    ) : null}
                   </div>
                 </div>
 
@@ -1282,13 +1578,13 @@ export default function EvidencePage() {
                           </Badge>
                         </div>
                         <div className="flex items-center justify-between gap-3">
-                          <span>Linked metrics</span>
+                          <span>Linked data points</span>
                           <span className="font-medium text-slate-900">
                             {(detailTarget.linked_data_points ?? []).length}
                           </span>
                         </div>
                         <div className="flex items-center justify-between gap-3">
-                          <span>Requirements</span>
+                          <span>Direct requirement links</span>
                           <span className="font-medium text-slate-900">
                             {(detailTarget.linked_requirement_items ?? []).length}
                           </span>

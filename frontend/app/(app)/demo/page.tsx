@@ -5,16 +5,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
-import { getMe } from "@/lib/auth";
+import { getMe, type UserResponse } from "@/lib/auth";
 
 type Role = "platform_admin" | "admin" | "esg_manager" | "reviewer" | "collector" | "auditor";
-
-interface UserInfo {
-  id: number;
-  email: string;
-  full_name: string;
-  roles: Array<{ role: Role; scope_type: string; scope_id: number | null }>;
-}
 
 interface ProjectListResponse {
   items: Array<{ id: number; name: string; status: string; reporting_year: number | null }>;
@@ -131,7 +124,7 @@ async function safeGet<T>(path: string): Promise<T | null> {
 }
 
 export default function DemoPage() {
-  const [user, setUser] = useState<UserInfo | null>(null);
+  const [user, setUser] = useState<UserResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [project, setProject] = useState<ProjectListResponse["items"][number] | null>(null);
   const [assignments, setAssignments] = useState<AssignmentMatrixResponse | null>(null);
@@ -153,7 +146,7 @@ export default function DemoPage() {
     async function load() {
       setLoading(true);
       const me = await getMe();
-      setUser(me as any);
+      setUser(me);
 
       const projects = await safeGet<ProjectListResponse>("/projects");
       const currentProject = projects?.items?.[0] ?? null;

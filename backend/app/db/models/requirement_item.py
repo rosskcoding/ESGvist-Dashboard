@@ -38,6 +38,7 @@ class RequirementItem(Base, TimestampMixin):
     is_current: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
     valid_from: Mapped[str | None] = mapped_column(Date, nullable=True)
     valid_to: Mapped[str | None] = mapped_column(Date, nullable=True)
+    catalog_key: Mapped[str | None] = mapped_column(String, nullable=True)
 
     children = relationship(
         "RequirementItem", lazy="noload", overlaps="parent",

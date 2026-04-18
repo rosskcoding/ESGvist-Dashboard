@@ -25,7 +25,7 @@ class MergeService:
     async def get_merged_view(self, project_id: int, ctx: RequestContext | None = None) -> dict:
         if ctx:
             AuthPolicy.require_role(
-                ctx, ["admin", "auditor"]
+                ctx, ["admin", "esg_manager", "auditor", "platform_admin"]
             )
             await get_project_for_ctx(
                 self.session,
@@ -421,7 +421,7 @@ class MergeService:
         """Coverage per standard."""
         if ctx:
             AuthPolicy.require_role(
-                ctx, ["admin", "auditor"]
+                ctx, ["admin", "esg_manager", "auditor", "platform_admin"]
             )
             await get_project_for_ctx(
                 self.session,

@@ -19,6 +19,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from app.core.config import settings
+from app.domain.catalog import prepare_shared_element_defaults
 from app.db.models.mapping import RequirementItemSharedElement
 from app.db.models.requirement_item import RequirementItem
 from app.db.models.shared_element import SharedElement
@@ -528,6 +529,7 @@ async def upsert_shared_element(
             concept_domain=concept_domain,
             default_value_type=item.value_type,
             default_unit_code=item.unit_code,
+            **prepare_shared_element_defaults(code=code),
         )
         session.add(element)
         await session.flush()

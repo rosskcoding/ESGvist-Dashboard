@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect, useId } from "react";
+import { useState, useMemo, useCallback, useId } from "react";
 import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useApiQuery, useApiMutation } from "@/lib/hooks/use-api";
@@ -571,9 +571,9 @@ export default function AssignmentsPage() {
     { enabled: canAccess }
   );
 
-  const assignments = data?.assignments ?? [];
-  const users = data?.users ?? [];
-  const entities = data?.entities ?? [];
+  const assignments = useMemo(() => data?.assignments ?? [], [data]);
+  const users = useMemo(() => data?.users ?? [], [data]);
+  const entities = useMemo(() => data?.entities ?? [], [data]);
 
   const patchAssignments = useCallback(
     (updater: (assignment: Assignment) => Assignment) => {
